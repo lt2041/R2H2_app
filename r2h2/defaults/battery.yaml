@@ -1,0 +1,33 @@
+# Battery default parameters
+degradation:
+  rKt: 4.14e-10
+  rKs: 1.04
+  rKT: 6.93e-2
+  rAlphaSei: 5.75e-2
+  rKd1: 1.4e5
+  rKd2: -5.01e-1
+  rKd3: -1.23e5
+  rBetaSei: 121.0
+  rTcRef: 55.0
+  rSoCRef: 0.5
+
+operational:
+  arInitialSoC: 0.5
+  rFt: 0.0
+  rFc: 0.0
+  rBatteryMWh: 15
+  rInitialBatteryRating: 0.0
+  rBatteryRating: 0.0
+  rRCD: 1.0
+  rControlMinSoC: 0.5
+  rBatteryProportionalGain: 0.0
+
+replacements:
+  iNumReplacements: 0
+  aiReplacementHour: 0
+
+runtime:
+  rSocAv: 0.0
+  rSocMax: 0.0
+  rSocMin: 0.0
+  rDodAv: 0.0

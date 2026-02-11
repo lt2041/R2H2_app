@@ -56,6 +56,10 @@ class R2H2():
         # Bulid components
         self.battery = Battery()
     
+    
+
+    # ---  UPDATE FUNCTIONS TO RE-LOAD PARAMETERS FROM YAML FILES  --- #
+
     def update_battery(self):
         """Load battery parameters from a YAML file."""
         self.battery = Battery(config_path=self.paths.inputs / 'battery.yaml')

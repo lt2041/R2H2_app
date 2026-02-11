@@ -9,13 +9,15 @@ class Battery:
         if config_path is not None:
             config_path = Path(config_path)
         
-        # Load defaults from YAML
-        defaults = self._load_defaults(config_path)
+        # Load defaults
+        defaults = self._load_defaults(None)
         
-        # If custom config provided, validate against defaults
+        # If custom config provided, validate and merge with defaults
         if config_path is not None:
-            default_fields = self._get_all_fields(self._load_defaults(None))
-            custom_fields = self._get_all_fields(defaults)
+            custom_config = self._load_defaults(config_path)
+            
+            default_fields = self._get_all_fields(defaults)
+            custom_fields = self._get_all_fields(custom_config)
             
             # Check for new fields not in defaults
             new_fields = custom_fields - default_fields
@@ -26,9 +28,14 @@ class Battery:
                     f"   - Battery definition: {config_path}\n"
                     f"Please contact the developer to add a new default (see 'defaults/battery.yaml'),\n or remove it from the above battery definition."
                 )
+            
+            # Merge custom config with defaults (custom values override defaults)
+            merged_config = self._merge_configs(defaults, custom_config)
+        else:
+            merged_config = defaults
         
         # Dynamically set attributes from all sections in YAML
-        for section_name, section_values in defaults.items():
+        for section_name, section_values in merged_config.items():
             if isinstance(section_values, dict):
                 for key, value in section_values.items():
                     setattr(self, key, value)
@@ -55,3 +62,22 @@ class Battery:
             else:
                 fields.add(section_name)
         return fields
+    
+    @staticmethod
+    def _merge_configs(defaults: dict, custom: dict) -> dict:
+        """Merge custom config with defaults, custom values override defaults."""
+        merged = {}
+        
+        for section_name, section_values in defaults.items():
+            if isinstance(section_values, dict):
+                # Initialize section with default values
+                merged[section_name] = section_values.copy()
+                
+                # Override with custom values if section exists
+                if section_name in custom and isinstance(custom[section_name], dict):
+                    merged[section_name].update(custom[section_name])
+            else:
+                # Handle top-level values
+                merged[section_name] = custom.get(section_name, section_values)
+        
+        return merged

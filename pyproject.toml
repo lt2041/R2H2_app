@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "r2h2"
+version = "1.0.1"
+description = "The Desktop App for R2H2."
+authors = [
+    {name = "Adam Stock", email = "a.stock@hw.ac.uk"},
+    {name = "Francesco Superchi", email = "francesco.superchi@unifi.it"},
+    {name = "Peter McCallum", email = "peter.mccallum@dun-eideann-labs.co.uk"},
+]
+license = {text = "GNUv3"}
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.2.1",
+    "pandas>=2.2.3",
+    "python-dotenv>=1.0.1",
+]
+
+[tool.setuptools]
+packages = ["r2h2"]
+include-package-data = true

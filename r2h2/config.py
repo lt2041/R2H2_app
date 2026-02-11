@@ -1,4 +1,6 @@
+import os
 from pathlib import Path
+import socket
 import pandas as pd
 import yaml
 import platformdirs
@@ -110,4 +112,31 @@ def update_data_root(new_path: str):
     with open(cfg_file, "w") as f:
         yaml.safe_dump(cfg, f, sort_keys=False)
     return cfg
+
+
+
+############################################################
+
+# Contaier class to hold paths and other global settings
+class Paths():
+
+    def __init__(self, verbose=True):
+
+        # Initialise `R2H2` object with data_root location
+        cfg = get_or_create_config()
+        self.data_root = Path(cfg['paths']['data_root'])
+        self.inputs = self.data_root / 'inputs'
+        self.outputs = self.data_root / 'outputs'
+        self.simulation_defs = self.data_root / 'simulation_defs'
+        
+        # Determine whether Windows or Unix
+        if os.name == 'nt':
+            self.machine_id = "Windows"
+        else:
+            self.machine_id = socket.gethostname()
+        
+        # Prompt user on data_root location and how to change it
+        if verbose:
+            print(f"R2H2 is configured to access data stored here: {self.data_root}.")
+            print(f'To change this path, use:  r2h2.config.update_data_root("{str(Path.home() / "...")}")\n')
 

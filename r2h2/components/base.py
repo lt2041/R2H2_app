@@ -3,7 +3,16 @@ from pathlib import Path
 from typing import Optional
 
 class ComponentBase:
+    """
+    Base class for all components in R2H2. Handles loading parameters from YAML files and setting attributes.
+    """
+
     def __init__(self, config_path: Optional[str] = None):
+        """
+        Initialize component parameters from a YAML file. If no file is provided, load defaults.
+        Args:
+            config_path (str, optional): Path to the YAML configuration file. If None, defaults are loaded.
+        """
         
         # Convert config_path to Path object if provided
         if config_path is not None:

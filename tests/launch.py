@@ -8,6 +8,7 @@ sim = r2h2.go()
 
 sim.battery.__dict__
 sim.electrolyser_unit.__dict__
+sim.thermal_properties.__dict__
 # %%
 
 sim.update_battery()

@@ -7,6 +7,7 @@ sim = r2h2.go()
 # %% Examine component parameters (the output is converted to a dictionary at display-time, for easier reading)
 
 sim.battery.__dict__
+sim.electrolyser_unit.__dict__
 # %%
 
 sim.update_battery()

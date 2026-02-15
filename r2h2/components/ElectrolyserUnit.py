@@ -2,7 +2,7 @@ import yaml
 from pathlib import Path
 from typing import Optional
 
-class Battery:
+class ElectrolyserUnit:
     def __init__(self, config_path: Optional[str] = None):
         
         # Convert config_path to Path object if provided
@@ -47,7 +47,7 @@ class Battery:
     def _load_defaults(config_path: Optional[Path] = None) -> dict:
         """Load default parameters from YAML file."""
         if config_path is None:
-            config_path = Path(__file__).parent.parent / 'defaults' / 'Battery.yaml'
+            config_path = Path(__file__).parent.parent / 'defaults' / 'ElectrolyserUnit.yaml'
         
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)

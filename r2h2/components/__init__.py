@@ -1,3 +1,4 @@
-from .battery import Battery
+from .Battery import Battery
+from .ElectrolyserUnit import ElectrolyserUnit
 
-__all__ = ['Battery']
+__all__ = ['Battery', 'ElectrolyserUnit']

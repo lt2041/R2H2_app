@@ -7,9 +7,11 @@ import os
 import socket
 from pathlib import Path
 
+
 # Custom Libraries
-from .config import Paths
-from .components import Battery
+from r2h2.config import Paths
+from r2h2.components import Battery
+from r2h2.components import ElectrolyserUnit
 
 ###############################################################################################################
 
@@ -29,6 +31,7 @@ class R2H2():
         
         # Bulid components
         self.battery = Battery()
+        self.electrolyser_unit = ElectrolyserUnit()
     
     
 
@@ -36,5 +39,8 @@ class R2H2():
 
     def update_battery(self):
         """Load battery parameters from a YAML file."""
-        self.battery = Battery(config_path=self.paths.inputs / 'battery.yaml')
+        self.battery = Battery(config_path=self.paths.inputs / 'Battery.yaml')
 
+    def update_electrolyser_unit(self):
+        """Load electrolyser unit parameters from a YAML file."""
+        self.electrolyser_unit = ElectrolyserUnit(config_path=self.paths.inputs / 'ElectrolyserUnit.yaml')

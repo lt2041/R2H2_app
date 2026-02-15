@@ -1,8 +1,9 @@
 import yaml
 from pathlib import Path
 from typing import Optional
+from .base import ComponentBase
 
-class ElectrolyserUnit:
+class ElectrolyserUnit(ComponentBase):
     def __init__(self, config_path: Optional[str] = None):
         
         # Convert config_path to Path object if provided

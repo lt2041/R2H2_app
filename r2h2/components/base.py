@@ -1,9 +1,8 @@
 import yaml
 from pathlib import Path
 from typing import Optional
-from .base import ComponentBase
 
-class Battery(ComponentBase):
+class ComponentBase:
     def __init__(self, config_path: Optional[str] = None):
         
         # Convert config_path to Path object if provided
@@ -44,11 +43,11 @@ class Battery(ComponentBase):
                 # Handle top-level values if any
                 setattr(self, section_name, section_values)
     
-    @staticmethod
-    def _load_defaults(config_path: Optional[Path] = None) -> dict:
+    def _load_defaults(self, config_path: Optional[Path] = None) -> dict:
         """Load default parameters from YAML file."""
         if config_path is None:
-            config_path = Path(__file__).parent.parent / 'defaults' / 'Battery.yaml'
+            class_name = self.__class__.__name__
+            config_path = Path(__file__).parent.parent / 'defaults' / f'{class_name}.yaml'
         
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)

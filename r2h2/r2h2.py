@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Custom Libraries
 from r2h2.config import Paths
-from r2h2.components import Battery, ElectrolyserUnit, ThermalProperties, WindInputs
+from r2h2.components import Battery, ElectrolyserUnit, ThermalProperties, WindInputs, TimeOutputs
 
 ###############################################################################################################
 
@@ -32,6 +32,7 @@ class R2H2():
         self.electrolyser_unit = ElectrolyserUnit()
         self.thermal_properties = ThermalProperties()
         self.wind_inputs = WindInputs()
+        self.time_outputs = TimeOutputs()
 
     # ---  UPDATE FUNCTIONS TO RE-LOAD PARAMETERS FROM YAML FILES  --- #
 
@@ -50,3 +51,7 @@ class R2H2():
     def update_wind_inputs(self):
         """Load wind inputs parameters from a YAML file."""
         self.wind_inputs = WindInputs(config_path=self.paths.inputs / 'WindInputs.yaml')
+
+    def update_time_outputs(self):
+        """Load time outputs parameters from a YAML file."""
+        self.time_outputs = TimeOutputs(config_path=self.paths.inputs / 'TimeOutputs.yaml')

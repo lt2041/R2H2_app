@@ -1,3 +1,14 @@
+
+# universal constants
+rR: 8.314
+rF: 96485.0
+
+# outputs populated by build_curves()
+arCurrentDensity: null
+arE_min: null
+arR_cell: null
+arV_cell: null
+
 # geometry & grid
 iNumCurrent: 1000
 rA_cell: 1000.0  # cm^2

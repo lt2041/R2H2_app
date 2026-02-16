@@ -15,3 +15,6 @@ sim.electro_cell_pem.__dict__
 
 sim.update_battery()
 sim.battery.__dict__
+
+# %%
+sim.electro_cell_pem.build_curves()

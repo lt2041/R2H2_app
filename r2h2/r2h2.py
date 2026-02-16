@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Custom Libraries
 from r2h2.config import Paths
-from r2h2.components import Battery, ElectrolyserUnit, ThermalProperties, WindInputs, TimeOutputs
+from r2h2.components import Battery, ElectroCellPEM, ElectrolyserUnit, ThermalProperties, WindInputs, TimeOutputs
 
 ###############################################################################################################
 
@@ -29,10 +29,11 @@ class R2H2():
         
         # Build components
         self.battery = Battery()
+        self.electro_cell_pem = ElectroCellPEM()
         self.electrolyser_unit = ElectrolyserUnit()
         self.thermal_properties = ThermalProperties()
-        self.wind_inputs = WindInputs()
         self.time_outputs = TimeOutputs()
+        self.wind_inputs = WindInputs()
 
     # ---  UPDATE FUNCTIONS TO RE-LOAD PARAMETERS FROM YAML FILES  --- #
 

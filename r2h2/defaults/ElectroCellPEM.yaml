@@ -1,0 +1,25 @@
+# geometry & grid
+iNumCurrent: 1000
+rA_cell: 1000.0  # cm^2
+rI_rated: 3.0   # A/cm^2
+
+# temperature references
+rT_0: 55.0          # Nominal operating temperature [°C]
+rT: 55.0           # Initial operating temperature [°C]
+
+# PEM voltage model params
+rE_min0: 1.55
+rR_0: 0.178 # should be x2 according to literature but polarization curve would be too steep 
+rD_rt: -0.0045  # dR/dT
+
+# stack/cell nominals (informative)
+rV_cellNom: 2.1
+rV_bank: 633.5
+rI_bank: 3000.0
+
+# Faraday eff params
+rF1: 0.25
+rF2: 0.996
+# arFaradayTemp_C: np.ndarray = field(default_factory=lambda: _FARADAY_TEMP_POINTS.copy())
+# arFaradayF1: np.ndarray = field(default_factory=lambda: _FARADAY_F1_POINTS.copy())
+# arFaradayF2: np.ndarray = field(default_factory=lambda: _FARADAY_F2_POINTS.copy())

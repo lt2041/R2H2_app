@@ -39,20 +39,20 @@ class R2H2():
 
     def update_battery(self):
         """Load battery parameters from a YAML file."""
-        self.battery = Battery(config_path=self.paths.inputs / 'Battery.yaml')
+        self.battery = Battery(config_path=self.paths.component_library / 'Battery.yaml')
 
     def update_electrolyser_unit(self):
         """Load electrolyser unit parameters from a YAML file."""
-        self.electrolyser_unit = ElectrolyserUnit(config_path=self.paths.inputs / 'ElectrolyserUnit.yaml')
+        self.electrolyser_unit = ElectrolyserUnit(config_path=self.paths.component_library / 'ElectrolyserUnit.yaml')
 
     def update_thermal_properties(self):
         """Load thermal properties parameters from a YAML file."""
-        self.thermal_properties = ThermalProperties(config_path=self.paths.inputs / 'ThermalProperties.yaml')
+        self.thermal_properties = ThermalProperties(config_path=self.paths.component_library / 'ThermalProperties.yaml')
 
     def update_wind_inputs(self):
         """Load wind inputs parameters from a YAML file."""
-        self.wind_inputs = WindInputs(config_path=self.paths.inputs / 'WindInputs.yaml')
+        self.wind_inputs = WindInputs(config_path=self.paths.component_library / 'WindInputs.yaml')
 
     def update_time_outputs(self):
         """Load time outputs parameters from a YAML file."""
-        self.time_outputs = TimeOutputs(config_path=self.paths.inputs / 'TimeOutputs.yaml')
+        self.time_outputs = TimeOutputs(config_path=self.paths.component_library / 'TimeOutputs.yaml')

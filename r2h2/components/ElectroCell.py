@@ -1,32 +1,12 @@
+# Std libraries
 import numpy as np
-from abc import ABC, abstractmethod
 
+# Local src libraries
 from .base import ComponentBase
 
-class BaseElectroCell(ABC):
-    """
-    Common interface for electrolyzer cell types.
-    Subclasses must implement build_curves() and faraday_efficiency().
-    Arrays are defined after build_curves().
-    """
-
-    @abstractmethod
-    def build_curves(self) -> "BaseElectroCell":
-        ...
-
-    @abstractmethod
-    def faraday_efficiency(self, J: np.ndarray) -> np.ndarray:
-        ...
 
 
-# Bind all methods from ComponentBase to abstract BaseElectroCell (generic component functionality, yaml loading, etc.)
-BaseElectroCell.__init__ = ComponentBase.__init__
-BaseElectroCell._load_defaults = ComponentBase._load_defaults
-BaseElectroCell._get_all_fields = ComponentBase._get_all_fields
-BaseElectroCell._merge_configs = ComponentBase._merge_configs
-
-
-class ElectroCellPEM(BaseElectroCell):
+class ElectroCellPEM(ComponentBase):
     
     def build_curves(self) -> "ElectroCellPEM":
         ec = self

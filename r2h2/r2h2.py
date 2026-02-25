@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Custom Libraries
 from r2h2.config import Paths
-from r2h2.components import Battery, ElectroCellPEM, ElectrolyserUnit, ThermalProperties, WindInputs, TimeOutputs
+from r2h2.components import *
 
 ###############################################################################################################
 
@@ -26,6 +26,8 @@ class R2H2():
         # Initialise `r2h2` object with data_root location
         self.verbose = verbose
         self.paths = Paths(verbose=self.verbose)
+
+        self.simulation = Simulation()
         
         # Build components
         self.battery = Battery()

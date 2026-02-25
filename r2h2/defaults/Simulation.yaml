@@ -1,0 +1,13 @@
+# Simulation timing
+iWindType: 0  # 3 = hourly, 2 = 10 min, 1 = 1 min, 0 = 1 sec          ## RENAME: delta_t_sec      # (e.g. delta_t_sec=1/60/600/3600 for 1s/1min/10min/1hr)
+iNumYears: 1
+rTotalTime: 3700  # seconds (one hour with 0..3699)
+rTimeStep: 1.0
+rTransientSteps: 101
+
+# Wind / turbine parameters
+bSingleTurb: False
+arLateralDistances: [504, 1008, 1512, 2016, 2520]
+
+# Control divisor set later from electrolyser control level
+rDivisor: 1.0

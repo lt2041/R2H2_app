@@ -8,17 +8,20 @@ import r2h2
 sim = r2h2.go()
 
 
+# %% Examine simulation parameters (the output is converted to a dictionary at display-time, for easier reading)
+vars(sim.simulation)
+
 # %% Examine component parameters (the output is converted to a dictionary at display-time, for easier reading)
 
-sim.battery.__dict__
-sim.electrolyser_unit.__dict__
-sim.thermal_properties.__dict__
-sim.wind_inputs.__dict__
-sim.electro_cell_pem.__dict__
+vars(sim.battery)
+vars(sim.electrolyser_unit)
+vars(sim.thermal_properties)
+vars(sim.wind_inputs)
+vars(sim.electro_cell_pem)
 # %%
 
-sim.update_battery()
-sim.battery.__dict__
+sim.update_battery() # This will fail due to naming in user-defined components folder (e.g. `Battery-1.yaml`) - WIP
+vars(sim.battery)
 
 # %%
 sim.electro_cell_pem.build_curves()

@@ -11,3 +11,12 @@ arLateralDistances: [504, 1008, 1512, 2016, 2520]
 
 # Control divisor set later from electrolyser control level
 rDivisor: 1.0
+
+# Simulation components - these are specific links to related objects in the `components` folder
+components:
+  - name: "Battery"
+    class: "Battery"
+    description: "-"
+  - name: "ElectrolyserUnit"
+    class: "ElectrolyserUnit"
+    description: "-"

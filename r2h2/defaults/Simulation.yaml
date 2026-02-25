@@ -14,9 +14,9 @@ rDivisor: 1.0
 
 # Simulation components - these are specific links to related objects in the `components` folder
 components:
-  - name: "Battery"
+  - name: "Battery-0"
     class: "Battery"
     description: "-"
-  - name: "ElectrolyserUnit"
+  - name: "ElectrolyserUnit-0"
     class: "ElectrolyserUnit"
     description: "-"

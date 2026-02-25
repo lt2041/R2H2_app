@@ -125,9 +125,6 @@ class Paths():
         # Initialise `R2H2` object with data_root location
         cfg = get_or_create_config()
         self.data_root = Path(cfg['paths']['data_root'])
-        self.component_library = self.data_root / 'component_library'
-        self.outputs = self.data_root / 'outputs'
-        self.simulation_defs = self.data_root / 'simulation_defs'
         
         # Determine whether Windows or Unix
         if os.name == 'nt':

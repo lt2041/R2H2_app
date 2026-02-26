@@ -73,10 +73,12 @@ WSGI_APPLICATION = 'r2h2_ui.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+import r2h2
+config = r2h2.config.Paths()
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': config.data_root / 'R2H2_DataBase.sqlite3',
     }
 }
 

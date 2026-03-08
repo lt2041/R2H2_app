@@ -106,6 +106,55 @@ def get_project_directory():
         print_colored("r2h2.config not available, using current directory", Colors.YELLOW)
         return str(current_dir)
 
+def ensure_r2h2_config():
+    """Ensure config.yaml exists, creating it interactively if missing.
+    Also reports where db.sqlite3 will be stored."""
+    try:
+        import r2h2.config as cfg_module
+
+        cfg_path = cfg_module.get_config_path()
+        cfg = cfg_module.load_config()
+
+        if cfg is None:
+            print_colored("\n⚠  No R2H2 config found.", Colors.YELLOW)
+            print_colored(f"   Config will be saved to: {cfg_path}", Colors.BLUE)
+
+            # Suggest the platform data directory as default
+            try:
+                import platformdirs
+                default_data = Path(platformdirs.user_data_dir("r2h2", "r2h2"))
+            except Exception:
+                default_data = Path.home() / "r2h2_data"
+
+            val = input(
+                f"   Enter path for R2H2 data storage [{default_data}]: "
+            ).strip()
+            data_root = Path(val).expanduser().resolve() if val else default_data
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            cfg = cfg_module.create_config_file(data_root=str(data_root))
+            print_colored(f"✓ Config created at: {cfg_path}", Colors.GREEN)
+        else:
+            print_colored(f"✓ Config found: {cfg_path}", Colors.GREEN)
+
+        # Report DB location
+        data_root = Path(cfg['paths']['data_root'])
+        db_path = data_root / 'R2H2_DataBase.sqlite3'
+        print_colored(f"✓ Database location: {db_path}", Colors.BLUE)
+
+        # Ensure data_root exists (in case it was deleted)
+        data_root.mkdir(parents=True, exist_ok=True)
+
+        return True
+
+    except ImportError:
+        print_colored("⚠  r2h2.config not available — skipping config check.", Colors.YELLOW)
+        return True
+    except Exception as e:
+        print_colored(f"✗ Failed to initialise R2H2 config: {e}", Colors.RED)
+        return False
+
+
 def check_dependencies():
     """Check if required dependencies are installed"""
     print_colored("Checking dependencies...", Colors.YELLOW)
@@ -292,6 +341,11 @@ def main():
         print_colored("Please ensure R2H2_app is installed correctly.", Colors.RED)
         sys.exit(1)
     
+    # Ensure config.yaml exists and report DB location
+    if not ensure_r2h2_config():
+        print_colored("Failed to initialise R2H2 config", Colors.RED)
+        sys.exit(1)
+
     # Check dependencies
     if not check_dependencies():
         print_colored("Please install missing dependencies", Colors.RED)

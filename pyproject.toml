@@ -22,6 +22,9 @@ dependencies = [
     "django>=6.0.2",
 ]
 
+[project.scripts]
+r2h2 = "launch_r2h2:main"
+
 [tool.setuptools]
 packages = ["r2h2"]
 include-package-data = true

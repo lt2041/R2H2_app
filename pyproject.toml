@@ -20,6 +20,7 @@ dependencies = [
     "PyYAML>=6.0.2",
     "python-dotenv>=1.0.1",
     "django>=6.0.2",
+    "platformdirs>=4.9.4",
 ]
 
 [project.scripts]

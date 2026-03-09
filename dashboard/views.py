@@ -18,6 +18,64 @@ from .models import *
 
 
 
+def simulations(request):
+    """Hierarchical view of Simulation models with M2M component relations."""
+    sims = Simulation.objects.prefetch_related(
+        'batteries',
+        'electro_cells',
+        'electrolyser_units',
+        'thermal_properties',
+        'time_outputs',
+        'wind_inputs',
+    ).order_by('-id')
+
+    sim_data = []
+    for sim in sims:
+        sim_data.append({
+            'obj': sim,
+            'components': [
+                {
+                    'label': 'Battery',
+                    'icon': 'battery_charging_full',
+                    'table': 'Battery',
+                    'items': list(sim.batteries.all()),
+                },
+                {
+                    'label': 'ElectroCellPEM',
+                    'icon': 'developer_board',
+                    'table': 'ElectroCellPEM',
+                    'items': list(sim.electro_cells.all()),
+                },
+                {
+                    'label': 'ElectrolyserUnit',
+                    'icon': 'water_do',
+                    'table': 'ElectrolyserUnit',
+                    'items': list(sim.electrolyser_units.all()),
+                },
+                {
+                    'label': 'ThermalProperties',
+                    'icon': 'thermostat',
+                    'table': 'ThermalProperties',
+                    'items': list(sim.thermal_properties.all()),
+                },
+                {
+                    'label': 'TimeOutput',
+                    'icon': 'timeline',
+                    'table': 'TimeOutput',
+                    'items': list(sim.time_outputs.all()),
+                },
+                {
+                    'label': 'WindInput',
+                    'icon': 'air',
+                    'table': 'WindInput',
+                    'items': list(sim.wind_inputs.all()),
+                },
+            ],
+        })
+
+    return render(request, 'dashboard/simulations.html', {'sim_data': sim_data})
+
+
 def home(request):
 
     # Get counts for each model

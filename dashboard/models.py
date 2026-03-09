@@ -1,5 +1,23 @@
 from django.db import models
 
+#### ---------------------- SIMULATION MODEL (TOP-LEVEL) ---------------------- ####
+
+
+class Simulation(models.Model):
+    name = models.CharField(max_length=100, default='Simulation')
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=100, default='User')  # Placeholder for user association
+    # Relationships to component models (one-to-many)
+    batteries = models.ManyToManyField('Battery', blank=True)
+    electro_cells = models.ManyToManyField('ElectroCellPEM', blank=True)
+    electrolyser_units = models.ManyToManyField('ElectrolyserUnit', blank=True)
+    thermal_properties = models.ManyToManyField('ThermalProperties', blank=True)
+    time_outputs = models.ManyToManyField('TimeOutput', blank=True)
+    wind_inputs = models.ManyToManyField('WindInput', blank=True)
+
+    def __str__(self):
+        return f"ID: {self.id}, Name: {self.name}"
 
 
 #### ---------------------- BATTERY MODEL ---------------------- ####

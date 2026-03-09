@@ -1,0 +1,266 @@
+{% extends "dashboard/base.html" %}
+{% block title %}R2H2: Simulations{% endblock %}
+
+{% block content %}
+
+<div style="position: absolute; top: 0.9rem; left: 19rem; z-index: 1000;">
+    <h2 style="color: #ffffff; font-weight: 100;">Simulations</h2>
+</div>
+
+<style>
+    /* ── Tree layout ── */
+    .sim-tree { display: flex; flex-direction: column; gap: 1.25rem; }
+
+    .sim-node {
+        border: 1.5px solid #b2e0e4;
+        border-radius: 10px;
+        background: #ffffff;
+        box-shadow: 0 2px 8px rgba(34,166,179,0.10);
+        overflow: hidden;
+    }
+
+    /* ── Simulation header row ── */
+    .sim-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.85rem 1.25rem;
+        background: linear-gradient(90deg, #136b75 0%, #22a6b3 100%);
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .sim-header:hover { background: linear-gradient(90deg, #1a8a96 0%, #2ec4d0 100%); }
+
+    .sim-header .sim-name {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #ffffff;
+        flex: 1;
+    }
+
+    .sim-header .sim-meta {
+        font-size: 0.78rem;
+        color: #d0f0f3;
+        white-space: nowrap;
+    }
+
+    .sim-header .sim-toggle {
+        color: #d0f0f3;
+        font-size: 1.2rem;
+        transition: transform 0.25s;
+    }
+
+    .sim-header.open .sim-toggle { transform: rotate(180deg); }
+
+    /* ── Component rows inside a simulation ── */
+    .sim-body {
+        display: none;
+        padding: 0.75rem 1.25rem 1rem;
+        background: #f4fafb;
+    }
+
+    .sim-body.open { display: block; }
+
+    .component-group {
+        margin-bottom: 0.6rem;
+    }
+
+    .component-group-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.75rem;
+        border-radius: 6px;
+        background: #e8f8f9;
+        cursor: pointer;
+        border: 1px solid #b2e0e4;
+        user-select: none;
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: #136b75;
+        transition: background 0.15s;
+    }
+
+    .component-group-header:hover { background: #d0f0f3; }
+
+    .component-group-header .cg-icon {
+        color: #22a6b3;
+        font-size: 1.05rem;
+    }
+
+    .component-group-header .cg-count {
+        margin-left: auto;
+        background: #22a6b3;
+        color: #fff;
+        border-radius: 999px;
+        padding: 0 7px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        line-height: 1.6;
+    }
+
+    .component-group-header .cg-count.empty {
+        background: #b2e0e4;
+        color: #4a7a80;
+    }
+
+    .component-group-header .cg-toggle {
+        color: #4a7a80;
+        font-size: 1rem;
+        transition: transform 0.2s;
+    }
+
+    .component-group-header.open .cg-toggle { transform: rotate(180deg); }
+
+    /* ── Component item list ── */
+    .component-item-list {
+        display: none;
+        padding: 0.4rem 0 0.1rem 2rem;
+    }
+
+    .component-item-list.open { display: block; }
+
+    .component-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0.5rem;
+        border-left: 2px solid #b2e0e4;
+        margin-bottom: 0.2rem;
+        font-size: 0.85rem;
+        color: #1a2e30;
+    }
+
+    .component-item .item-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #22a6b3;
+        flex-shrink: 0;
+    }
+
+    .component-item a {
+        color: #136b75;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .component-item a:hover { text-decoration: underline; }
+
+    .component-item .item-id {
+        color: #4a7a80;
+        font-size: 0.78rem;
+    }
+
+    /* ── Empty state ── */
+    .sim-empty {
+        padding: 2.5rem;
+        text-align: center;
+        color: #4a7a80;
+        font-size: 0.95rem;
+    }
+
+    .sim-empty .material-symbols-outlined {
+        font-size: 2.5rem;
+        color: #b2e0e4;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+</style>
+
+{% if sim_data %}
+<div class="sim-tree">
+    {% for entry in sim_data %}
+    <div class="sim-node">
+
+        <!-- Simulation header -->
+        <div class="sim-header" onclick="toggleSim(this)">
+            <span class="material-symbols-outlined" style="color:#d0f0f3; font-size:1.8rem; font-variation-settings:'wght' 100;">flowchart</span>
+            <span class="sim-name">{{ entry.obj.name }}</span>
+            <span class="sim-meta">
+                ID&nbsp;{{ entry.obj.id }}
+                {% if entry.obj.description %}&nbsp;·&nbsp;{{ entry.obj.description|truncatechars:60 }}{% endif %}
+                &nbsp;·&nbsp;{{ entry.obj.created_at|date:"d M Y" }}
+            </span>
+            <span class="material-symbols-outlined sim-toggle">expand_more</span>
+        </div>
+
+        <!-- Component groups -->
+        <div class="sim-body">
+            <div style="display:flex; flex-direction:column; gap:0.4rem; margin-top:0.25rem;">
+                {% for group in entry.components %}
+                <div class="component-group">
+
+                    <!-- Group header -->
+                    <div class="component-group-header {% if group.items %}{% endif %}"
+                         onclick="toggleGroup(this)"
+                         {% if not group.items %}style="opacity:0.6; cursor:default;" onclick="return false;"{% endif %}>
+                        <span class="material-symbols-outlined cg-icon">{{ group.icon }}</span>
+                        <a href="{% url 'dashboard-browse' group.table %}"
+                           style="color:inherit; text-decoration:none; flex:1;"
+                           onclick="event.stopPropagation();">
+                            {{ group.label }}
+                        </a>
+                        <span class="cg-count {% if not group.items %}empty{% endif %}">
+                            {{ group.items|length }}
+                        </span>
+                        {% if group.items %}
+                        <span class="material-symbols-outlined cg-toggle">expand_more</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Individual items -->
+                    {% if group.items %}
+                    <div class="component-item-list">
+                        {% for item in group.items %}
+                        <div class="component-item">
+                            <span class="item-dot"></span>
+                            <a href="{% url 'dashboard-browse' group.table %}">{{ item }}</a>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="sim-node">
+    <div class="sim-empty">
+        <span class="material-symbols-outlined">flowchart</span>
+        No simulations found in the database.
+    </div>
+</div>
+{% endif %}
+
+<script>
+    function toggleSim(header) {
+        header.classList.toggle('open');
+        const body = header.nextElementSibling;
+        body.classList.toggle('open');
+    }
+
+    function toggleGroup(header) {
+        if (header.hasAttribute('onclick') && header.getAttribute('onclick') === 'return false;') return;
+        header.classList.toggle('open');
+        const list = header.nextElementSibling;
+        if (list && list.classList.contains('component-item-list')) {
+            list.classList.toggle('open');
+        }
+    }
+
+    // Auto-expand first simulation on load
+    document.addEventListener('DOMContentLoaded', function () {
+        const first = document.querySelector('.sim-header');
+        if (first) toggleSim(first);
+    });
+</script>
+
+{% endblock %}

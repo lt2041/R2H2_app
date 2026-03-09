@@ -8,13 +8,22 @@ class Simulation(models.Model):
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.CharField(max_length=100, default='User')  # Placeholder for user association
-    # Relationships to component models (one-to-many)
+    # RELATIONSHIPS TO COMPONENT MODELS (MANY-TO-MANY)
     batteries = models.ManyToManyField('Battery', blank=True)
     electro_cells = models.ManyToManyField('ElectroCellPEM', blank=True)
     electrolyser_units = models.ManyToManyField('ElectrolyserUnit', blank=True)
     thermal_properties = models.ManyToManyField('ThermalProperties', blank=True)
     time_outputs = models.ManyToManyField('TimeOutput', blank=True)
     wind_inputs = models.ManyToManyField('WindInput', blank=True)
+    # SIMULATION SETTINGS
+    iWindType = models.PositiveIntegerField(default=0, choices=[(0, '1 sec'), (1, '1 min'), (2, '10 min'), (3, 'hourly')])
+    iNumYears = models.PositiveIntegerField(default=1)
+    rTotalTime = models.FloatField(default=3700.0, help_text="Total simulation time in seconds")
+    rTimeStep = models.FloatField(default=1.0, help_text="Time step in seconds")
+    rTransientSteps = models.PositiveIntegerField(default=101, help_text="Number of initial transient steps to discard in analysis")
+    bSingleTurb = models.BooleanField(default=True, help_text="Whether to simulate a single turbine or multiple (weak grid)")
+    arLateralDistances = models.JSONField(default=None, blank=True, null=True, help_text="Lateral distances of turbines in weak grid scenario (meters)")
+    rDivisor = models.FloatField(default=400.0, help_text="Divisor for normalizing wind power input (e.g. max power of single turbine)")
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"
@@ -48,17 +57,17 @@ class Battery(models.Model):
     rBatteryProportionalGain = models.FloatField(default=0.0)
     # REPLACEMENTS
     iNumReplacements = models.PositiveIntegerField(default=0)
-    aiReplacementHour = models.JSONField(default=list)
+    aiReplacementHour = models.JSONField(default=None, blank=True, null=True)
     # RUNTIME
     rSocAv = models.FloatField(default=0.0)
     rSocMax = models.FloatField(default=0.0)
     rSocMin = models.FloatField(default=0.0)
     rDodAv = models.FloatField(default=0.0)
-    arBatteryPower = models.JSONField(default=list)
-    arSoC = models.JSONField(default=list)
-    arDoD = models.JSONField(default=list)
+    arBatteryPower = models.JSONField(default=None, blank=True, null=True)
+    arSoC = models.JSONField(default=None, blank=True, null=True)
+    arDoD = models.JSONField(default=None, blank=True, null=True)
     # CONTROL
-    arBatteryDemand = models.JSONField(default=list)
+    arBatteryDemand = models.JSONField(default=None, blank=True, null=True)
 
 
     def __str__(self):
@@ -86,10 +95,10 @@ class ElectroCellPEM(models.Model):
     rR = models.FloatField(default=8.314)
     rF = models.FloatField(default=96485.0)
     # OUTPUTS POPULATED BY BUILD_CURVES()
-    arCurrentDensity = models.JSONField(default=list)
-    arE_min = models.JSONField(default=list)
-    arR_cell = models.JSONField(default=list)
-    arV_cell = models.JSONField(default=list)
+    arCurrentDensity = models.JSONField(default=None, blank=True, null=True)
+    arE_min = models.JSONField(default=None, blank=True, null=True)
+    arR_cell = models.JSONField(default=None, blank=True, null=True)
+    arV_cell = models.JSONField(default=None, blank=True, null=True)
     # GEOMETRY & GRID
     iNumCurrent = models.FloatField(default=1000)
     rA_cell = models.FloatField(default=1000.0, help_text="cm^2")
@@ -143,21 +152,21 @@ class ElectrolyserUnit(models.Model):
     iNumUnits = models.PositiveIntegerField(default=0)
     rTotalTurnOns = models.FloatField(default=0.0)
     rSummedDegradation = models.FloatField(default=1e-30)
-    arDegradationTotal = models.JSONField(default=list)
+    arDegradationTotal = models.JSONField(default=None, blank=True, null=True)
     # PERFORMANCE_CURVES
-    arV_s = models.JSONField(default=list)
-    arV_sd = models.JSONField(default=list)
-    arI_s = models.JSONField(default=list)
-    arH2Dot_s = models.JSONField(default=list)
-    arP_Total_s = models.JSONField(default=list)
-    arEfficiency_s = models.JSONField(default=list)
+    arV_s = models.JSONField(default=None, blank=True, null=True)
+    arV_sd = models.JSONField(default=None, blank=True, null=True)
+    arI_s = models.JSONField(default=None, blank=True, null=True)
+    arH2Dot_s = models.JSONField(default=None, blank=True, null=True)
+    arP_Total_s = models.JSONField(default=None, blank=True, null=True)
+    arEfficiency_s = models.JSONField(default=None, blank=True, null=True)
     rRatedPower_s = models.FloatField(default=0.0)
     rMinPower_s = models.FloatField(default=0.0)
     rAncilliaryPower_s = models.FloatField(default=0.0)
     # DEGRADATIONS
-    arDegradationSteady = models.JSONField(default=list)
-    arDegradationFatigue = models.JSONField(default=list)
-    arDegradationOnOff = models.JSONField(default=list)
+    arDegradationSteady = models.JSONField(default=None, blank=True, null=True)
+    arDegradationFatigue = models.JSONField(default=None, blank=True, null=True)
+    arDegradationOnOff = models.JSONField(default=None, blank=True, null=True)
     # TOTALS
     rDegradationOnOffTotal = models.FloatField(default=0.0)
     rDegradationSteadyTotal = models.FloatField(default=0.0)
@@ -185,64 +194,64 @@ class ThermalProperties(models.Model):
 
 class TimeOutput(models.Model):
     name = models.CharField(max_length=100, default='TimeOutput')
-    arTime = models.JSONField(default=list)
-    arWindPowerFilt = models.JSONField(default=list)
-    arAvailablePower = models.JSONField(default=list)
-    arElectroAvailablePowerA = models.JSONField(default=list)
-    arElectroAvailablePower = models.JSONField(default=list)
+    arTime = models.JSONField(default=None, blank=True, null=True)
+    arWindPowerFilt = models.JSONField(default=None, blank=True, null=True)
+    arAvailablePower = models.JSONField(default=None, blank=True, null=True)
+    arElectroAvailablePowerA = models.JSONField(default=None, blank=True, null=True)
+    arElectroAvailablePower = models.JSONField(default=None, blank=True, null=True)
     rPreviousValue = models.FloatField(default=0.0)
-    arTotalElectroDemand = models.JSONField(default=list)
-    arProportionPower = models.JSONField(default=list)
-    aiIsOn = models.JSONField(default=list)
-    aiWarmedUp = models.JSONField(default=list)
-    aiNumOn = models.JSONField(default=list)
-    arTotalElectroOn = models.JSONField(default=list)
+    arTotalElectroDemand = models.JSONField(default=None, blank=True, null=True)
+    arProportionPower = models.JSONField(default=None, blank=True, null=True)
+    aiIsOn = models.JSONField(default=None, blank=True, null=True)
+    aiWarmedUp = models.JSONField(default=None, blank=True, null=True)
+    aiNumOn = models.JSONField(default=None, blank=True, null=True)
+    arTotalElectroOn = models.JSONField(default=None, blank=True, null=True)
     # Unit-level outputs (2D: units x time)
-    arElectroDemand = models.JSONField(default=list)
-    arI_unit = models.JSONField(default=list)
-    arV_unit = models.JSONField(default=list)
-    arV_unitUseful = models.JSONField(default=list)
-    arPower_unit = models.JSONField(default=list)
-    arPower_unitUseful = models.JSONField(default=list)
-    arDegradationInEfficiency = models.JSONField(default=list)
-    arV_cell = models.JSONField(default=list)
-    arProducedH2Dot = models.JSONField(default=list)
-    arHydroEfficiency = models.JSONField(default=list)
+    arElectroDemand = models.JSONField(default=None, blank=True, null=True)
+    arI_unit = models.JSONField(default=None, blank=True, null=True)
+    arV_unit = models.JSONField(default=None, blank=True, null=True)
+    arV_unitUseful = models.JSONField(default=None, blank=True, null=True)
+    arPower_unit = models.JSONField(default=None, blank=True, null=True)
+    arPower_unitUseful = models.JSONField(default=None, blank=True, null=True)
+    arDegradationInEfficiency = models.JSONField(default=None, blank=True, null=True)
+    arV_cell = models.JSONField(default=None, blank=True, null=True)
+    arProducedH2Dot = models.JSONField(default=None, blank=True, null=True)
+    arHydroEfficiency = models.JSONField(default=None, blank=True, null=True)
     # NEW global traces
-    arP_el_total = models.JSONField(default=list)
-    arT_stack = models.JSONField(default=list)
-    arH2Dot_total = models.JSONField(default=list)
-    arV_cell_avg = models.JSONField(default=list)
-    arEta_el_total = models.JSONField(default=list)
-    arEta_system_total = models.JSONField(default=list)
+    arP_el_total = models.JSONField(default=None, blank=True, null=True)
+    arT_stack = models.JSONField(default=None, blank=True, null=True)
+    arH2Dot_total = models.JSONField(default=None, blank=True, null=True)
+    arV_cell_avg = models.JSONField(default=None, blank=True, null=True)
+    arEta_el_total = models.JSONField(default=None, blank=True, null=True)
+    arEta_system_total = models.JSONField(default=None, blank=True, null=True)
     # NEW per-bank traces
-    arP_el_banks = models.JSONField(default=list)     # [num_banks_total, T]
-    arT_banks = models.JSONField(default=list)        # [num_banks_total, T]
+    arP_el_banks = models.JSONField(default=None, blank=True, null=True)     # [num_banks_total, T]
+    arT_banks = models.JSONField(default=None, blank=True, null=True)        # [num_banks_total, T]
     # *** NEW: per-stack telemetry ***
-    arP_el_unit = models.JSONField(default=list)      # [num_units, T] electrical input per stack (with degradation)
-    arQ_gain_unit = models.JSONField(default=list)    # [num_units, T] heat generated per stack = I*(V - V_TN_stack)
-    arVtn_unit = models.JSONField(default=list)       # [num_units, T] thermoneutral stack voltage
-    arT_unit_bank = models.JSONField(default=list)    # [num_units, T] bank temperature seen by each stack
+    arP_el_unit = models.JSONField(default=None, blank=True, null=True)      # [num_units, T] electrical input per stack (with degradation)
+    arQ_gain_unit = models.JSONField(default=None, blank=True, null=True)    # [num_units, T] heat generated per stack = I*(V - V_TN_stack)
+    arVtn_unit = models.JSONField(default=None, blank=True, null=True)       # [num_units, T] thermoneutral stack voltage
+    arT_unit_bank = models.JSONField(default=None, blank=True, null=True)    # [num_units, T] bank temperature seen by each stack
     # *** NEW: per-bank thermal diagnostics ***
-    arQ_gain_banks = models.JSONField(default=list)   # [num_banks_total, T] heat input to each bank
-    arQ_lost_banks = models.JSONField(default=list)   # [num_banks_total, T] heat lost to ambient
-    arQ_cool_banks = models.JSONField(default=list)   # [num_banks_total, T] heat removed by coolant
-    arP_cool_elec_banks = models.JSONField(default=list)  # [num_banks_total, T] electrical power for cooling (COP-based)
+    arQ_gain_banks = models.JSONField(default=None, blank=True, null=True)   # [num_banks_total, T] heat input to each bank
+    arQ_lost_banks = models.JSONField(default=None, blank=True, null=True)   # [num_banks_total, T] heat lost to ambient
+    arQ_cool_banks = models.JSONField(default=None, blank=True, null=True)   # [num_banks_total, T] heat removed by coolant
+    arP_cool_elec_banks = models.JSONField(default=None, blank=True, null=True)  # [num_banks_total, T] electrical power for cooling (COP-based)
     arG_eq_banks = models.JSONField(default =list)     # [num_banks_total, T] equivalent conductance W/K
-    arC_th_banks = models.JSONField(default=list)     # [num_banks_total, T] thermal capacitance J/K
+    arC_th_banks = models.JSONField(default=None, blank=True, null=True)     # [num_banks_total, T] thermal capacitance J/K
     # *** NEW: thermal totals (all banks) ***
-    arQ_gain_total = models.JSONField(default=list)   # [T]
-    arQ_lost_total = models.JSONField(default=list)   # [T]
-    arQ_cool_total = models.JSONField(default=list)   # [T]
-    arP_cool_elec_total = models.JSONField(default=list)  # [T]
+    arQ_gain_total = models.JSONField(default=None, blank=True, null=True)   # [T]
+    arQ_lost_total = models.JSONField(default=None, blank=True, null=True)   # [T]
+    arQ_cool_total = models.JSONField(default=None, blank=True, null=True)   # [T]
+    arP_cool_elec_total = models.JSONField(default=None, blank=True, null=True)  # [T]
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime)}"
     
 class WindInput(models.Model):
     name = models.CharField(max_length=100, default='WindInput')
-    arPowerInput = models.JSONField(default=list)
-    arTime = models.JSONField(default=list)
+    arPowerInput = models.JSONField(default=None, blank=True, null=True)
+    arTime = models.JSONField(default=None, blank=True, null=True)
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime)}"

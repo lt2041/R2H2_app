@@ -198,6 +198,110 @@ def format_cell_value(value):
     return s
 
 
+# Field types that are skipped in the add-new modal (output/array/auto fields)
+_SKIP_FIELD_TYPES = ()
+_SKIP_JSON = True   # hide JSONField arrays from the modal
+
+
+def _modal_fields_for(model_class):
+    """Return a list of form-field dicts for the Add New modal."""
+    from django.db import models as dm
+    skip_names = {'id'}
+    fields = []
+    for f in model_class._meta.get_fields():
+        if not hasattr(f, 'column'):
+            continue
+        if f.name in skip_names:
+            continue
+        # Skip auto-set fields
+        if getattr(f, 'auto_now_add', False) or getattr(f, 'auto_now', False):
+            continue
+        # Skip JSONField arrays (null default = output/runtime data)
+        if isinstance(f, dm.JSONField):
+            continue
+        # Determine input type
+        if isinstance(f, dm.BooleanField):
+            ftype = 'checkbox'
+        elif isinstance(f, (dm.IntegerField, dm.PositiveIntegerField,
+                            dm.FloatField, dm.DecimalField)):
+            ftype = 'number'
+        elif isinstance(f, dm.TextField):
+            ftype = 'textarea'
+        elif hasattr(f, 'choices') and f.choices:
+            ftype = 'select'
+        else:
+            ftype = 'text'
+
+        # Resolve default value
+        default = None
+        if f.default is not dm.fields.NOT_PROVIDED:
+            default = f.default() if callable(f.default) else f.default
+
+        fields.append({
+            'name': f.name,
+            'label': f.name,
+            'ftype': ftype,
+            'default': default,
+            'choices': list(f.choices) if (hasattr(f, 'choices') and f.choices) else [],
+            'help_text': getattr(f, 'help_text', '') or '',
+            'null': getattr(f, 'null', False),
+        })
+    return fields
+
+
+def add_component(request, table_name):
+    """POST: create a new component from submitted form data and redirect to browse."""
+    from django.shortcuts import redirect
+    from django.db import models as dm
+    import re as _re
+    if request.method == 'POST':
+        model_class = apps.get_model('dashboard', table_name)
+        kwargs = {}
+        for f in model_class._meta.get_fields():
+            if not hasattr(f, 'column'):
+                continue
+            if f.name == 'id':
+                continue
+            if getattr(f, 'auto_now_add', False) or getattr(f, 'auto_now', False):
+                continue
+            if isinstance(f, dm.JSONField):
+                continue
+            raw = request.POST.get(f.name)
+            if raw is None:
+                continue
+            if isinstance(f, dm.BooleanField):
+                kwargs[f.name] = (raw.lower() in ('on', 'true', '1', 'yes'))
+            elif isinstance(f, (dm.FloatField, dm.DecimalField)):
+                try:
+                    kwargs[f.name] = float(raw)
+                except ValueError:
+                    pass
+            elif isinstance(f, (dm.IntegerField, dm.PositiveIntegerField)):
+                try:
+                    kwargs[f.name] = int(raw)
+                except ValueError:
+                    pass
+            else:
+                kwargs[f.name] = raw
+
+        # Make the name unique: strip any existing suffix, find next integer
+        if 'name' in kwargs and hasattr(model_class, '_meta'):
+            base_name = _re.sub(r'-\d+$', '', kwargs['name'])
+            existing = set(
+                model_class.objects
+                .filter(name__regex=rf'^{_re.escape(base_name)}(-\d+)?$')
+                .values_list('name', flat=True)
+            )
+            if base_name in existing or existing:
+                n = 1
+                while f'{base_name}-{n}' in existing:
+                    n += 1
+                kwargs['name'] = f'{base_name}-{n}'
+
+        model_class.objects.create(**kwargs)
+    return redirect('dashboard-browse', table_name=table_name)
+
+
 def browse(request, table_name=None):
 
     model_class = apps.get_model('dashboard', table_name)
@@ -245,6 +349,8 @@ def browse(request, table_name=None):
         'rows': rows,
         'total_count': model_class.objects.count(),
         'ui_nice_name': ui_nice_name,
+        'table_name': table_name,
+        'modal_fields': _modal_fields_for(model_class),
     }
 
     return render(request, "dashboard/browse.html", context)

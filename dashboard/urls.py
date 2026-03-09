@@ -7,4 +7,5 @@ urlpatterns = [
     path('simulations/', views.simulations, name='dashboard-simulations'),
     path('simulations/<int:sim_id>/', views.simulation_detail, name='dashboard-simulation-detail'),
     path('browse/<str:table_name>', views.browse, name='dashboard-browse'),
+    path('browse/<str:table_name>/add', views.add_component, name='dashboard-add-component'),
 ]

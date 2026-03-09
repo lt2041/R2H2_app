@@ -9,6 +9,7 @@
 
 html {
     font-size: 15px;
+    overflow-y: scroll; /* always reserve scrollbar gutter to prevent layout shift */
 }
 
 body {

@@ -37,7 +37,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # R2H2 appss
     'dashboard.apps.DashboardConfig',
+    # Django utils
+    'django.contrib.humanize',
+    #'rest_framework',
 ]
 
 MIDDLEWARE = [

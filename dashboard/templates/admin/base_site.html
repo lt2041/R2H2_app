@@ -1,0 +1,7 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+    <link rel="icon" type="image/svg+xml" href="{% static 'r2h2_app/images/favicon.svg' %}">
+    {{ block.super }}
+{% endblock %}

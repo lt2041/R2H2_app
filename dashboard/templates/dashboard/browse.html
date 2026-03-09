@@ -1,0 +1,246 @@
+{% extends "dashboard/base.html" %}
+{% load humanize %}
+{% load static %}
+{% block title %}R2H2: {{ ui_nice_name }}{% endblock %}
+
+{% block content %}
+
+<style>
+.browse-wrapper {
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+    padding: 1.75rem 2rem 2rem;
+    margin-bottom: 2rem;
+}
+.browse-title {
+    font-family: 'Ubuntu', sans-serif;
+    font-weight: 400;
+    color: #1a2332;
+    margin: 0 0 0.2rem;
+}
+.browse-subtitle {
+    font-family: 'Ubuntu', sans-serif;
+    font-size: 0.85rem;
+    margin: 0 0 1.25rem;
+}
+.browse-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f5f7fa;
+    border: 1px solid #dde3ea;
+    border-radius: 6px;
+    padding: 0.45rem 0.75rem;
+    margin-bottom: 1.75rem;
+}
+.browse-search-wrap i { color: #90a4ae; font-size: 1.1rem; }
+.browse-search-wrap input {
+    border: none;
+    background: transparent;
+    outline: none;
+    font-family: 'Ubuntu', sans-serif;
+    color: #37474f;
+    width: 100%;
+    box-shadow: none;
+    height: auto;
+    margin: 0;
+}
+.browse-search-wrap input::placeholder { color: #b0bec5; }
+.scroll-hint-wrap { position: relative; }
+#scroll-hint {
+    display: none;
+    position: absolute;
+    top: -1.6em;
+    right: 0;
+    font-family: 'Ubuntu', sans-serif;
+    color: #c07379;
+    letter-spacing: 0.05em;
+    pointer-events: none;
+    user-select: none;
+}
+#table-scroll-wrap {
+    overflow-x: auto;
+    border-radius: 7px;
+    border: 1px solid #dde3ea;
+}
+#record-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Azeret Mono', monospace;
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: #37474f;
+}
+#record-table thead tr { background: #1a2332; color: #e8edf2; }
+#record-table thead th {
+    font-family: 'Ubuntu', sans-serif;
+    font-weight: 500;
+    font-size: 0.78rem;
+    letter-spacing: 0.01em;
+    padding: 0.7rem 0.85rem;
+    white-space: normal;
+    border-right: 1px solid rgba(255,255,255,0.12);
+}
+#record-table thead th:last-child { border-right: none; }
+#record-table tbody tr {
+    border-bottom: 1px solid #eef1f4;
+    transition: background 0.12s;
+}
+#record-table tbody tr:last-child { border-bottom: none; }
+#record-table tbody tr:hover { background: #f0f7ff; }
+#record-table tbody tr:nth-child(even) { background: #f8fafc; }
+#record-table tbody tr:nth-child(even):hover { background: #f0f7ff; }
+#record-table td {
+    padding: 0.55rem 0.85rem;
+    border-right: 1px solid #eef1f4;
+    vertical-align: middle;
+    min-width: 10vw;
+    max-width: 20vw;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+#record-table td:last-child { border-right: none; }
+#record-table th:not(:first-child),
+#record-table td:not(:first-child) { text-align: center; }
+.array-badge {
+    display: inline-block;
+    font-size: 0.68em;
+    font-family: 'Ubuntu', sans-serif;
+    background: #eceff1;
+    border: 1px solid #b0bec5;
+    border-radius: 3px;
+    padding: 1px 5px;
+    white-space: nowrap;
+    cursor: help;
+}
+#array-tooltip {
+    position: fixed;
+    z-index: 9999;
+    max-width: 480px;
+    padding: 7px 11px;
+    background: #1a2332;
+    color: #e8edf2;
+    font-size: 0.76em;
+    font-family: 'Azeret Mono', monospace;
+    border-radius: 5px;
+    pointer-events: none;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.6;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    display: none;
+}
+</style>
+
+
+<div style="position: absolute; top: 0.9rem; left: 19rem; z-index: 1000;">
+    <h2 style="color: #ffffff; font-weight: 100;">
+        <a href="{% url 'dashboard-home' %}" style="color: #ffffff; text-decoration: none;">Components</a>&ensp;>&ensp; {{ ui_nice_name }}
+    </h2>
+</div>
+
+
+<div class="browse-wrapper">
+
+    <h2 class="browse-title">{{ ui_nice_name }}</h2>
+    <p class="browse-subtitle" id="record-count">{{ total_count|intcomma }} records</p>
+
+    <div class="browse-search-wrap">
+        <i class="material-symbols-outlined">search</i>
+        <input type="text" id="record-search" placeholder="Filter any text, any column...">
+    </div>
+
+    <div class="scroll-hint-wrap">
+        <span id="scroll-hint">scroll &rarr;</span>
+        <div id="table-scroll-wrap">
+        <table id="record-table">
+            <thead>
+                <tr>
+                    {% for header in headers %}
+                    <th>{{ header|safe }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody id="record-table-body">
+                {% for row in rows %}
+                <tr class="record-row">
+                    {% for value in row.values %}
+                    <td>{{ value|safe }}</td>
+                    {% endfor %}
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{{ columns|length }}" class="center-align grey-text">No records found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div><!-- /table-scroll-wrap -->
+    </div><!-- /scroll-hint-wrap -->
+
+</div><!-- /browse-wrapper -->
+
+<div id="array-tooltip"></div>
+
+<!-- JavaScript -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('record-search');
+    const tableBody   = document.getElementById('record-table-body');
+    const scrollWrap  = document.getElementById('table-scroll-wrap');
+    const scrollHint  = document.getElementById('scroll-hint');
+    const tooltip     = document.getElementById('array-tooltip');
+
+    const recordCount  = document.getElementById('record-count');
+    const totalCount   = {{ total_count }};
+
+    // Search filter
+    searchInput.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        let visible = 0;
+        tableBody.querySelectorAll('.record-row').forEach(row => {
+            const show = row.textContent.toLowerCase().includes(q);
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        if (q) {
+            recordCount.textContent = visible.toLocaleString() + ' of ' + totalCount.toLocaleString() + ' records';
+        } else {
+            recordCount.textContent = totalCount.toLocaleString() + ' records';
+        }
+    });
+
+    // Scroll hint
+    function updateScrollHint() {
+        scrollHint.style.display = scrollWrap.scrollWidth > scrollWrap.clientWidth ? 'block' : 'none';
+    }
+    updateScrollHint();
+    window.addEventListener('resize', updateScrollHint);
+    scrollWrap.addEventListener('scroll', () => scrollHint.style.display = 'none', { once: true });
+
+    // Array badge floating tooltip
+    document.addEventListener('mouseover', function(e) {
+        const badge = e.target.closest('.array-badge');
+        if (badge && badge.dataset.tooltip) {
+            tooltip.textContent = badge.dataset.tooltip;
+            tooltip.style.display = 'block';
+        }
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (tooltip.style.display === 'block') {
+            const off = 14;
+            let l = e.clientX + off, t = e.clientY + off;
+            if (l + tooltip.offsetWidth  > window.innerWidth  - 8) l = e.clientX - tooltip.offsetWidth  - off;
+            if (t + tooltip.offsetHeight > window.innerHeight - 8) t = e.clientY - tooltip.offsetHeight - off;
+            tooltip.style.left = l + 'px';
+            tooltip.style.top  = t + 'px';
+        }
+    });
+    document.addEventListener('mouseout', function(e) {
+        if (e.target.closest('.array-badge')) tooltip.style.display = 'none';
+    });
+});
+</script>
+
+{% endblock %}

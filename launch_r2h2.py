@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# filepath: /Users/pm3006/Documents/GitHub/r2h2/R2H2_app/launch_r2h2.py
 
 """
 R2H2 Desktop App Launcher

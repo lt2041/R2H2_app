@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# filepath: /Users/pm3006/Documents/GitHub/r2h2/R2H2_app/setup_launcher.py
 
 """
 Setup script to install R2H2 desktop launcher

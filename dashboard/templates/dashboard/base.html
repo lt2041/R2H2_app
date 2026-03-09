@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}R2H2{% endblock %}</title>
+
+    <!-- Google Fonts preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Ubuntu font -->
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Materialize -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <!-- R2H2 base theme -->
+    <link rel="stylesheet" href="{% static 'dashboard/css/base.css' %}">
+
+    <!-- Favicon (SVG primary) -->
+    <link rel="icon" type="image/svg+xml" href="{% static 'dashboard/images/favicon.svg' %}">
+    <!-- PNG fallback (optional) -->
+    <link rel="alternate icon" type="image/ico" href="{% static 'dashboard/images/favicon.ico' %}">
+
+
+    <style>
+        .material-symbols-outlined {
+            vertical-align: middle;
+            transform: translate(0, -2px);
+            padding: 20px 20px 20px 0px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Navbar -->
+    <nav class="teal lighten-2">
+        <div class="nav-wrapper">
+            <a href="#" class="brand-logo" style="margin-left:20px;">My Dashboard</a>
+            <a href="#" data-target="slide-out" class="sidenav-trigger right" style="margin-right:20px;"><span class="material-symbols-outlined">menu</span></a>
+        </div>
+    </nav>
+
+    <!-- Sidebar -->
+    <ul id="slide-out" class="sidenav sidenav-fixed teal lighten-3">
+        <li><a href="{% url 'dashboard-home' %}" class="black-text">
+            <span class="material-symbols-outlined">flowchart</span>
+            Models
+        </a></li>
+        <li><a href="{% url 'dashboard-home' %}" class="black-text">
+            <span class="material-symbols-outlined">dashboard_2_gear</span>
+            Components
+        </a></li>
+        <li><div class="divider"></div></li>
+        <li><a href="#" class="black-text">
+            <span class="material-symbols-outlined">settings</span>
+            Settings
+        </a></li>
+        <li><a href="#" class="black-text">
+            <span class="material-symbols-outlined">help</span>
+            Help
+        </a></li>
+    </ul>
+
+    <!-- Page Content -->
+    <main style="margin-left: 300px; padding: 30px;">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <!-- Materialize JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            M.Sidenav.init(document.querySelectorAll('.sidenav'), {edge:'left'});
+        });
+    </script>
+</body>
+</html>

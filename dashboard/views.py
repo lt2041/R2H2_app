@@ -76,6 +76,60 @@ def simulations(request):
     return render(request, 'dashboard/simulations.html', {'sim_data': sim_data})
 
 
+def _model_to_sections(obj):
+    """Convert a model instance into ordered display sections.
+    Returns a list of {title, icon, fields: [{name, value}]}.
+    Skips JSON array fields (shown separately) and private fields.
+    """
+    scalar_fields, array_fields = [], []
+    for field in obj._meta.get_fields():
+        if not hasattr(field, 'column'):          # skip reverse relations
+            continue
+        name = field.name
+        if name in ('id',):
+            continue
+        value = getattr(obj, name, None)
+        if isinstance(value, list):               # JSON array
+            array_fields.append({'name': name, 'value': value})
+        else:
+            scalar_fields.append({'name': name, 'value': value})
+    return scalar_fields, array_fields
+
+
+def simulation_detail(request, sim_id):
+    """Detail view for a single Simulation showing all component settings."""
+    from django.shortcuts import get_object_or_404
+    sim = get_object_or_404(
+        Simulation.objects.prefetch_related(
+            'batteries', 'electro_cells', 'electrolyser_units',
+            'thermal_properties', 'time_outputs', 'wind_inputs',
+        ),
+        pk=sim_id
+    )
+
+    def component_detail(obj):
+        scalar, arrays = _model_to_sections(obj)
+        return {'obj': obj, 'scalar': scalar, 'arrays': arrays}
+
+    groups = [
+        {'label': 'Battery',           'icon': 'battery_charging_full', 'items': [component_detail(o) for o in sim.batteries.all()]},
+        {'label': 'ElectroCellPEM',    'icon': 'developer_board',       'items': [component_detail(o) for o in sim.electro_cells.all()]},
+        {'label': 'ElectrolyserUnit',  'icon': 'water_do',               'items': [component_detail(o) for o in sim.electrolyser_units.all()]},
+        {'label': 'ThermalProperties', 'icon': 'thermostat',             'items': [component_detail(o) for o in sim.thermal_properties.all()]},
+        {'label': 'TimeOutput',        'icon': 'timeline',               'items': [component_detail(o) for o in sim.time_outputs.all()]},
+        {'label': 'WindInput',         'icon': 'air',                    'items': [component_detail(o) for o in sim.wind_inputs.all()]},
+    ]
+
+    groups_with_items = [g for g in groups if g['items']]
+    groups_empty = [g for g in groups if not g['items']]
+
+    return render(request, 'dashboard/simulation_detail.html', {
+        'sim': sim,
+        'groups': groups_with_items,
+        'groups_empty': groups_empty,
+    })
+
+
 def home(request):
 
     # Get counts for each model

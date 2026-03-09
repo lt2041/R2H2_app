@@ -183,6 +183,18 @@
                 {% if entry.obj.description %}&nbsp;·&nbsp;{{ entry.obj.description|truncatechars:60 }}{% endif %}
                 &nbsp;·&nbsp;{{ entry.obj.created_at|date:"d M Y" }}
             </span>
+            <a href="{% url 'dashboard-simulation-detail' entry.obj.id %}"
+               onclick="event.stopPropagation();"
+               style="display:inline-flex; align-items:center; gap:0.3rem;
+                      background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.35);
+                      color:#ffffff; border-radius:6px; padding:0.5rem 0.75rem; margin: 0.5rem 0; height: 3rem;
+                      font-size:0.8rem; font-weight:500; text-decoration:none;
+                      transition: background 0.2s;"
+               onmouseover="this.style.background='rgba(255,255,255,0.28)'"
+               onmouseout="this.style.background='rgba(255,255,255,0.15)'">
+                <span class="material-symbols-outlined" style="font-size:1rem; font-variation-settings:'wght' 300;">explore</span>
+                View
+            </a>
             <span class="material-symbols-outlined sim-toggle">expand_more</span>
         </div>
 
@@ -256,11 +268,8 @@
         }
     }
 
-    // Auto-expand first simulation on load
-    document.addEventListener('DOMContentLoaded', function () {
-        const first = document.querySelector('.sim-header');
-        if (first) toggleSim(first);
-    });
+    // All simulations start collapsed
+    document.addEventListener('DOMContentLoaded', function () {});
 </script>
 
 {% endblock %}

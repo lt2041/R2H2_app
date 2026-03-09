@@ -123,8 +123,22 @@ def simulation_detail(request, sim_id):
     groups_with_items = [g for g in groups if g['items']]
     groups_empty = [g for g in groups if not g['items']]
 
+    wind_type_label = dict(Simulation._meta.get_field('iWindType').choices).get(sim.iWindType, sim.iWindType)
+
+    sim_settings = [
+        {'name': 'Wind data resolution', 'value': wind_type_label,         'unit': ''},
+        {'name': 'Number of years',      'value': sim.iNumYears,            'unit': 'yr'},
+        {'name': 'Total time',           'value': sim.rTotalTime,           'unit': 's'},
+        {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
+        {'name': 'Transient steps',      'value': sim.rTransientSteps,      'unit': ''},
+        {'name': 'Single turbine',       'value': sim.bSingleTurb,          'unit': ''},
+        {'name': 'Lateral distances',    'value': sim.arLateralDistances,   'unit': 'm'},
+        {'name': 'Power divisor',        'value': sim.rDivisor,             'unit': 'W'},
+    ]
+
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
+        'sim_settings': sim_settings,
         'groups': groups_with_items,
         'groups_empty': groups_empty,
     })

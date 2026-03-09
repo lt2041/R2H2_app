@@ -32,6 +32,80 @@
                       letter-spacing: 0.1em; color: #d0f0f3; }
     .sim-info-value { font-size: 0.95rem; font-weight: 500; color: #ffffff; }
 
+    /* ── Simulation settings panel ── */
+    .sim-settings-panel {
+        border: 1.5px solid #b2e0e4;
+        border-radius: 10px;
+        background: #ffffff;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(34,166,179,0.10);
+    }
+
+    .sim-settings-header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.7rem 1.25rem;
+        background: #e8f8f9;
+        border-bottom: 1.5px solid #b2e0e4;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .sim-settings-header:hover { background: #d0f0f3; }
+
+    .sim-settings-header .ss-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #136b75;
+        flex: 1;
+    }
+
+    .sim-settings-header .ss-toggle {
+        color: #4a7a80;
+        font-size: 1.1rem;
+        transition: transform 0.2s;
+    }
+
+    .sim-settings-header.open .ss-toggle { transform: rotate(180deg); }
+
+    .sim-settings-body { display: none; }
+    .sim-settings-body.open { display: block; }
+
+    .sim-settings-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.84rem;
+    }
+
+    .sim-settings-table tr { border-bottom: 1px solid #f0f8f9; }
+    .sim-settings-table tr:last-child { border-bottom: none; }
+    .sim-settings-table tr:hover { background: #f4fafb; }
+
+    .sim-settings-table td {
+        padding: 0.35rem 1.25rem;
+        vertical-align: middle;
+    }
+
+    .sim-settings-table td:first-child {
+        width: 42%;
+        color: #4a7a80;
+        font-weight: 500;
+    }
+
+    .sim-settings-table td:nth-child(2) {
+        color: #1a2e30;
+        font-family: 'Ubuntu Mono', monospace;
+        font-size: 0.82rem;
+    }
+
+    .sim-settings-table td:last-child {
+        width: 4rem;
+        color: #b2e0e4;
+        font-size: 0.75rem;
+        text-align: right;
+    }
+
     /* ── Group card ── */
     .group-card {
         border: 1.5px solid #b2e0e4;
@@ -254,6 +328,34 @@
         </div>
     </div>
 
+    <!-- Simulation settings panel -->
+    <div class="sim-settings-panel">
+        <div class="sim-settings-header" onclick="toggleSettings(this)">
+            <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">tune</span>
+            <span class="ss-title">Simulation Settings</span>
+            <span class="material-symbols-outlined ss-toggle">expand_more</span>
+        </div>
+        <div class="sim-settings-body">
+            <table class="sim-settings-table">
+                <tbody>
+                {% for s in sim_settings %}
+                <tr>
+                    <td>{{ s.name }}</td>
+                    <td>
+                        {% if s.value is None %}
+                            <span style="color:#b2e0e4;">—</span>
+                        {% else %}
+                            {{ s.value }}
+                        {% endif %}
+                    </td>
+                    <td>{{ s.unit }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- Populated component groups -->
     {% for group in groups %}
     <div class="group-card">
@@ -345,6 +447,11 @@
 </div>
 
 <script>
+    function toggleSettings(header) {
+        header.classList.toggle('open');
+        header.nextElementSibling.classList.toggle('open');
+    }
+
     function toggleCard(header) {
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');

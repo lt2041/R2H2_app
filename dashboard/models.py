@@ -255,3 +255,30 @@ class WindInput(models.Model):
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime) if self.arTime else 0}"
+
+
+#### ---------------------- SIMULATION RUN (JOB TRACKING) ---------------------- ####
+
+class SimulationRun(models.Model):
+    PENDING  = 'pending'
+    RUNNING  = 'running'
+    DONE     = 'done'
+    ERROR    = 'error'
+    STATUS_CHOICES = [
+        (PENDING, 'Pending'),
+        (RUNNING, 'Running'),
+        (DONE,    'Done'),
+        (ERROR,   'Error'),
+    ]
+
+    simulation  = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name='runs')
+    status      = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
+    message     = models.TextField(blank=True, default='')
+    started_at  = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"Run #{self.id} – {self.simulation.name} [{self.status}]"

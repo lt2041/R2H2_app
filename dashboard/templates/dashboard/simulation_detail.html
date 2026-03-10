@@ -1,5 +1,5 @@
 {% extends "dashboard/base.html" %}
-{% block title %}R2H2: {{ sim.name }}{% endblock %}
+{% block title %}{{ sim.name }}{% endblock %}
 
 {% block content %}
 
@@ -31,6 +31,103 @@
     .sim-info-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
                       letter-spacing: 0.1em; color: #d0f0f3; }
     .sim-info-value { font-size: 0.95rem; font-weight: 500; color: #ffffff; }
+
+    /* ── Simulation control bar ── */
+    .sim-control-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        background: #ffffff;
+        border: 1.5px solid #b2e0e4;
+        border-radius: 10px;
+        padding: 0.75rem 1.25rem;
+        box-shadow: 0 2px 8px rgba(34,166,179,0.10);
+    }
+
+    .sim-control-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #4a7a80;
+    }
+
+    .sim-run-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        background: linear-gradient(135deg, #136b75, #22a6b3);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 0.55rem 1.35rem;
+        font-family: 'Ubuntu', sans-serif;
+        font-size: 0.88rem;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(34,166,179,0.30);
+        transition: opacity 0.15s, box-shadow 0.15s;
+        text-decoration: none;
+    }
+
+    .sim-run-btn:hover {
+        opacity: 0.88;
+        box-shadow: 0 4px 14px rgba(34,166,179,0.40);
+        color: #fff;
+    }
+
+    .sim-run-btn .material-symbols-outlined {
+        font-size: 1.1rem !important;
+        padding: 0 !important;
+        pointer-events: none;
+    }
+
+    .sim-message {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.82rem;
+        border-radius: 6px;
+        padding: 0.3rem 0.8rem;
+    }
+
+    .sim-message.success {
+        background: #e6f9f0;
+        color: #1a7a4a;
+        border: 1px solid #a8e6c8;
+    }
+
+    .sim-message.error {
+        background: #fdecea;
+        color: #b71c1c;
+        border: 1px solid #f5c6c6;
+    }
+
+    .sim-message.running {
+        background: #e8f8f9;
+        color: #136b75;
+        border: 1px solid #b2e0e4;
+    }
+
+    .sim-spinner {
+        display: inline-block;
+        width: 0.85rem;
+        height: 0.85rem;
+        border: 2px solid #b2e0e4;
+        border-top-color: #22a6b3;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .sim-run-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
 
     /* ── Simulation settings panel ── */
     .sim-settings-panel {
@@ -350,6 +447,84 @@
             <span class="sim-info-value">{{ sim.created_by }}</span>
         </div>
     </div>
+
+    <!-- Simulation control bar -->
+    <div class="sim-control-bar">
+        <span class="sim-control-label">Run</span>
+
+        <!-- Status area: shows Django flash message on first load, then live-polled status -->
+        <div id="sim-status-area" style="flex:1; display:flex; flex-wrap:wrap; gap:0.5rem;">
+
+            {% if messages %}
+                {% for message in messages %}
+                <div class="sim-message {{ message.tags }}">
+                    <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">
+                        {% if message.tags == 'success' %}check_circle{% else %}error{% endif %}
+                    </span>
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% elif latest_run %}
+                {% if latest_run.status == 'done' %}
+                <div class="sim-message success">
+                    <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">check_circle</span>
+                    {{ latest_run.message }}
+                </div>
+                {% elif latest_run.status == 'error' %}
+                <div class="sim-message error">
+                    <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">error</span>
+                    {{ latest_run.message }}
+                </div>
+                {% elif latest_run.status == 'running' or latest_run.status == 'pending' %}
+                <div class="sim-message running" id="sim-running-msg">
+                    <span class="sim-spinner"></span>
+                    Running&#8230;
+                </div>
+                {% endif %}
+            {% endif %}
+
+        </div>
+
+        <form method="post" action="{% url 'dashboard-run-simulation' sim_id=sim.id %}" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="sim-run-btn" id="sim-run-btn">
+                <span class="material-symbols-outlined">play_arrow</span>
+                Simulate
+            </button>
+        </form>
+    </div>
+
+    {% if latest_run and latest_run.status == 'pending' or latest_run and latest_run.status == 'running' %}
+    <script>
+        (function() {
+            var pollUrl = "{% url 'dashboard-poll-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
+            var area    = document.getElementById('sim-status-area');
+            var btn     = document.getElementById('sim-run-btn');
+            if (btn) btn.disabled = true;
+
+            function poll() {
+                fetch(pollUrl)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.done) {
+                            var cls  = data.status === 'done' ? 'success' : 'error';
+                            var icon = data.status === 'done' ? 'check_circle' : 'error';
+                            area.innerHTML =
+                                '<div class="sim-message ' + cls + '">' +
+                                '<span class="material-symbols-outlined" style="font-size:1rem;padding:0!important;">' + icon + '</span>' +
+                                data.message +
+                                '</div>';
+                            if (btn) btn.disabled = false;
+                        } else {
+                            setTimeout(poll, 1500);
+                        }
+                    })
+                    .catch(function() { setTimeout(poll, 3000); });
+            }
+            setTimeout(poll, 1500);
+        })();
+    </script>
+    {% endif %}
 
     <!-- Simulation settings panel -->
     <div class="sim-settings-panel">

@@ -13,6 +13,7 @@ from django.utils.html import escape
 
 # Django models
 from .models import *
+from .models import SimulationRun
 
 # Local src libraries
 # ...
@@ -163,11 +164,14 @@ def simulation_detail(request, sim_id):
         {'name': 'Power divisor',        'value': sim.rDivisor,             'unit': 'W'},
     ]
 
+    latest_run = sim.runs.first()   # newest first via Meta ordering
+
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
         'sim_settings': sim_settings,
         'groups': groups_with_items,
         'groups_empty': groups_empty,
+        'latest_run': latest_run,
     })
 
 
@@ -194,6 +198,59 @@ def link_components(request, sim_id):
             objs = model_class.objects.filter(pk__in=ids)
             getattr(sim, manager_name).add(*objs)
     return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+
+def _run_simulation_thread(run_id):
+    """Background worker: update SimulationRun status while running."""
+    import time
+    from django.utils import timezone
+    try:
+        run = SimulationRun.objects.get(pk=run_id)
+        run.status = SimulationRun.RUNNING
+        run.save(update_fields=['status'])
+
+        # TODO: replace with real runner, e.g.
+        # from r2h2.r2h2 import R2H2; R2H2(run.simulation).run()
+        time.sleep(2)
+
+        run.status  = SimulationRun.DONE
+        run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'
+        run.finished_at = timezone.now()
+        run.save(update_fields=['status', 'message', 'finished_at'])
+    except Exception as exc:
+        try:
+            run.status  = SimulationRun.ERROR
+            run.message = str(exc)
+            run.finished_at = timezone.now()
+            run.save(update_fields=['status', 'message', 'finished_at'])
+        except Exception:
+            pass
+
+
+def run_simulation(request, sim_id):
+    """POST: create a SimulationRun, redirect immediately, run in background thread."""
+    from django.shortcuts import get_object_or_404, redirect
+    from django.contrib import messages
+    import threading
+    if request.method == 'POST':
+        sim = get_object_or_404(Simulation, pk=sim_id)
+        run = SimulationRun.objects.create(simulation=sim, status=SimulationRun.PENDING)
+        messages.success(request, f'Simulation \u201c{sim.name}\u201d started.')
+        t = threading.Thread(target=_run_simulation_thread, args=(run.pk,), daemon=True)
+        t.start()
+    return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+
+def poll_simulation_run(request, sim_id, run_id):
+    """GET: return JSON status of a SimulationRun for client-side polling."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    return JsonResponse({
+        'status':  run.status,
+        'message': run.message,
+        'done':    run.status in (SimulationRun.DONE, SimulationRun.ERROR),
+    })
 
 
 def home(request):

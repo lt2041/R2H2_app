@@ -7,6 +7,8 @@ urlpatterns = [
     path('simulations/', views.simulations, name='dashboard-simulations'),
     path('simulations/<int:sim_id>/', views.simulation_detail, name='dashboard-simulation-detail'),
     path('simulations/<int:sim_id>/link/', views.link_components, name='dashboard-link-components'),
+    path('simulations/<int:sim_id>/run/',                views.run_simulation,    name='dashboard-run-simulation'),
+    path('simulations/<int:sim_id>/run/<int:run_id>/',   views.poll_simulation_run, name='dashboard-poll-simulation-run'),
     path('browse/<str:table_name>', views.browse, name='dashboard-browse'),
     path('browse/<str:table_name>/add', views.add_component, name='dashboard-add-component'),
 ]

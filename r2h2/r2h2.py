@@ -123,3 +123,155 @@ class R2H2():
         )
         setattr(self, class_name.lower(), component_instance)
 
+    # ---  SIMULATION RUN FUNCTION : MIGRATED FROM LEGACY CODE (WIP)  --- #
+    def run(self, # PREVIOUSLY: NO `self` ARGUMENT, ALL BELOW WERE PASSED AS FUNCTION ARGUMENTS
+        # settings,
+        # wind,
+        # el_unit,
+        # el_cell,
+        # battery,
+        # kind,
+        # use_cooling_feedback,
+        # insulated,
+        # plot_initial=False
+        ):
+        
+        # import numpy as np
+        # import copy
+        import time
+        
+        time.sleep(3)  # Simulate some startup time
+        """
+        # Setup electrolyser units and cell
+        units, ec_curves = setUpElectro1(el_unit, el_cell)
+
+        # Create bank thermal states (one per bank*electrolyser) using tech template
+        num_banks_total = el_unit.iN_banks * el_unit.iNumElectro
+        th_template = bank_thermal_from_kind(kind, el_unit, insulated=insulated)
+        th_banks = [copy.deepcopy(th_template) for _ in range(num_banks_total)]
+
+        # Optional initial plots (keep as in your old structure)
+        if plot_initial and plt is not None:
+            plt.figure(1)
+            for u in units:
+                plt.plot(u.arP_Total_s, u.arEfficiency_s, 'k', linewidth=2)
+                plt.plot(u.arP_Total_s, 0.8 * u.arEfficiency_s, 'r--', linewidth=2)
+            plt.grid(True)
+            plt.ylim([0.7 * 0.6244, 0.85])
+
+            plt.figure(2)
+            for u in units:
+                plt.plot(u.arI_s, u.arV_sd)
+            plt.grid(True)
+            plt.xlabel("Current [A]")
+            plt.ylabel("Voltage [V]")
+
+        num_hours = wind.arPowerInput.shape[1]
+        arTotalH2 = np.zeros(num_hours)
+        zYearResults = []
+        t_out_prev = None
+
+        sim_start_time = time.perf_counter()
+
+        for y in range(settings.iNumYears):
+            # Preallocate log arrays
+            zLogOut = {
+                "arSoc": np.zeros(num_hours),
+                "arSocMax": np.zeros(num_hours),
+                "arSocMin": np.zeros(num_hours),
+                "arSocAv": np.zeros(num_hours),
+                "arRCD": np.zeros(num_hours),
+                "arBatteryRating": np.zeros(num_hours),
+                "arElecOnAv": np.zeros(num_hours),
+                "arHourlyDegradation": np.zeros((units[0].iNumUnits, num_hours)),
+            }
+
+            for h in range(num_hours):
+
+                if use_cooling_feedback:
+                    # First pass: estimate chiller demand without feedback
+                    _, t_out_est, _, _ = runElectroStackStep1(
+                        ec_curves,
+                        copy.deepcopy(th_banks),
+                        copy.deepcopy(battery),
+                        wind.arPowerInput[:, h],
+                        copy.deepcopy(units),
+                        wind.arTime,
+                        settings,
+                        h,
+                        t_out_prev,
+                        cooling_power_feedback=None,
+                    )
+                    cooling_feedback = t_out_est.arP_cool_elec_total.copy()
+
+                    # Second pass: enforce chiller power draw on available wind
+                    units, t_out, battery, th_banks = runElectroStackStep1(
+                        ec_curves,
+                        th_banks,
+                        battery,
+                        wind.arPowerInput[:, h],
+                        units,
+                        wind.arTime,
+                        settings,
+                        h,
+                        t_out_prev,
+                        cooling_power_feedback=cooling_feedback,
+                    )
+                else:
+                    units, t_out, battery, th_banks = runElectroStackStep1(
+                        ec_curves,
+                        th_banks,
+                        battery,
+                        wind.arPowerInput[:, h],
+                        units,
+                        wind.arTime,
+                        settings,
+                        h,
+                        t_out_prev,
+                        cooling_power_feedback=None,
+                    )
+
+                battery = runBattery1(t_out, battery, settings)
+
+                # Log battery and electrolyser metrics
+                zLogOut["arSoc"][h] = battery.arInitialSoC
+                zLogOut["arSocMax"][h] = battery.rSocMax
+                zLogOut["arSocMin"][h] = battery.rSocMin
+                zLogOut["arSocAv"][h] = battery.rSocAv
+                zLogOut["arRCD"][h] = battery.rRCD
+                zLogOut["arBatteryRating"][h] = battery.rBatteryRating
+                zLogOut["arElecOnAv"][h] = float(np.nanmean(t_out.arTotalElectroOn))
+
+                for i in range(units[0].iNumUnits):
+                    zLogOut["arHourlyDegradation"][i, h] = units[i].rSummedDegradation
+
+                # Accumulate H2 production
+                produced_h2 = np.sum(t_out.arProducedH2Dot)
+                arTotalH2[h] = arTotalH2[h - 1] + produced_h2 if h > 0 else produced_h2
+
+                # Carry state forward
+                t_out_prev = t_out
+
+            result = {
+                "ElectrolyserUnit": copy.deepcopy(units),
+                "Battery": copy.deepcopy(battery),
+                "ThermalBanks": copy.deepcopy(th_banks),
+                "TotalH2": arTotalH2.copy(),
+                "Log": zLogOut,
+            }
+            zYearResults.append(result)
+
+        simulation_runtime_s = time.perf_counter() - sim_start_time
+
+        output = {
+            "YearResults": zYearResults,
+            "Settings": settings,
+            "ElectroCell": el_cell,          # oppure ec_curves se preferisci esportare quello
+            "Runtime_s": simulation_runtime_s,
+            "Kind": kind,
+            "UseCoolingFeedback": use_cooling_feedback,
+            "Insulated": insulated,
+        }
+        """
+        output = {'msg': 'Complete'}
+        return output

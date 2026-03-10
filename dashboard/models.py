@@ -246,7 +246,7 @@ class TimeOutput(models.Model):
     arP_cool_elec_total = models.JSONField(default=None, blank=True, null=True)  # [T]
 
     def __str__(self):
-        return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime)}"
+        return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime) if self.arTime else 0}"
     
 class WindInput(models.Model):
     name = models.CharField(max_length=100, default='WindInput')
@@ -254,4 +254,4 @@ class WindInput(models.Model):
     arTime = models.JSONField(default=None, blank=True, null=True)
 
     def __str__(self):
-        return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime)}"
+        return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime) if self.arTime else 0}"

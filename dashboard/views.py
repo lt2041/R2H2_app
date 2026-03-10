@@ -2,6 +2,7 @@
 from django.shortcuts import render
 from django.utils.safestring import mark_safe
 from django.apps import apps
+import json
 
 # Django REST framework
 # ...
@@ -120,8 +121,34 @@ def simulation_detail(request, sim_id):
         {'label': 'WindInput',         'icon': 'air',                    'items': [component_detail(o) for o in sim.wind_inputs.all()]},
     ]
 
+    linked_ids = {
+        'Battery':           set(sim.batteries.values_list('id', flat=True)),
+        'ElectroCellPEM':    set(sim.electro_cells.values_list('id', flat=True)),
+        'ElectrolyserUnit':  set(sim.electrolyser_units.values_list('id', flat=True)),
+        'ThermalProperties': set(sim.thermal_properties.values_list('id', flat=True)),
+        'TimeOutput':        set(sim.time_outputs.values_list('id', flat=True)),
+        'WindInput':         set(sim.wind_inputs.values_list('id', flat=True)),
+    }
+
     groups_with_items = [g for g in groups if g['items']]
-    groups_empty = [g for g in groups if not g['items']]
+    groups_empty = [
+        {
+            **g,
+            'available': [
+                {'id': o.pk, 'label': str(o)}
+                for o in _GROUP_M2M[g['label']][0].objects.exclude(
+                    pk__in=linked_ids[g['label']]
+                ).order_by('id')
+            ],
+            'available_json': json.dumps([
+                {'id': o.pk, 'label': str(o)}
+                for o in _GROUP_M2M[g['label']][0].objects.exclude(
+                    pk__in=linked_ids[g['label']]
+                ).order_by('id')
+            ]),
+        }
+        for g in groups if not g['items']
+    ]
 
     wind_type_label = dict(Simulation._meta.get_field('iWindType').choices).get(sim.iWindType, sim.iWindType)
 
@@ -142,6 +169,31 @@ def simulation_detail(request, sim_id):
         'groups': groups_with_items,
         'groups_empty': groups_empty,
     })
+
+
+# Map from group label → (model_class, m2m manager name on Simulation)
+_GROUP_M2M = {
+    'Battery':           (Battery,           'batteries'),
+    'ElectroCellPEM':    (ElectroCellPEM,    'electro_cells'),
+    'ElectrolyserUnit':  (ElectrolyserUnit,  'electrolyser_units'),
+    'ThermalProperties': (ThermalProperties, 'thermal_properties'),
+    'TimeOutput':        (TimeOutput,        'time_outputs'),
+    'WindInput':         (WindInput,         'wind_inputs'),
+}
+
+
+def link_components(request, sim_id):
+    """POST: add selected component IDs to a simulation M2M relation."""
+    from django.shortcuts import get_object_or_404, redirect
+    if request.method == 'POST':
+        sim = get_object_or_404(Simulation, pk=sim_id)
+        label = request.POST.get('group_label', '')
+        ids = request.POST.getlist('component_ids')
+        if label in _GROUP_M2M and ids:
+            model_class, manager_name = _GROUP_M2M[label]
+            objs = model_class.objects.filter(pk__in=ids)
+            getattr(sim, manager_name).add(*objs)
+    return redirect('dashboard-simulation-detail', sim_id=sim_id)
 
 
 def home(request):

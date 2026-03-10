@@ -293,10 +293,33 @@
         gap: 0.35rem;
         border: 1.5px solid #d4eef0;
         border-radius: 999px;
-        padding: 0 1.6rem;
+        padding: 0.25rem 1.1rem;
         background: #f4fafb;
         color: #9acdd2;
         font-size: 0.8rem;
+        cursor: pointer;
+        user-select: none;
+        transition: border-color 0.15s, color 0.15s;
+    }
+
+    .empty-pill:hover {
+        border-color: #22a6b3;
+        color: #22a6b3;
+    }
+
+    .empty-pill.disabled {
+        cursor: default;
+        opacity: 0.45;
+    }
+    .empty-pill.disabled:hover {
+        border-color: #d4eef0;
+        color: #9acdd2;
+    }
+
+    /* Neutralise the global base.html icon padding inside pills */
+    .empty-pill .material-symbols-outlined {
+        padding: 0 !important;
+        pointer-events: none;
     }
 </style>
 
@@ -433,17 +456,91 @@
         <hr>
     </div>
 
-    <!-- Empty groups as pills -->
+    <!-- Empty groups as clickable pills -->
     <div class="empty-groups-row">
         {% for group in groups_empty %}
-        <div class="empty-pill">
+        <div class="empty-pill {% if not group.available %}disabled{% endif %}"
+             data-group-label="{{ group.label }}"
+             data-group-icon="{{ group.icon }}"
+             data-group-count="{{ group.available|length }}"
+             {% if not group.available %}title="No {{ group.label }} objects exist yet"{% endif %}>
             <span class="material-symbols-outlined" style="font-size:0.9rem; font-variation-settings:'wght' 300;">{{ group.icon }}</span>
             {{ group.label }}
+            {% if group.available %}
+            <span style="font-size:0.72rem; color:#4a7a80; margin-left:0.2rem;">({{ group.available|length }})</span>
+            {% endif %}
         </div>
+
+        <!-- Hidden available-objects data for JS -->
+        <script type="application/json" id="avail-{{ group.label }}">{{ group.available_json|safe }}</script>
         {% endfor %}
     </div>
     {% endif %}
 
+</div>
+
+<!-- Link components modal -->
+<div id="link-overlay"
+     style="display:none; position:fixed; inset:0; z-index:2000;
+            background:rgba(0,0,0,0.45); align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:10px; width:min(520px,92vw); max-height:80vh;
+                display:flex; flex-direction:column; overflow:hidden;
+                box-shadow:0 8px 40px rgba(0,0,0,0.22);">
+
+        <!-- Header -->
+        <div style="display:flex; align-items:center; justify-content:space-between;
+                    padding:0.9rem 1.25rem;
+                    background:linear-gradient(135deg,#136b75,#22a6b3);
+                    border-radius:10px 10px 0 0;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span id="link-modal-icon" class="material-symbols-outlined"
+                      style="color:#d0f0f3; font-size:1.2rem;"></span>
+                <span id="link-modal-title"
+                      style="font-family:'Ubuntu',sans-serif; font-size:1rem;
+                             font-weight:500; color:#fff;"></span>
+            </div>
+            <button type="button" id="link-close-btn"
+                    style="background:none; border:none; cursor:pointer;
+                           color:#d0f0f3; line-height:1;">
+                <span class="material-symbols-outlined" style="font-size:1.3rem;">close</span>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <form id="link-form" method="post"
+              action="{% url 'dashboard-link-components' sim_id=sim.id %}"
+              style="display:flex; flex-direction:column; flex:1; min-height:0;">
+            {% csrf_token %}
+            <input type="hidden" name="group_label" id="link-group-label">
+
+            <div style="overflow-y:auto; flex:1; min-height:0; padding:0.75rem 1.25rem;">
+                <div id="link-checklist"
+                     style="display:flex; flex-direction:column; gap:0.3rem;"></div>
+            </div>
+
+            <!-- Footer -->
+            <div style="padding:0.7rem 1.25rem; border-top:1.5px solid #e0f4f6;
+                        display:flex; justify-content:space-between; align-items:center; gap:0.6rem;">
+                <label style="font-size:0.8rem; color:#4a7a80; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="link-select-all"
+                           style="accent-color:#22a6b3; margin-right:0.3rem;">
+                    Select all
+                </label>
+                <div style="display:flex; gap:0.6rem;">
+                    <button type="button" id="link-cancel-btn"
+                            style="border:1.5px solid #b2e0e4; border-radius:6px;
+                                   background:transparent; color:#4a7a80;
+                                   font-family:'Ubuntu',sans-serif; font-size:0.82rem;
+                                   padding:0.35rem 1rem; cursor:pointer;">Cancel</button>
+                    <button type="submit"
+                            style="border:none; border-radius:6px; background:#22a6b3;
+                                   color:#fff; font-family:'Ubuntu',sans-serif;
+                                   font-size:0.82rem; padding:0.35rem 1.1rem;
+                                   cursor:pointer;">Link</button>
+                </div>
+            </div>
+        </form>
+    </div>
 </div>
 
 <script>
@@ -451,21 +548,87 @@
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');
     }
-
     function toggleCard(header) {
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');
     }
-
     function toggleInstance(header) {
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');
     }
 
-    // Auto-expand all group cards on load (all rendered cards are populated)
     document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('.group-card-header').forEach(h => toggleCard(h));
+        // Auto-expand all group cards
+        document.querySelectorAll('.group-card-header').forEach(function(h) { toggleCard(h); });
+
+        var overlay = document.getElementById('link-overlay');
+
+        // ── Pill click via event delegation ──
+        var pillRow = document.querySelector('.empty-groups-row');
+        if (pillRow) {
+          pillRow.addEventListener('click', function(e) {
+            var pill = e.target.closest('.empty-pill:not(.disabled)');
+            if (!pill) return;
+            var label = pill.dataset.groupLabel;
+            var icon  = pill.dataset.groupIcon;
+            var count = parseInt(pill.dataset.groupCount, 10);
+            if (!label || count === 0) return;
+
+            // Populate modal
+            document.getElementById('link-modal-icon').textContent  = icon;
+            document.getElementById('link-modal-title').textContent = 'Link ' + label;
+            document.getElementById('link-group-label').value       = label;
+
+            var dataEl = document.getElementById('avail-' + label);
+            var items  = dataEl ? JSON.parse(dataEl.textContent) : [];
+            var list   = document.getElementById('link-checklist');
+            list.innerHTML = '';
+            items.forEach(function(item) {
+                var row = document.createElement('label');
+                row.style.cssText = 'display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0.3rem;' +
+                                    'border-bottom:1px solid #f0f8f9; cursor:pointer; font-size:0.85rem; color:#1a2e30;';
+                var cb = document.createElement('input');
+                cb.type  = 'checkbox';
+                cb.name  = 'component_ids';
+                cb.value = item.id;
+                cb.style.cssText = 'accent-color:#22a6b3; width:1rem; height:1rem; flex-shrink:0;';
+                row.appendChild(cb);
+                row.appendChild(document.createTextNode(item.label));
+                list.appendChild(row);
+            });
+
+            var selAll = document.getElementById('link-select-all');
+            selAll.checked = false;
+            selAll.onchange = function() {
+                list.querySelectorAll('input[type=checkbox]').forEach(function(c) { c.checked = selAll.checked; });
+            };
+
+            overlay.style.display = 'flex';
+          });
+        } // end if (pillRow)
+
+        // Close button
+        document.getElementById('link-close-btn').addEventListener('click', function() {
+            overlay.style.display = 'none';
+        });
+        document.getElementById('link-cancel-btn').addEventListener('click', function() {
+            overlay.style.display = 'none';
+        });
+
+        // Close on overlay background click
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) overlay.style.display = 'none';
+        });
+
+        // Close on Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') overlay.style.display = 'none';
+        });
     });
+
+    function closeLinkModal() {
+        document.getElementById('link-overlay').style.display = 'none';
+    }
 </script>
 
 {% endblock %}

@@ -281,4 +281,11 @@ class SimulationRun(models.Model):
         ordering = ['-started_at']
 
     def __str__(self):
-        return f"Run #{self.id} – {self.simulation.name} [{self.status}]"
+        return f"Run #{self.id} \u2013 {self.simulation.name} [{self.status}]"
+
+    @property
+    def duration_seconds(self):
+        """Return elapsed seconds, or None if not finished."""
+        if self.finished_at and self.started_at:
+            return (self.finished_at - self.started_at).total_seconds()
+        return None

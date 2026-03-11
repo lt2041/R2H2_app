@@ -165,6 +165,7 @@ def simulation_detail(request, sim_id):
     ]
 
     latest_run = sim.runs.first()   # newest first via Meta ordering
+    sim_runs   = list(sim.runs.all())
 
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
@@ -172,6 +173,7 @@ def simulation_detail(request, sim_id):
         'groups': groups_with_items,
         'groups_empty': groups_empty,
         'latest_run': latest_run,
+        'sim_runs': sim_runs,
     })
 
 
@@ -202,7 +204,7 @@ def link_components(request, sim_id):
 
 def _run_simulation_thread(run_id):
     """Background worker: update SimulationRun status while running."""
-    import time
+    import time, random
     from django.utils import timezone
     try:
         run = SimulationRun.objects.get(pk=run_id)
@@ -211,7 +213,7 @@ def _run_simulation_thread(run_id):
 
         # TODO: replace with real runner, e.g.
         # from r2h2.r2h2 import R2H2; R2H2(run.simulation).run()
-        time.sleep(2)
+        time.sleep(15 + random.uniform(-2, 2))  # simulate variable runtime
 
         run.status  = SimulationRun.DONE
         run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'
@@ -246,10 +248,16 @@ def poll_simulation_run(request, sim_id, run_id):
     from django.http import JsonResponse
     from django.shortcuts import get_object_or_404
     run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    dur = run.duration_seconds
+    if dur is not None:
+        duration_str = f'{dur:.1f} s' if dur < 60 else f'{dur:.0f} s'
+    else:
+        duration_str = ''
     return JsonResponse({
-        'status':  run.status,
-        'message': run.message,
-        'done':    run.status in (SimulationRun.DONE, SimulationRun.ERROR),
+        'status':   run.status,
+        'message':  run.message,
+        'duration': duration_str,
+        'done':     run.status in (SimulationRun.DONE, SimulationRun.ERROR),
     })
 
 

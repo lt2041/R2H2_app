@@ -32,25 +32,29 @@
                       letter-spacing: 0.1em; color: #d0f0f3; }
     .sim-info-value { font-size: 0.95rem; font-weight: 500; color: #ffffff; }
 
-    /* ── Simulation control bar ── */
+    /* ── Simulation control panel ── */
     .sim-control-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        background: #ffffff;
         border: 1.5px solid #b2e0e4;
         border-radius: 10px;
-        padding: 0.75rem 1.25rem;
+        background: #ffffff;
+        overflow: hidden;
         box-shadow: 0 2px 8px rgba(34,166,179,0.10);
     }
 
+    .sim-control-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.7rem 1.25rem;
+        background: #e8f8f9;
+        border-bottom: 1.5px solid #b2e0e4;
+    }
+
     .sim-control-label {
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: #4a7a80;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #136b75;
+        flex: 1;
     }
 
     .sim-run-btn {
@@ -127,6 +131,65 @@
         opacity: 0.5;
         cursor: not-allowed;
         box-shadow: none;
+    }
+
+    /* ── Run history table ── */
+    .run-history-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+    }
+
+    .run-history-table thead tr {
+        background: #22a6b3;
+        border-bottom: 1.5px solid #e0f4f6;
+    }
+
+    .run-history-table th {
+        padding: 0.4rem 1.25rem;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #4a7a80;
+        white-space: nowrap;
+        text-align: left;
+    }
+
+    .run-history-table td {
+        padding: 0.38rem 1.25rem;
+        border-bottom: 1px solid #f0f8f9;
+        vertical-align: middle;
+        color: #1a2e30;
+    }
+
+    .run-history-table tbody tr:last-child td { border-bottom: none; }
+    .run-history-table tbody tr:hover td    { background: #f4fafb; }
+
+    .run-history-table td.run-mono {
+        font-family: 'Ubuntu Mono', monospace;
+        font-size: 0.78rem;
+        color: #4a7a80;
+    }
+
+    .run-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        border-radius: 999px;
+        padding: 0.1rem 0.65rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+
+    .run-status-badge.done    { background:#e6f9f0; color:#1a7a4a; }
+    .run-status-badge.error   { background:#fdecea; color:#b71c1c; }
+    .run-status-badge.running { background:#e8f8f9; color:#136b75; }
+    .run-status-badge.pending { background:#f4f4f4; color:#757575; }
+
+    .run-status-badge .material-symbols-outlined {
+        font-size: 0.85rem !important;
+        padding: 0 !important;
     }
 
     /* ── Simulation settings panel ── */
@@ -448,57 +511,103 @@
         </div>
     </div>
 
-    <!-- Simulation control bar -->
+    <!-- Simulation control panel -->
     <div class="sim-control-bar">
-        <span class="sim-control-label">Run</span>
 
-        <!-- Status area: shows Django flash message on first load, then live-polled status -->
-        <div id="sim-status-area" style="flex:1; display:flex; flex-wrap:wrap; gap:0.5rem;">
+        <!-- Header: icon + title + Simulate button -->
+        <div class="sim-control-header">
+            <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem; padding:0 !important;">play_circle</span>
+            <span class="sim-control-label">Runs</span>
 
             {% if messages %}
                 {% for message in messages %}
-                <div class="sim-message {{ message.tags }}">
+                <div class="sim-message {{ message.tags }}" style="margin-right:0.5rem;">
                     <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">
                         {% if message.tags == 'success' %}check_circle{% else %}error{% endif %}
                     </span>
                     {{ message }}
                 </div>
                 {% endfor %}
-            {% elif latest_run %}
-                {% if latest_run.status == 'done' %}
-                <div class="sim-message success">
-                    <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">check_circle</span>
-                    {{ latest_run.message }}
-                </div>
-                {% elif latest_run.status == 'error' %}
-                <div class="sim-message error">
-                    <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">error</span>
-                    {{ latest_run.message }}
-                </div>
-                {% elif latest_run.status == 'running' or latest_run.status == 'pending' %}
-                <div class="sim-message running" id="sim-running-msg">
-                    <span class="sim-spinner"></span>
-                    Running&#8230;
-                </div>
-                {% endif %}
             {% endif %}
 
+            <form method="post" action="{% url 'dashboard-run-simulation' sim_id=sim.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="sim-run-btn" id="sim-run-btn">
+                    <span class="material-symbols-outlined">play_arrow</span>
+                    Simulate
+                </button>
+            </form>
         </div>
 
-        <form method="post" action="{% url 'dashboard-run-simulation' sim_id=sim.id %}" style="margin:0;">
-            {% csrf_token %}
-            <button type="submit" class="sim-run-btn" id="sim-run-btn">
-                <span class="material-symbols-outlined">play_arrow</span>
-                Simulate
-            </button>
-        </form>
+        <!-- Run history table -->
+        {% if sim_runs %}
+        <table class="run-history-table">
+            <colgroup>
+                <col style="width:6%;">
+                <col style="width:16%;">
+                <col style="width:20%;">
+                <col style="width:14%;">
+                <col style="width:44%;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th style="text-align:center;">Status</th>
+                    <th style="text-align:center;">Started</th>
+                    <th style="text-align:center;">Duration</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody id="run-history-tbody">
+                {% for run in sim_runs %}
+                <tr id="run-row-{{ run.id }}">
+                    <td class="run-mono">{{ run.id }}</td>
+                    <td style="text-align:center;">
+                        <span class="run-status-badge {{ run.status }}" id="run-badge-{{ run.id }}">
+                            {% if run.status == 'done' %}
+                                <span class="material-symbols-outlined">check_circle</span>done
+                            {% elif run.status == 'error' %}
+                                <span class="material-symbols-outlined">error</span>error
+                            {% elif run.status == 'running' %}
+                                <span class="sim-spinner" style="width:0.7rem;height:0.7rem;"></span>running
+                            {% else %}
+                                <span class="material-symbols-outlined">schedule</span>pending
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td class="run-mono" style="text-align:center;">{{ run.started_at|date:"d M Y, H:i:s" }}</td>
+                    <td class="run-mono" id="run-dur-{{ run.id }}" style="text-align:center;">
+                        {% if run.duration_seconds is not None %}
+                            {% if run.duration_seconds < 60 %}
+                                {{ run.duration_seconds|floatformat:1 }} s
+                            {% else %}
+                                {{ run.duration_seconds|floatformat:0 }} s
+                            {% endif %}
+                        {% elif run.status == 'running' or run.status == 'pending' %}
+                            <span class="sim-spinner" style="width:0.65rem;height:0.65rem;"></span>
+                        {% else %}
+                            <span style="color:#b2e0e4;">—</span>
+                        {% endif %}
+                    </td>
+                    <td id="run-msg-{{ run.id }}" style="color:#4a7a80; font-size:0.78rem;">
+                        {{ run.message|default:"—" }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="padding:0.75rem 1.25rem; font-size:0.82rem; color:#b2e0e4;">
+            No runs yet — click <strong>Simulate</strong> to start.
+        </div>
+        {% endif %}
+
     </div>
 
     {% if latest_run and latest_run.status == 'pending' or latest_run and latest_run.status == 'running' %}
     <script>
         (function() {
             var pollUrl = "{% url 'dashboard-poll-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
-            var area    = document.getElementById('sim-status-area');
             var btn     = document.getElementById('sim-run-btn');
             if (btn) btn.disabled = true;
 
@@ -507,14 +616,17 @@
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.done) {
-                            var cls  = data.status === 'done' ? 'success' : 'error';
-                            var icon = data.status === 'done' ? 'check_circle' : 'error';
-                            area.innerHTML =
-                                '<div class="sim-message ' + cls + '">' +
-                                '<span class="material-symbols-outlined" style="font-size:1rem;padding:0!important;">' + icon + '</span>' +
-                                data.message +
-                                '</div>';
-                            if (btn) btn.disabled = false;
+                            var badge = document.getElementById('run-badge-{{ latest_run.id }}');
+                            var dur   = document.getElementById('run-dur-{{ latest_run.id }}');
+                            var msg   = document.getElementById('run-msg-{{ latest_run.id }}');
+                            if (badge) {
+                                var icon = data.status === 'done' ? 'check_circle' : 'error';
+                                badge.className = 'run-status-badge ' + data.status;
+                                badge.innerHTML = '<span class="material-symbols-outlined">' + icon + '</span>' + data.status;
+                            }
+                            if (dur)   dur.textContent = data.duration !== undefined ? data.duration : '';
+                            if (msg)   msg.textContent = data.message  || '—';
+                            if (btn)   btn.disabled = false;
                         } else {
                             setTimeout(poll, 1500);
                         }

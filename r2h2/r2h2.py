@@ -191,6 +191,9 @@ class R2H2():
     def setUpElectro1(self):
         """Initialise the list of electrolyser control units, degradation arrays, and curves."""
         # ec = electroCell(zElectroCell)  # uses ec.rT (synced later per bank)
+        sim_db_obj = self.simulation_name
+        electro_cell_obj = sim_db_obj.electro_cells.all().first()
+        self.electrocellpem.from_django(electro_cell_obj)
         self.electrocellpem.build_curves()
         # units: List[ElectrolyserUnit] = [] # DECLARES EMPTY LIST TO BE FILLED, ONLY CONTAINING ELECTROLYSER UNITS
         # base = copy.deepcopy(zElectrolyserUnit)

@@ -130,7 +130,7 @@ class R2H2():
     ###  UI-APP IMPLEMENTATION  ###########################################################
     #######################################################################################
     # WIP - not yet implemented
-    def electrolyser(zElectroCell: BaseElectroCell, zElectrolyserUnit: List[ElectrolyserUnit]) -> List[ElectrolyserUnit]:
+    def electrolyser(self):
         """
         Compute per-unit arrays for voltage, current, H2 rate, power, efficiency.
         Mirrors electrolyser() logic with iControlLevel branches.
@@ -145,6 +145,7 @@ class R2H2():
         rLossDry = 0.03
         rConstantPart = rMu/rF/rN*(1-rLossDry)
 
+        """
         arCurrentDensity = zElectroCell.arCurrentDensity
         arFaradayEff = zElectroCell.faraday_efficiency(arCurrentDensity)
 
@@ -183,14 +184,17 @@ class R2H2():
             e.rMinPower_s = e.rRatedPower_s * e.rTurnDownRatio
             e.rAncilliaryPower_s = e.rAncilliaryPowerFrac * e.rRatedPower_s
 
-        return zElectrolyserUnit
+        # return zElectrolyserUnit
+        """
     
     # WIP - not yet implemented
-    def setUpElectro1(zElectrolyserUnit: ElectrolyserUnit, zElectroCell: BaseElectroCell) -> Tuple[List[ElectrolyserUnit], BaseElectroCell]:
+    def setUpElectro1(self):
         """Initialise the list of electrolyser control units, degradation arrays, and curves."""
-        ec = electroCell(zElectroCell)  # uses ec.rT (synced later per bank)
-        units: List[ElectrolyserUnit] = [] # DECLARES EMPTY LIST TO BE FILLED, ONLY CONTAINING ELECTROLYSER UNITS
-        base = copy.deepcopy(zElectrolyserUnit)
+        # ec = electroCell(zElectroCell)  # uses ec.rT (synced later per bank)
+        self.electrocellpem.build_curves()
+        # units: List[ElectrolyserUnit] = [] # DECLARES EMPTY LIST TO BE FILLED, ONLY CONTAINING ELECTROLYSER UNITS
+        # base = copy.deepcopy(zElectrolyserUnit)
+        """
         base.arDegradationTotal = np.zeros(ec.iNumCurrent) + base.rDegradation
         base.rSummedDegradation = 1e-30
         units.append(base)
@@ -202,7 +206,8 @@ class R2H2():
             units.append(e)
 
         units = electrolyser(ec, units)
-        return units, ec
+        # return units, ec
+        """
     
     
     # ---  SIMULATION RUN FUNCTION : MIGRATED FROM LEGACY CODE (WIP)  --- #
@@ -224,9 +229,8 @@ class R2H2():
         
         time.sleep(.1)  # Simulate some startup time
         # Setup electrolyser units and cell
-        self.electrolyserunit
 
-        units, ec_curves = setUpElectro1(el_unit, el_cell)  ## THIS SHOULDN'T WORK - WIP
+        self.setUpElectro1()  ## SKELETON - WIP
         """
 
         # Create bank thermal states (one per bank*electrolyser) using tech template

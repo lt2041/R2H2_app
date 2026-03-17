@@ -262,7 +262,7 @@ def open_browser_delayed(url, delay=3):
 def start_django_server(project_dir, venv_path, host='127.0.0.1', preferred_port=8030):
     """Start Django development server on next available port"""
     env = os.environ.copy()
-    
+
     if venv_path:
         if os.name == 'nt':  # Windows
             python_exe = Path(venv_path) / 'Scripts' / 'python.exe'
@@ -270,7 +270,7 @@ def start_django_server(project_dir, venv_path, host='127.0.0.1', preferred_port
             python_exe = Path(venv_path) / 'bin' / 'python'
     else:
         python_exe = sys.executable
-    
+
     # Find available port
     try:
         if is_port_available(host, preferred_port):
@@ -278,12 +278,11 @@ def start_django_server(project_dir, venv_path, host='127.0.0.1', preferred_port
             print_colored(f"✓ Using preferred port {port}", Colors.GREEN)
         else:
             print_colored(f"Port {preferred_port} is in use, searching for available port...", Colors.YELLOW)
-            
-            # Option to kill existing process
+
             choice = input(f"Kill existing process on port {preferred_port}? (y/N): ").strip().lower()
             if choice == 'y':
                 if kill_process_on_port(preferred_port):
-                    time.sleep(1)  # Wait a moment for port to be freed
+                    time.sleep(1)
                     if is_port_available(host, preferred_port):
                         port = preferred_port
                         print_colored(f"✓ Freed up port {port}", Colors.GREEN)
@@ -296,28 +295,57 @@ def start_django_server(project_dir, venv_path, host='127.0.0.1', preferred_port
             else:
                 port = find_available_port(preferred_port + 1)
                 print_colored(f"✓ Using alternative port {port}", Colors.GREEN)
-                
+
     except RuntimeError as e:
         print_colored(f"Error: {e}", Colors.RED)
         sys.exit(1)
-    
+
     cmd = [
-        str(python_exe), 
-        'manage.py', 
-        'runserver', 
+        str(python_exe),
+        'manage.py',
+        'runserver',
         f'{host}:{port}',
-        '--settings=r2h2_ui.settings'
+        '--noreload',
+        '--settings=r2h2_ui.settings',
     ]
-    
+
     print_colored(f"Starting Django server at http://{host}:{port}", Colors.GREEN)
     print_colored("Press Ctrl+C to stop the server", Colors.YELLOW)
-    
+
     # Open browser after delay
     open_browser_delayed(f"http://{host}:{port}")
-    
+
     try:
-        subprocess.run(cmd, cwd=project_dir, env=env)
+        server = subprocess.Popen(
+            cmd,
+            cwd=project_dir,
+            env=env,
+            stdout=subprocess.DEVNULL,  # suppress request logs
+            stderr=subprocess.PIPE,     # keep errors visible for debugging
+        )
+
+        # Wait for the server to start
+        time.sleep(2)
+
+        # Check if the server is running
+        if server.poll() is None:
+            print_colored(f"✓ Django server is running with PID: {server.pid}", Colors.GREEN)
+        else:
+            # Read stderr to show what went wrong
+            err = server.stderr.read().decode(errors='replace')
+            print_colored("✗ Failed to start Django server", Colors.RED)
+            if err:
+                print_colored(f"  Error detail: {err.strip()}", Colors.RED)
+            sys.exit(1)
+
+    except Exception as e:
+        print_colored(f"Error starting server: {e}", Colors.RED)
+        sys.exit(1)
+
+    try:
+        server.wait()
     except KeyboardInterrupt:
+        server.terminate()
         print_colored("\nShutting down R2H2 application...", Colors.YELLOW)
         print_colored("Thank you for using R2H2! 🚀", Colors.GREEN)
 

@@ -212,8 +212,11 @@ def _run_simulation_thread(run_id):
         run.save(update_fields=['status'])
 
         # TODO: replace with real runner, e.g.
-        # from r2h2.r2h2 import R2H2; R2H2(run.simulation).run()
-        time.sleep(15 + random.uniform(-2, 2))  # simulate variable runtime
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        from r2h2.r2h2 import R2H2
+        R2H2(run.simulation).run()
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        # time.sleep(15 + random.uniform(-2, 2))  # simulate variable runtime
 
         run.status  = SimulationRun.DONE
         run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'

@@ -123,6 +123,88 @@ class R2H2():
         )
         setattr(self, class_name.lower(), component_instance)
 
+    
+
+
+    #######################################################################################
+    ###  UI-APP IMPLEMENTATION  ###########################################################
+    #######################################################################################
+    # WIP - not yet implemented
+    def electrolyser(zElectroCell: BaseElectroCell, zElectrolyserUnit: List[ElectrolyserUnit]) -> List[ElectrolyserUnit]:
+        """
+        Compute per-unit arrays for voltage, current, H2 rate, power, efficiency.
+        Mirrors electrolyser() logic with iControlLevel branches.
+        """
+        # Constants
+        # rHhwH2 = 141876.0  # J/g (higher heating value), as used in doc
+        rLHV_H2 = 119_988.0  # J/g (33.33 kWh/kg)
+        
+        rMu = 2.01588      # g/mol
+        rF = 9.6485E4      # sA/mol
+        rN = 2
+        rLossDry = 0.03
+        rConstantPart = rMu/rF/rN*(1-rLossDry)
+
+        arCurrentDensity = zElectroCell.arCurrentDensity
+        arFaradayEff = zElectroCell.faraday_efficiency(arCurrentDensity)
+
+        for i, e in enumerate(zElectrolyserUnit):
+            arV_cell = zElectroCell.arV_cell
+            rA_cell = zElectroCell.rA_cell
+
+            if e.iControlLevel == 1:  # Electrolyser level
+                arV_s = arV_cell * e.iN_cell * e.iN_stacks * e.iN_banks
+                arV_sd = (arV_cell + e.rSummedDegradation) * e.iN_cell * e.iN_stacks * e.iN_banks
+                arI_s = arCurrentDensity * rA_cell
+                arH2Dot_s = arFaradayEff * rConstantPart * arI_s * e.iN_cell * e.iN_stacks * e.iN_banks
+            elif e.iControlLevel == 2:  # Bank level
+                arV_s = arV_cell * e.iN_cell * e.iN_stacks
+                arV_sd = (arV_cell + e.rSummedDegradation) * e.iN_cell * e.iN_stacks
+                arI_s = arCurrentDensity * rA_cell
+                arH2Dot_s = arFaradayEff * rConstantPart * arI_s * e.iN_cell * e.iN_stacks
+            else:  # Stack level
+                arV_s = arV_cell * e.iN_cell
+                arV_sd = (arV_cell + e.rSummedDegradation) * e.iN_cell
+                arI_s = arCurrentDensity * rA_cell
+                arH2Dot_s = arFaradayEff * rConstantPart * arI_s * e.iN_cell
+
+            arP_Total_s = arI_s * arV_sd
+            with np.errstate(divide='ignore', invalid='ignore'):
+                arEfficiency_s = (rLHV_H2 * arH2Dot_s) / arP_Total_s
+                arEfficiency_s = np.nan_to_num(arEfficiency_s, nan=0.0, posinf=0.0, neginf=0.0)
+
+            e.arV_s = arV_s
+            e.arV_sd = arV_sd
+            e.arI_s = arI_s
+            e.arH2Dot_s = arH2Dot_s
+            e.arP_Total_s = arP_Total_s
+            e.arEfficiency_s = arEfficiency_s
+            e.rRatedPower_s = float(arV_s[-1] * arI_s[-1])
+            e.rMinPower_s = e.rRatedPower_s * e.rTurnDownRatio
+            e.rAncilliaryPower_s = e.rAncilliaryPowerFrac * e.rRatedPower_s
+
+        return zElectrolyserUnit
+    
+    # WIP - not yet implemented
+    def setUpElectro1(zElectrolyserUnit: ElectrolyserUnit, zElectroCell: BaseElectroCell) -> Tuple[List[ElectrolyserUnit], BaseElectroCell]:
+        """Initialise the list of electrolyser control units, degradation arrays, and curves."""
+        ec = electroCell(zElectroCell)  # uses ec.rT (synced later per bank)
+        units: List[ElectrolyserUnit] = [] # DECLARES EMPTY LIST TO BE FILLED, ONLY CONTAINING ELECTROLYSER UNITS
+        base = copy.deepcopy(zElectrolyserUnit)
+        base.arDegradationTotal = np.zeros(ec.iNumCurrent) + base.rDegradation
+        base.rSummedDegradation = 1e-30
+        units.append(base)
+        # Replicate to iNumUnits
+        for _ in range(1, base.iNumUnits):
+            e = copy.deepcopy(base)
+            e.arDegradationTotal = np.zeros(ec.iNumCurrent) + e.rDegradation
+            e.rSummedDegradation = 1e-30
+            units.append(e)
+
+        units = electrolyser(ec, units)
+        return units, ec
+    
+    
     # ---  SIMULATION RUN FUNCTION : MIGRATED FROM LEGACY CODE (WIP)  --- #
     def run(self, # PREVIOUSLY: NO `self` ARGUMENT, ALL BELOW WERE PASSED AS FUNCTION ARGUMENTS
         # settings,
@@ -140,10 +222,12 @@ class R2H2():
         # import copy
         import time
         
-        time.sleep(3)  # Simulate some startup time
-        """
+        time.sleep(.1)  # Simulate some startup time
         # Setup electrolyser units and cell
-        units, ec_curves = setUpElectro1(el_unit, el_cell)
+        self.electrolyserunit
+
+        units, ec_curves = setUpElectro1(el_unit, el_cell)  ## THIS SHOULDN'T WORK - WIP
+        """
 
         # Create bank thermal states (one per bank*electrolyser) using tech template
         num_banks_total = el_unit.iN_banks * el_unit.iNumElectro

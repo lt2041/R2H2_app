@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 R2H2 Desktop App Launcher
 Python-based launcher for the R2H2 Django application
@@ -8,393 +7,216 @@ Python-based launcher for the R2H2 Django application
 import os
 import sys
 import time
-import subprocess
-import webbrowser
 import socket
-from pathlib import Path
 import signal
+import subprocess
 import threading
+import webbrowser
+from pathlib import Path
 
-# Colors for terminal output
+
+# ── Terminal colours (disabled on Windows if no ANSI support) ──────────────
 class Colors:
-    RED = '\033[0;31m'
-    GREEN = '\033[0;32m'
+    if sys.platform == 'win32':
+        # Enable ANSI on Windows 10+
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+    GREEN  = '\033[0;32m'
     YELLOW = '\033[1;33m'
-    BLUE = '\033[0;34m'
-    NC = '\033[0m'  # No Color
+    RED    = '\033[0;31m'
+    CYAN   = '\033[0;36m'
+    NC     = '\033[0m'
+
 
 def print_colored(message, color=Colors.NC):
-    """Print colored message to terminal"""
-    print(f"{color}{message}{Colors.NC}")
+    print(f"{color}{message}{Colors.NC}", flush=True)
+
+
+# ── Port utilities ──────────────────────────────────────────────────────────
+def is_port_available(host, port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1)
+        return s.connect_ex((host, port)) != 0
+
 
 def find_available_port(start_port=8030, max_attempts=50):
-    """Find the next available port starting from start_port"""
     for port in range(start_port, start_port + max_attempts):
         if is_port_available('127.0.0.1', port):
             return port
-    
-    # If no port found in range, raise exception
-    raise RuntimeError(f"No available ports found in range {start_port}-{start_port + max_attempts}")
+    raise RuntimeError(f"No available port found in range {start_port}–{start_port + max_attempts}")
 
-def is_port_available(host, port):
-    """Check if port is available"""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1)  # 1 second timeout
-            result = s.connect_ex((host, port))
-            return result != 0  # Port is available if connection failed
-    except OSError:
-        return False
 
 def kill_process_on_port(port):
-    """Attempt to kill any process using the specified port"""
+    """Cross-platform: kill whatever is listening on *port*."""
     try:
-        if os.name == 'nt':  # Windows
-            # Find process using the port
+        if sys.platform == 'win32':
+            # netstat -ano | findstr :<port>  then taskkill
             result = subprocess.run(
-                ['netstat', '-ano'], 
-                capture_output=True, 
-                text=True
+                ['netstat', '-ano'],
+                capture_output=True, text=True
             )
-            for line in result.stdout.split('\n'):
+            for line in result.stdout.splitlines():
                 if f':{port}' in line and 'LISTENING' in line:
-                    parts = line.split()
-                    if len(parts) >= 5:
-                        pid = parts[-1]
-                        print_colored(f"Killing process {pid} on port {port}", Colors.YELLOW)
-                        subprocess.run(['taskkill', '/F', '/PID', pid], capture_output=True)
-                        return True
-        else:  # Unix/Linux/macOS
-            # Find process using lsof
+                    pid = line.strip().split()[-1]
+                    subprocess.run(['taskkill', '/F', '/PID', pid],
+                                   capture_output=True)
+                    return True
+        else:
             result = subprocess.run(
-                ['lsof', '-ti', f':{port}'], 
-                capture_output=True, 
-                text=True
+                ['lsof', '-ti', f'tcp:{port}'],
+                capture_output=True, text=True
             )
-            if result.stdout.strip():
-                pids = result.stdout.strip().split('\n')
-                for pid in pids:
-                    if pid:
-                        print_colored(f"Killing process {pid} on port {port}", Colors.YELLOW)
-                        subprocess.run(['kill', '-9', pid], capture_output=True)
+            pid = result.stdout.strip()
+            if pid:
+                os.kill(int(pid), signal.SIGTERM)
                 return True
     except Exception as e:
-        print_colored(f"Could not kill process on port {port}: {e}", Colors.YELLOW)
-    
+        print_colored(f"  Could not kill process on port {port}: {e}", Colors.YELLOW)
     return False
 
+
+# ── Project / venv resolution ───────────────────────────────────────────────
 def get_project_directory():
-    """Get project directory from r2h2 config or fallback to current directory"""
-    try:
-        import r2h2.config
-        r2h2_app_dir = Path(r2h2.config.get_config_path()).parent / 'R2H2_app'
-        
-        # Check if Django files exist in the R2H2 config location
-        if (r2h2_app_dir / 'manage.py').exists():
-            return str(r2h2_app_dir)
+    """Return the directory containing manage.py."""
+    # When installed as a package, manage.py lives next to launch_r2h2.py
+    here = Path(__file__).resolve().parent
+    if (here / 'manage.py').exists():
+        return here
+    # Fallback: cwd
+    cwd = Path.cwd()
+    if (cwd / 'manage.py').exists():
+        return cwd
+    print_colored("✗ Cannot locate manage.py", Colors.RED)
+    sys.exit(1)
+
+
+def get_python_executable(project_dir: Path):
+    """
+    Return the best Python executable to use:
+    1. The venv inside the project directory (venv / .venv)
+    2. The currently running interpreter (handles pipx / pip install)
+    """
+    for venv_name in ('venv', '.venv', 'env', '.env'):
+        venv = project_dir / venv_name
+        if sys.platform == 'win32':
+            candidate = venv / 'Scripts' / 'python.exe'
         else:
-            # Fallback to current directory
-            current_dir = Path(__file__).parent
-            print_colored(f"Django files not found in R2H2 config location", Colors.YELLOW)
-            print_colored(f"Using current directory: {current_dir}", Colors.YELLOW)
-            return str(current_dir)
-            
-    except ImportError:
-        # Fallback to current directory if r2h2 not available
-        current_dir = Path(__file__).parent
-        print_colored("r2h2.config not available, using current directory", Colors.YELLOW)
-        return str(current_dir)
+            candidate = venv / 'bin' / 'python'
+        if candidate.exists():
+            return candidate
 
-def ensure_r2h2_config():
-    """Ensure config.yaml exists, creating it interactively if missing.
-    Also reports where db.sqlite3 will be stored."""
-    try:
-        import r2h2.config as cfg_module
-
-        cfg_path = cfg_module.get_config_path()
-        cfg = cfg_module.load_config()
-
-        if cfg is None:
-            print_colored("\n⚠  No R2H2 config found.", Colors.YELLOW)
-            print_colored(f"   Config will be saved to: {cfg_path}", Colors.BLUE)
-
-            # Suggest the platform data directory as default
-            try:
-                import platformdirs
-                default_data = Path(platformdirs.user_data_dir("r2h2", "r2h2"))
-            except Exception:
-                default_data = Path.home() / "r2h2_data"
-
-            val = input(
-                f"   Enter path for R2H2 data storage [{default_data}]: "
-            ).strip()
-            data_root = Path(val).expanduser().resolve() if val else default_data
-            data_root.mkdir(parents=True, exist_ok=True)
-
-            cfg = cfg_module.create_config_file(data_root=str(data_root))
-            print_colored(f"✓ Config created at: {cfg_path}", Colors.GREEN)
-        else:
-            print_colored(f"✓ Config found: {cfg_path}", Colors.GREEN)
-
-        # Report DB location
-        data_root = Path(cfg['paths']['data_root'])
-        db_path = data_root / 'R2H2_DataBase.sqlite3'
-        print_colored(f"✓ Database location: {db_path}", Colors.BLUE)
-
-        # Ensure data_root exists (in case it was deleted)
-        data_root.mkdir(parents=True, exist_ok=True)
-
-        return True
-
-    except ImportError:
-        print_colored("⚠  r2h2.config not available — skipping config check.", Colors.YELLOW)
-        return True
-    except Exception as e:
-        print_colored(f"✗ Failed to initialise R2H2 config: {e}", Colors.RED)
-        return False
+    # Already inside a venv (pipx, pip install --user, etc.)
+    return Path(sys.executable)
 
 
-def check_dependencies():
-    """Check if required dependencies are installed"""
-    print_colored("Checking dependencies...", Colors.YELLOW)
-    
-    # Check Django
-    try:
-        import django
-        print_colored(f"✓ Django {django.get_version()} found", Colors.GREEN)
-    except ImportError:
-        print_colored("✗ Django is not installed", Colors.RED)
-        print_colored("Install with: pip install django", Colors.YELLOW)
-        return False
-    
-    # Check r2h2
-    try:
-        import r2h2
-        print_colored("✓ r2h2 module found", Colors.GREEN)
-    except ImportError:
-        print_colored("✗ r2h2 module is not installed", Colors.RED)
-        return False
-    
-    return True
-
-def find_virtual_environment(project_dir):
-    """Find and activate virtual environment"""
-    venv_names = ['r2h2_env', 'venv', '.venv']
-    
-    for venv_name in venv_names:
-        venv_path = Path(project_dir) / venv_name
-        if venv_path.exists():
-            if os.name == 'nt':  # Windows
-                activate_script = venv_path / 'Scripts' / 'activate.bat'
-            else:  # Unix/Linux/macOS
-                activate_script = venv_path / 'bin' / 'activate'
-            
-            if activate_script.exists():
-                print_colored(f"Found virtual environment: {venv_name}", Colors.GREEN)
-                return str(venv_path)
-    
-    print_colored("No virtual environment found. Using system Python.", Colors.YELLOW)
-    return None
-
-def run_django_command(project_dir, venv_path, command):
-    """Run Django management command"""
-    env = os.environ.copy()
-    
-    if venv_path:
-        if os.name == 'nt':  # Windows
-            python_exe = Path(venv_path) / 'Scripts' / 'python.exe'
-        else:  # Unix/Linux/macOS
-            python_exe = Path(venv_path) / 'bin' / 'python'
-    else:
-        python_exe = sys.executable
-    
-    cmd = [str(python_exe), 'manage.py'] + command
-    
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=project_dir,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        return True, result.stdout
-    except subprocess.CalledProcessError as e:
-        return False, e.stderr
-
-def run_migrations(project_dir, venv_path):
-    """Check and run database migrations"""
-    print_colored("Checking for database migrations...", Colors.YELLOW)
-    
-    # Check if migrations are needed
-    success, output = run_django_command(project_dir, venv_path, ['makemigrations', '--check', '--dry-run'])
-    
-    if not success:
-        print_colored("Creating new migrations...", Colors.YELLOW)
-        success, output = run_django_command(project_dir, venv_path, ['makemigrations'])
-        if not success:
-            print_colored(f"Error creating migrations: {output}", Colors.RED)
-            return False
-    
-    # Apply migrations
-    print_colored("Applying database migrations...", Colors.YELLOW)
-    success, output = run_django_command(project_dir, venv_path, ['migrate'])
-    
-    if not success:
-        print_colored(f"Error applying migrations: {output}", Colors.RED)
-        return False
-    
-    print_colored("✓ Migrations completed", Colors.GREEN)
-    return True
-
-def open_browser_delayed(url, delay=3):
-    """Open browser after delay"""
-    def delayed_open():
-        time.sleep(delay)
-        print_colored(f"Opening browser: {url}", Colors.BLUE)
-        webbrowser.open(url)
-    
-    thread = threading.Thread(target=delayed_open)
-    thread.daemon = True
-    thread.start()
-
-def start_django_server(project_dir, venv_path, host='127.0.0.1', preferred_port=8030):
-    """Start Django development server on next available port"""
-    env = os.environ.copy()
-
-    if venv_path:
-        if os.name == 'nt':  # Windows
-            python_exe = Path(venv_path) / 'Scripts' / 'python.exe'
-        else:  # Unix/Linux/macOS
-            python_exe = Path(venv_path) / 'bin' / 'python'
-    else:
-        python_exe = sys.executable
-
-    # Find available port
-    try:
-        if is_port_available(host, preferred_port):
-            port = preferred_port
-            print_colored(f"✓ Using preferred port {port}", Colors.GREEN)
-        else:
-            print_colored(f"Port {preferred_port} is in use, searching for available port...", Colors.YELLOW)
-
-            choice = input(f"Kill existing process on port {preferred_port}? (y/N): ").strip().lower()
-            if choice == 'y':
-                if kill_process_on_port(preferred_port):
-                    time.sleep(1)
-                    if is_port_available(host, preferred_port):
-                        port = preferred_port
-                        print_colored(f"✓ Freed up port {port}", Colors.GREEN)
-                    else:
-                        port = find_available_port(preferred_port + 1)
-                        print_colored(f"✓ Using alternative port {port}", Colors.GREEN)
-                else:
-                    port = find_available_port(preferred_port + 1)
-                    print_colored(f"✓ Using alternative port {port}", Colors.GREEN)
-            else:
-                port = find_available_port(preferred_port + 1)
-                print_colored(f"✓ Using alternative port {port}", Colors.GREEN)
-
-    except RuntimeError as e:
-        print_colored(f"Error: {e}", Colors.RED)
+def get_manage_py(project_dir: Path):
+    """Return manage.py as a Path; exit if missing."""
+    manage = project_dir / 'manage.py'
+    if not manage.exists():
+        print_colored(f"✗ manage.py not found in {project_dir}", Colors.RED)
         sys.exit(1)
+    return manage
 
+
+# ── Browser opener ──────────────────────────────────────────────────────────
+def open_browser_delayed(url: str, delay: float = 2.5):
+    def _open():
+        time.sleep(delay)
+        webbrowser.open(url)
+    threading.Thread(target=_open, daemon=True).start()
+
+
+# ── Django server ───────────────────────────────────────────────────────────
+def start_django_server(project_dir: Path, host='127.0.0.1', preferred_port=8030):
+    python_exe = get_python_executable(project_dir)
+    manage_py  = get_manage_py(project_dir)
+
+    # ── Choose port ────────────────────────────────────────────────────────
+    if is_port_available(host, preferred_port):
+        port = preferred_port
+        print_colored(f"✓ Using port {port}", Colors.GREEN)
+    else:
+        print_colored(f"  Port {preferred_port} is in use.", Colors.YELLOW)
+        choice = input("  Kill existing process? (y/N): ").strip().lower()
+        if choice == 'y' and kill_process_on_port(preferred_port):
+            time.sleep(1)
+            port = preferred_port if is_port_available(host, preferred_port) \
+                   else find_available_port(preferred_port + 1)
+        else:
+            port = find_available_port(preferred_port + 1)
+        print_colored(f"✓ Using port {port}", Colors.GREEN)
+
+    url = f"http://{host}:{port}"
+
+    # ── Build command ───────────────────────────────────────────────────────
     cmd = [
         str(python_exe),
-        'manage.py',
+        str(manage_py),
         'runserver',
         f'{host}:{port}',
         '--noreload',
-        '--settings=r2h2_ui.settings',
     ]
 
-    print_colored(f"Starting Django server at http://{host}:{port}", Colors.GREEN)
-    print_colored("Press Ctrl+C to stop the server", Colors.YELLOW)
+    print_colored(f"Starting R2H2 at {url}", Colors.CYAN)
+    print_colored("Press Ctrl+C to stop.", Colors.YELLOW)
 
-    # Open browser after delay
-    open_browser_delayed(f"http://{host}:{port}")
+    # ── Platform-specific Popen flags ──────────────────────────────────────
+    popen_kwargs = dict(
+        cwd=str(project_dir),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+
+    if sys.platform == 'win32':
+        # Prevent a second console window from appearing
+        popen_kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+
+    open_browser_delayed(url)
 
     try:
-        server = subprocess.Popen(
-            cmd,
-            cwd=project_dir,
-            env=env,
-            stdout=subprocess.DEVNULL,  # suppress request logs
-            stderr=subprocess.PIPE,     # keep errors visible for debugging
-        )
-
-        # Wait for the server to start
-        time.sleep(2)
-
-        # Check if the server is running
-        if server.poll() is None:
-            print_colored(f"✓ Django server is running with PID: {server.pid}", Colors.GREEN)
-        else:
-            # Read stderr to show what went wrong
-            err = server.stderr.read().decode(errors='replace')
-            print_colored("✗ Failed to start Django server", Colors.RED)
-            if err:
-                print_colored(f"  Error detail: {err.strip()}", Colors.RED)
-            sys.exit(1)
-
-    except Exception as e:
-        print_colored(f"Error starting server: {e}", Colors.RED)
+        server = subprocess.Popen(cmd, **popen_kwargs)
+    except FileNotFoundError:
+        print_colored(f"✗ Python executable not found: {python_exe}", Colors.RED)
         sys.exit(1)
 
+    # ── Wait up to 5 s for the server to bind ──────────────────────────────
+    for _ in range(10):
+        time.sleep(0.5)
+        if server.poll() is not None:
+            # Process already exited — grab stderr
+            err = server.stderr.read().decode(errors='replace').strip()
+            print_colored("✗ Django server failed to start.", Colors.RED)
+            if err:
+                print_colored(f"  {err}", Colors.RED)
+            sys.exit(1)
+        if not is_port_available(host, port):
+            print_colored(f"✓ Server is up (PID {server.pid})", Colors.GREEN)
+            break
+    else:
+        print_colored("⚠ Server did not bind within 5 s — continuing anyway.", Colors.YELLOW)
+
+    # ── Keep alive until Ctrl+C ────────────────────────────────────────────
     try:
         server.wait()
     except KeyboardInterrupt:
         server.terminate()
-        print_colored("\nShutting down R2H2 application...", Colors.YELLOW)
+        print_colored("\nShutting down R2H2…", Colors.YELLOW)
         print_colored("Thank you for using R2H2! 🚀", Colors.GREEN)
 
-def main():
-    """Main launch function"""
-    print_colored("=== R2H2 Desktop Application Launcher ===", Colors.GREEN)
-    
-    # Configuration
-    HOST = '127.0.0.1'
-    PREFERRED_PORT = 8030
-    
-    # Get project directory
-    project_dir = get_project_directory()
-    print_colored(f"Project directory: {project_dir}", Colors.BLUE)
-    
-    # Check if manage.py exists
-    manage_py = Path(project_dir) / 'manage.py'
-    if not manage_py.exists():
-        print_colored(f"Error: manage.py not found in {project_dir}", Colors.RED)
-        print_colored("Please ensure R2H2_app is installed correctly.", Colors.RED)
-        sys.exit(1)
-    
-    # Ensure config.yaml exists and report DB location
-    if not ensure_r2h2_config():
-        print_colored("Failed to initialise R2H2 config", Colors.RED)
-        sys.exit(1)
 
-    # Check dependencies
-    if not check_dependencies():
-        print_colored("Please install missing dependencies", Colors.RED)
-        sys.exit(1)
-    
-    # Find virtual environment
-    venv_path = find_virtual_environment(project_dir)
-    
-    # Run migrations
-    if not run_migrations(project_dir, venv_path):
-        print_colored("Failed to run migrations", Colors.RED)
-        sys.exit(1)
-    
-    # Start Django server (will find available port automatically)
-    start_django_server(project_dir, venv_path, HOST, PREFERRED_PORT)
+# ── Entry point ─────────────────────────────────────────────────────────────
+def main():
+    print_colored("=" * 48, Colors.CYAN)
+    print_colored("   R2H2 — Renewable to Hydrogen", Colors.GREEN)
+    print_colored("=" * 48, Colors.CYAN)
+
+    project_dir = get_project_directory()
+    print_colored(f"  Project : {project_dir}", Colors.NC)
+    print_colored(f"  Python  : {get_python_executable(project_dir)}", Colors.NC)
+
+    start_django_server(project_dir)
+
 
 if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        print_colored("\nApplication terminated by user", Colors.YELLOW)
-        sys.exit(0)
-    except Exception as e:
-        print_colored(f"Unexpected error: {e}", Colors.RED)
-        sys.exit(1)
+    main()

@@ -214,6 +214,7 @@ def _run_simulation_thread(run_id):
         # TODO: replace with real runner, e.g.
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         from r2h2.r2h2 import R2H2
+        run.simulation.electro_cells.all().first().rR
         R2H2(run.simulation).run()
         # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # time.sleep(15 + random.uniform(-2, 2))  # simulate variable runtime

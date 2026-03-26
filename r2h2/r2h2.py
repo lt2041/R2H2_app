@@ -191,9 +191,7 @@ class R2H2():
     def setUpElectro1(self):
         """Initialise the list of electrolyser control units, degradation arrays, and curves."""
         # ec = electroCell(zElectroCell)  # uses ec.rT (synced later per bank)
-        sim_db_obj = self.simulation_name
-        electro_cell_obj = sim_db_obj.electro_cells.all().first()
-        self.electrocellpem.from_django(electro_cell_obj)
+
         self.electrocellpem.build_curves()
         # units: List[ElectrolyserUnit] = [] # DECLARES EMPTY LIST TO BE FILLED, ONLY CONTAINING ELECTROLYSER UNITS
         # base = copy.deepcopy(zElectrolyserUnit)
@@ -212,7 +210,71 @@ class R2H2():
         # return units, ec
         """
     
-    
+
+    def map_to_db_objects(self):
+        """
+        Map Django DB model instances → r2h2 component attributes.
+
+        For every M2M relation on the simulation DB object, load the first
+        linked record into the matching r2h2 component instance via
+        ComponentBase.from_django().
+        """
+        import r2h2.components as components_module
+
+        sim_db_obj = self.simulation_name   # Django Simulation model instance
+
+        # Map:  M2M manager name on Simulation  →  r2h2 attribute name
+        components = {
+            'batteries':          'battery',
+            'electro_cells':      'electrocellpem',
+            'electrolyser_units': 'electrolyserunit',
+            'thermal_properties': 'thermalproperties',
+            'time_outputs':       'timeoutputs',
+            'wind_inputs':        'windinputs',
+        }
+
+        for manager_name, attr_name in components.items():
+            # ── Get the M2M manager ─────────────────────────────────────────
+            manager = getattr(sim_db_obj, manager_name, None)
+            if manager is None:
+                if self.verbose:
+                    print(f"[map_to_db_objects] No M2M manager '{manager_name}' on Simulation — skipping.")
+                continue
+
+            db_obj = manager.all().first()
+            if db_obj is None:
+                if self.verbose:
+                    print(f"[map_to_db_objects] No DB record linked via '{manager_name}' — skipping.")
+                continue
+
+            # ── Get the matching r2h2 component instance ────────────────────
+            component = getattr(self, attr_name, None)
+            if component is None:
+                if self.verbose:
+                    print(f"[map_to_db_objects] r2h2 has no attribute '{attr_name}' — skipping.")
+                continue
+
+            # ── Copy every DB field that exists in the component's defaults ─
+            defaults = getattr(component, '_defaults', None) or vars(component)
+            mapped, skipped = 0, 0
+
+            for field_name in defaults:
+                if hasattr(db_obj, field_name):
+                    db_value = getattr(db_obj, field_name)
+                    if db_value is not None:
+                        setattr(component, field_name, db_value)
+                        mapped += 1
+                else:
+                    skipped += 1
+
+            if self.verbose:
+                print(
+                    f"[map_to_db_objects] {manager_name!r:24s} → "
+                    f"self.{attr_name:20s} | "
+                    f"mapped={mapped:3d}  skipped={skipped:3d}  "
+                    f"(DB record: {db_obj})"
+                )
+
     # ---  SIMULATION RUN FUNCTION : MIGRATED FROM LEGACY CODE (WIP)  --- #
     def run(self, # PREVIOUSLY: NO `self` ARGUMENT, ALL BELOW WERE PASSED AS FUNCTION ARGUMENTS
         # settings,
@@ -233,6 +295,7 @@ class R2H2():
         time.sleep(.1)  # Simulate some startup time
         # Setup electrolyser units and cell
 
+        self.map_to_db_objects()
         self.setUpElectro1()  ## SKELETON - WIP
         """
 

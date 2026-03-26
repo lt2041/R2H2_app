@@ -100,7 +100,7 @@ class ElectroCellPEM(models.Model):
     arR_cell = models.JSONField(default=None, blank=True, null=True)
     arV_cell = models.JSONField(default=None, blank=True, null=True)
     # GEOMETRY & GRID
-    iNumCurrent = models.FloatField(default=1000)
+    iNumCurrent = models.PositiveIntegerField(default=1000)
     rA_cell = models.FloatField(default=1000.0, help_text="cm^2")
     rI_rated = models.FloatField(default=3.0, help_text="A/cm^2")
     # TEMPERATURE REFERENCES

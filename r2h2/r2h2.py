@@ -7,6 +7,8 @@ import os
 import socket
 from pathlib import Path
 import sys
+import numpy as np
+from copy import deepcopy
 
 
 # Custom Libraries
@@ -145,13 +147,12 @@ class R2H2():
         rLossDry = 0.03
         rConstantPart = rMu/rF/rN*(1-rLossDry)
 
-        """
-        arCurrentDensity = zElectroCell.arCurrentDensity
-        arFaradayEff = zElectroCell.faraday_efficiency(arCurrentDensity)
+        arCurrentDensity = self.electrocellpem.arCurrentDensity
+        arFaradayEff = self.electrocellpem.faraday_efficiency(arCurrentDensity)
 
-        for i, e in enumerate(zElectrolyserUnit):
-            arV_cell = zElectroCell.arV_cell
-            rA_cell = zElectroCell.rA_cell
+        for e in self.electrolyserunits:
+            arV_cell = self.electrocellpem.arV_cell
+            rA_cell = self.electrocellpem.rA_cell
 
             if e.iControlLevel == 1:  # Electrolyser level
                 arV_s = arV_cell * e.iN_cell * e.iN_stacks * e.iN_banks
@@ -184,31 +185,27 @@ class R2H2():
             e.rMinPower_s = e.rRatedPower_s * e.rTurnDownRatio
             e.rAncilliaryPower_s = e.rAncilliaryPowerFrac * e.rRatedPower_s
 
-        # return zElectrolyserUnit
-        """
     
     # WIP - not yet implemented
     def setUpElectro1(self):
         """Initialise the list of electrolyser control units, degradation arrays, and curves."""
         # ec = electroCell(zElectroCell)  # uses ec.rT (synced later per bank)
-
         self.electrocellpem.build_curves()
         # units: List[ElectrolyserUnit] = [] # DECLARES EMPTY LIST TO BE FILLED, ONLY CONTAINING ELECTROLYSER UNITS
+        units = []
         # base = copy.deepcopy(zElectrolyserUnit)
-        """
-        base.arDegradationTotal = np.zeros(ec.iNumCurrent) + base.rDegradation
+        base = self.electrolyserunit
+        base.arDegradationTotal = np.zeros(self.electrocellpem.iNumCurrent) + base.rDegradation
         base.rSummedDegradation = 1e-30
         units.append(base)
         # Replicate to iNumUnits
         for _ in range(1, base.iNumUnits):
-            e = copy.deepcopy(base)
-            e.arDegradationTotal = np.zeros(ec.iNumCurrent) + e.rDegradation
+            e = deepcopy(base)
+            e.arDegradationTotal = np.zeros(self.electrocellpem.iNumCurrent) + e.rDegradation
             e.rSummedDegradation = 1e-30
             units.append(e)
-
-        units = electrolyser(ec, units)
-        # return units, ec
-        """
+        self.electrolyserunits = units
+        self.electrolyser()
     
 
     def map_to_db_objects(self):
@@ -296,7 +293,7 @@ class R2H2():
         # Setup electrolyser units and cell
 
         self.map_to_db_objects()
-        self.setUpElectro1()  ## SKELETON - WIP
+        self.setUpElectro1()
         """
 
         # Create bank thermal states (one per bank*electrolyser) using tech template

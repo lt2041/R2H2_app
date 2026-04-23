@@ -72,28 +72,30 @@ print(f"Battery replacements: {yr0['Battery'].iNumReplacements}")
 # ## 3 – Results
 
 # %%
-plot_hourly_overview(sim, out);
+# backend="plotly" is the default — pass backend="matplotlib" for static output
+plot_hourly_overview(sim, out, backend="plotly")
 
 
 # %% [markdown]
 # ## 4 – Hourly degradation
 
 # %%
-plot_degradation(out);
+plot_degradation(out, backend="plotly")
 
 
 # %% [markdown]
 # ## 5 – Battery capacity fade
 
 # %%
-plot_battery_fade(out);
+plot_battery_fade(out, backend="plotly")
 
 
 # %% [markdown]
 # ## 6 – Per-second traces (first hour)
 
 # %%
-plot_second_traces(sim, hour=0);
+fig, _ = plot_second_traces(sim, hour=0, backend="plotly")
+fig
 
 
 

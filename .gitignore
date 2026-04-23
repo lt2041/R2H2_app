@@ -213,3 +213,4 @@ __marimo__/
 ## CUSTOM ##
 .DS_Store*
 .vscode*
+data/*

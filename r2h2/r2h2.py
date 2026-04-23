@@ -4,16 +4,869 @@
 ###############################################################################################################
 # Standard Python Libraries
 import os
+import copy
 import socket
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Tuple
 import sys
 import numpy as np
 from copy import deepcopy
+from scipy import signal
 
 
 # Custom Libraries
 from r2h2.config import Paths
 from r2h2.components import *
+
+###############################################################################################################
+
+# ---------------------------------------------------------------------------
+# Electrochemistry constant
+# ---------------------------------------------------------------------------
+V_TN_CELL = 1.48  # [V] thermoneutral voltage per cell
+
+# ---------------------------------------------------------------------------
+# Bank thermal models
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BaseBankThermal(ABC):
+    n_stacks: int = 4
+
+    s1: float = 0.004
+    r3: float = 1.0
+    T_nominal: float = 55.0
+
+    h1: float = 0.0
+    h2: float = 10.0
+    h3: float = 20.0
+    k1: float = 52.0
+
+    k_gen: float = 1.0
+    c_coolant: float = 4180.0
+
+    insulated: bool = False
+
+    _s2_unins: float = 1e-4
+    _k2_unins: float = 52.0
+    _s2_ins: float = 0.2
+    _k2_ins: float = 0.05
+
+    @property
+    def s2(self) -> float:
+        return self._s2_ins if self.insulated else self._s2_unins
+
+    @property
+    def k2(self) -> float:
+        return self._k2_ins if self.insulated else self._k2_unins
+
+
+@dataclass
+class BankThermalPEM(BaseBankThermal):
+    W_stack: float = 0.48
+    H_stack: float = 0.71
+    L_stack: float = 1.43
+
+    rho_core: float = 2240.0
+    c_core: float = 710.0
+    mass_div: int = 5
+    c_other: float = 900.0
+    rho_other: float = 1000.0
+
+    T_nominal: float = 55.0
+    T_min: float = 10.0
+    T_max: float = 55.0
+    rT: float = 55.0
+
+
+# ---------------------------------------------------------------------------
+# Technology presets  (PEM only for now; ALK requires external UNIFI package)
+# ---------------------------------------------------------------------------
+
+_TECH_PRESETS: Dict[str, Dict[str, Dict[str, Any]]] = {
+    "PEM": {
+        "topology": {
+            "iN_stacks": 4,
+            "iN_banks": 2,
+            "iNumElectro": 1,
+            "iN_cell": 100,
+        },
+        "dynamics": {
+            "rTimeConst": 30.0,
+            "rDeadBandRatio": 2.0,
+            "r_s": 1.42e-10,
+            "r_f": 3.33e-7,
+            "r_o": 1.47e-4,
+            "rRampUp_W_s": 2.0e5,
+            "rRampDown_W_s": 5.0e5,
+        },
+    },
+}
+
+
+def _preset_section(kind: str, section: str) -> Dict[str, Any]:
+    key = kind.upper() if kind.upper() in _TECH_PRESETS else "PEM"
+    return copy.deepcopy(_TECH_PRESETS[key].get(section, {}))
+
+
+def apply_unit_topology(
+    kind: str,
+    el: "ElectrolyserUnit",
+    overrides: Optional[Dict[str, int]] = None,
+) -> "ElectrolyserUnit":
+    params = _preset_section(kind, "topology")
+    if overrides:
+        params.update(overrides)
+    for attr, value in params.items():
+        setattr(el, attr, value)
+    return el
+
+
+def apply_unit_profile(
+    kind: str,
+    el: "ElectrolyserUnit",
+    overrides: Optional[Dict[str, float]] = None,
+) -> "ElectrolyserUnit":
+    params = _preset_section(kind, "dynamics")
+    if overrides:
+        params.update(overrides)
+    for attr, value in params.items():
+        setattr(el, attr, value)
+    return el
+
+
+def bank_thermal_from_kind(
+    kind: str,
+    el: Optional["ElectrolyserUnit"] = None,
+    *,
+    insulated: bool = False,
+) -> BaseBankThermal:
+    template = _preset_section(kind, "topology")
+    n_stacks_bank = el.iN_stacks if el else template.get("iN_stacks", 4)
+    model = BankThermalPEM(n_stacks=n_stacks_bank)
+    model.insulated = insulated
+    return model
+
+
+# ---------------------------------------------------------------------------
+# Thermal step  (PEM implementation; mirrors UNIFI_alk_model_thermal API)
+# ---------------------------------------------------------------------------
+
+def thermal_step(
+    bank: BaseBankThermal,
+    *,
+    Q_el: float,
+    T_amb: float,
+    dt: float,
+    out: Optional[dict] = None,
+) -> BaseBankThermal:
+    """Advance *bank* temperature by *dt* seconds given electrical heat *Q_el* [W]."""
+    if out is None:
+        out = {}
+
+    T = bank.rT
+
+    # ── Thermal capacitance (J/K) ───────────────────────────────────────────
+    if isinstance(bank, BankThermalPEM):
+        V_stack = bank.W_stack * bank.H_stack * bank.L_stack
+        m_core = bank.rho_core * V_stack * bank.n_stacks
+        C_th = (m_core / bank.mass_div) * bank.c_core + \
+               (m_core * (1.0 - 1.0 / bank.mass_div)) * bank.c_other
+    else:
+        C_th = max(1e6 * bank.n_stacks, 1.0)
+
+    # ── Equivalent conductance (W/K) ────────────────────────────────────────
+    if isinstance(bank, BankThermalPEM):
+        A_wall = 2.0 * (
+            bank.W_stack * bank.H_stack +
+            bank.W_stack * bank.L_stack +
+            bank.H_stack * bank.L_stack
+        ) * bank.n_stacks
+        R_wall = bank.s1 / max(bank.k1, 1e-12) + bank.s2 / max(bank.k2, 1e-12)
+        G_eq = A_wall / max(R_wall + 1.0 / max(bank.h2, 1e-12), 1e-12)
+    else:
+        G_eq = 500.0 * bank.n_stacks
+
+    # ── Losses and cooling ───────────────────────────────────────────────────
+    Q_lost = G_eq * (T - T_amb)
+
+    Q_cool = 0.0
+    P_cool_elec = 0.0
+    COP = 3.0
+    T_nom = bank.T_nominal
+    if T > T_nom:
+        Q_cool = G_eq * (T - T_nom)
+        P_cool_elec = Q_cool / COP
+
+    # ── Update temperature ───────────────────────────────────────────────────
+    dT = (Q_el - Q_lost - Q_cool) * dt / max(C_th, 1.0)
+    T_max = getattr(bank, "T_max", 90.0)
+    bank.rT = float(np.clip(T + dT, T_amb, T_max))
+
+    out["q_gain"]      = float(Q_el)
+    out["q_lost"]      = float(Q_lost)
+    out["q_cool"]      = float(Q_cool)
+    out["p_cool_elec"] = float(P_cool_elec)
+    out["G_eq"]        = float(G_eq)
+    out["C_th"]        = float(C_th)
+
+    return bank
+
+
+# ---------------------------------------------------------------------------
+# Rainflow cycle counting
+# ---------------------------------------------------------------------------
+
+def rainflow(series: np.ndarray, dt: float = 1.0) -> np.ndarray:
+    """Simplified rainflow counter.  Returns array of shape (N, 3): [count, amp, mean]."""
+    x = np.asarray(series, dtype=float).ravel()
+    idx = np.where(np.diff(x) != 0)[0] + 1
+    x = np.concatenate(([x[0]], x[idx]))
+    ind = np.concatenate(([0], idx))
+
+    s = np.sign(np.diff(x))
+    chg = np.where(np.diff(s) != 0)[0] + 1
+    ext = np.unique(np.concatenate(([0], chg, [len(x) - 1])))
+    y = x[ext]
+    iy = ind[ext]
+
+    stack: list = []
+    out_cycles: list = []
+
+    for k in range(len(y)):
+        stack.append((y[k], iy[k]))
+        while len(stack) >= 3:
+            a0, a1, a2 = stack[-3][0], stack[-2][0], stack[-1][0]
+            R01 = abs(a1 - a0)
+            R12 = abs(a2 - a1)
+            if R12 >= R01:
+                amp = R01 / 2.0
+                mean = (a0 + a1) / 2.0
+                t_start = stack[-3][1]
+                out_cycles.append((0.5, amp, mean, t_start))
+                stack.pop(-3)
+                stack.pop(-2)
+            else:
+                break
+
+    # Residue: count remaining half-cycles
+    for i in range(len(stack) - 1):
+        a0, a1 = stack[i][0], stack[i + 1][0]
+        amp = abs(a1 - a0) / 2.0
+        mean = (a0 + a1) / 2.0
+        t_start = stack[i][1]
+        out_cycles.append((0.5, amp, mean, t_start))
+
+    if not out_cycles:
+        return np.zeros((0, 3))
+    arr = np.array(out_cycles)
+    return arr[:, :3]
+
+
+# ---------------------------------------------------------------------------
+# Wind data loader
+# ---------------------------------------------------------------------------
+
+def load_wind_h5(path: str, turbine_rated_W: float = 5.447e6) -> "WindInputs":
+    """Load a wind HDF5 file produced by MATLAB / the legacy pipeline.
+
+    Expected datasets:
+      ``/PowerInput``  – shape (hours, time_steps) or (time_steps, hours)
+      ``/Time``        – 1-D time vector in seconds  [0 … 3699]
+      ``/WindSpeed``   – 1-D hourly wind speed (m/s), one value per hour
+
+    If ``PowerInput`` is entirely NaN (placeholder file), power is synthesised
+    from ``WindSpeed`` using a simple cubic wind-speed-to-power model capped at
+    ``turbine_rated_W``.
+
+    Returns a :class:`WindInputs` instance with:
+      ``arPowerInput`` – shape (time_steps, hours)   [W]
+      ``arTime``       – 1-D array of seconds        [s]
+    """
+    try:
+        import h5py
+    except ImportError as exc:
+        raise ImportError("h5py is required to load wind HDF5 files.  "
+                          "Install it with:  pip install h5py") from exc
+
+    with h5py.File(path, "r") as f:
+        t  = f["/Time"][:].astype(np.float64).ravel()
+        ws = f["/WindSpeed"][:].astype(np.float64).ravel()
+        P  = f["/PowerInput"][:].astype(np.float64)
+
+    # Detect orientation: rows → time-steps (len t), cols → hours (len ws)
+    if P.shape[0] == ws.size and P.shape[1] == t.size:
+        P = P.T  # (hours, time) → (time, hours)
+
+    # If power data is all-NaN, synthesise from wind speed
+    if np.all(np.isnan(P)):
+        v_cut_in  = 3.0    # m/s
+        v_rated   = 12.0   # m/s
+        v_cut_out = 25.0   # m/s
+        T_steps   = t.size
+        n_hours   = ws.size
+        P = np.zeros((T_steps, n_hours), dtype=np.float64)
+        for h in range(n_hours):
+            v = ws[h]
+            if v < v_cut_in or v >= v_cut_out:
+                p = 0.0
+            elif v >= v_rated:
+                p = turbine_rated_W
+            else:
+                p = turbine_rated_W * ((v - v_cut_in) / (v_rated - v_cut_in)) ** 3
+            P[:, h] = p  # constant within the hour (uniform profile)
+
+    wind = WindInputs()
+    wind.arPowerInput = P
+    wind.arTime = t
+    return wind
+
+
+# ---------------------------------------------------------------------------
+# Low-pass filter (first-order IIR, matches legacy lsim_first_order_lowpass)
+# ---------------------------------------------------------------------------
+
+def lsim_first_order_lowpass(u: np.ndarray, t: np.ndarray, tau: float) -> np.ndarray:
+    num = [1.0]
+    den = [tau, 1.0]
+    system = signal.TransferFunction(num, den)
+    dt = float(t[1] - t[0])
+    discrete_system = system.to_discrete(dt)
+    return signal.lfilter(discrete_system.num, discrete_system.den, u)
+
+
+# ---------------------------------------------------------------------------
+# Bank-index mapping helper
+# ---------------------------------------------------------------------------
+
+def _make_bank_index_maps(units: list) -> Tuple[List[List[int]], np.ndarray]:
+    u0 = units[0]
+    banks_per_electro = u0.iN_banks
+    stacks_per_bank = u0.iN_stacks if u0.iControlLevel == 3 else 1
+    units_per_electro = banks_per_electro * stacks_per_bank
+    num_banks_total = u0.iNumElectro * banks_per_electro
+    num_units = len(units)
+
+    bank_to_units: List[List[int]] = [[] for _ in range(num_banks_total)]
+    unit_to_bank = np.zeros(num_units, dtype=int)
+
+    for i in range(num_units):
+        e_idx = i // units_per_electro
+        within = i % units_per_electro
+        b_local = within // stacks_per_bank
+        b_global = e_idx * banks_per_electro + b_local
+        unit_to_bank[i] = b_global
+        bank_to_units[b_global].append(i)
+
+    return bank_to_units, unit_to_bank
+
+
+# ---------------------------------------------------------------------------
+# Dynamic control (on/off dispatch + proportional sharing)
+# ---------------------------------------------------------------------------
+
+def dynamicControl(units, battery, t_out, settings):
+    damage = np.array([u.rSummedDegradation for u in units], dtype=float)
+    battery.arBatteryDemand = np.zeros_like(t_out.arAvailablePower)
+
+    rBatteryProportion = np.clip(
+        battery.rSoCRef - battery.arInitialSoC,
+        -(1.0 - battery.rSoCRef),
+        battery.rSoCRef,
+    )
+    battery.arBatteryDemand = (
+        t_out.arAvailablePower * rBatteryProportion
+    ) * battery.rBatteryProportionalGain
+
+    per_sec_limit = 0.1 * battery.rBatteryRating / 3600.0
+    battery.arBatteryDemand = np.clip(
+        battery.arBatteryDemand, -per_sec_limit, per_sec_limit
+    )
+    if battery.arInitialSoC <= 0.0:
+        battery.arBatteryDemand = np.clip(battery.arBatteryDemand, 0.0, per_sec_limit)
+
+    t_out.arElectroAvailablePowerA = np.maximum(
+        t_out.arAvailablePower - battery.arBatteryDemand, 0.0
+    )
+
+    # Exponential smoothing (first-order low-pass)
+    tau = units[0].rTimeConst
+    dt = settings.rTimeStep
+    alpha = dt / (tau + dt)
+    t_out.arElectroAvailablePower = np.zeros_like(t_out.arElectroAvailablePowerA)
+    t_out.arElectroAvailablePower[0] = t_out.arElectroAvailablePowerA[0]
+    for k in range(1, len(t_out.arElectroAvailablePowerA)):
+        t_out.arElectroAvailablePower[k] = (
+            alpha * t_out.arElectroAvailablePowerA[k]
+            + (1.0 - alpha) * t_out.arElectroAvailablePower[k - 1]
+        )
+    t_out.rPreviousValue = float(t_out.arElectroAvailablePower[-1])
+
+    rMin   = units[0].rMinPower_s
+    rRated = units[0].rRatedPower_s
+    arMaxElectroSum = np.floor(t_out.arElectroAvailablePower / rMin).astype(int)
+    arMinElectroSum = np.ceil(t_out.arElectroAvailablePower / rRated).astype(int)
+
+    T = len(t_out.arElectroAvailablePower)
+    step0 = settings.rTransientSteps
+    t_out.aiIsOn[:, step0 - 1] = t_out.aiIsOn[:, -1]
+    t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
+    if t_out.arTotalElectroOn[step0 - 1] > 0:
+        t_out.arProportionPower[:, step0 - 1] = (
+            t_out.aiIsOn[:, step0 - 1] / t_out.arTotalElectroOn[step0 - 1]
+        )
+
+    for k in range(step0, T):
+        t_out.aiIsOn[:, k] = t_out.aiIsOn[:, k - 1]
+        total_on_prev    = t_out.arTotalElectroOn[k - 1]
+        available_power  = t_out.arElectroAvailablePower[k]
+
+        if arMinElectroSum[k] > total_on_prev and available_power > rMin * units[0].rDeadBandRatio:
+            rank = np.argsort(damage)
+            need = arMinElectroSum[k] - total_on_prev
+            for idx in rank:
+                if need <= 0:
+                    break
+                if t_out.aiIsOn[idx, k] == 0:
+                    t_out.aiIsOn[idx, k] = 1
+                    t_out.aiNumOn[idx] += 1
+                    endi = min(T, k + int(10 * 60 / settings.rTimeStep))
+                    t_out.aiWarmedUp[idx, k:endi] = 0
+                    units[idx].rTotalTurnOns += 1
+                    need -= 1
+            t_out.arTotalElectroOn[k] = np.sum(t_out.aiIsOn[:, k])
+
+        elif arMaxElectroSum[k] < total_on_prev:
+            rank = np.argsort(damage)
+            need = int(total_on_prev - arMaxElectroSum[k])
+            for idx in rank:
+                if need <= 0:
+                    break
+                if t_out.aiIsOn[idx, k] == 1:
+                    t_out.aiIsOn[idx, k] = 0
+                    need -= 1
+            t_out.arTotalElectroOn[k] = np.sum(t_out.aiIsOn[:, k])
+
+        else:
+            t_out.arTotalElectroOn[k] = total_on_prev
+
+        if t_out.arTotalElectroOn[k] > 0:
+            t_out.arProportionPower[:, k] = (
+                t_out.aiIsOn[:, k] / t_out.arTotalElectroOn[k]
+            )
+
+    return units, t_out, battery
+
+
+# ---------------------------------------------------------------------------
+# Per-hour electro-thermal coupled step
+# ---------------------------------------------------------------------------
+
+def runElectroStackStep1(
+    zElectroCell,
+    th_banks,
+    battery,
+    arPowerInput,
+    units,
+    arTime,
+    settings,
+    iCntHours,
+    t_out_prev,
+    cooling_power_feedback: Optional[np.ndarray] = None,
+):
+    num_units = units[0].iNumUnits
+    T = len(arTime)
+
+    # Wind → available power (filtered)
+    arWindPowerFilt = lsim_first_order_lowpass(np.squeeze(arPowerInput), arTime, 1.0)
+    arAvailablePower = arWindPowerFilt - units[0].rAncilliaryPower_s * num_units
+    if cooling_power_feedback is not None:
+        cool_arr = np.asarray(cooling_power_feedback, dtype=float).ravel()
+        if cool_arr.shape[0] != arAvailablePower.shape[0]:
+            raise ValueError("cooling_power_feedback length must match time axis")
+        arAvailablePower = np.maximum(arAvailablePower - cool_arr, 0.0)
+
+    bank_to_units, unit_to_bank = _make_bank_index_maps(units)
+    num_banks_total = len(bank_to_units)
+
+    # ── Normalise th_banks to a list ────────────────────────────────────────
+    if isinstance(th_banks, BaseBankThermal):
+        th_banks = [copy.deepcopy(th_banks) for _ in range(num_banks_total)]
+    elif not isinstance(th_banks, list):
+        th_template = bank_thermal_from_kind("PEM", units[0])
+        th_banks = [copy.deepcopy(th_template) for _ in range(num_banks_total)]
+    elif len(th_banks) < num_banks_total:
+        th_banks = th_banks + [copy.deepcopy(th_banks[0])
+                                for _ in range(num_banks_total - len(th_banks))]
+
+    # Per-bank cell state copies (carry rT for curve rebuilds)
+    ec_state_banks = [copy.deepcopy(zElectroCell) for _ in range(num_banks_total)]
+    bank_units = [[units[j] for j in idxs] for idxs in bank_to_units]
+    last_T_bank = np.full(num_banks_total, np.nan)
+    bank_ec_curves: List[Optional[Any]] = [None] * num_banks_total
+    temp_cache_threshold = 0.1
+
+    cache_arP   = [None] * num_units
+    cache_arI   = [None] * num_units
+    cache_arVsd = [None] * num_units
+    cache_arVs  = [None] * num_units
+    cache_arH2  = [None] * num_units
+
+    # ── Initialise output struct ─────────────────────────────────────────────
+    aiIsOn = np.zeros((num_units, T), dtype=int)
+    if t_out_prev is not None:
+        aiIsOn[:, -1] = t_out_prev.aiIsOn[:, -1]
+
+    t_out = TimeOutputs()
+    t_out.arTime                    = arTime
+    t_out.arWindPowerFilt           = arWindPowerFilt
+    t_out.arAvailablePower          = arAvailablePower
+    t_out.arElectroAvailablePowerA  = np.zeros_like(arAvailablePower)
+    t_out.arElectroAvailablePower   = np.zeros_like(arAvailablePower)
+    t_out.rPreviousValue            = 0.0
+    t_out.arTotalElectroDemand      = np.zeros_like(arAvailablePower)
+    t_out.arProportionPower         = np.zeros((num_units, T))
+    t_out.aiIsOn                    = aiIsOn
+    t_out.aiWarmedUp                = np.ones((num_units, T), dtype=int)
+    t_out.aiNumOn                   = np.zeros(num_units, dtype=int)
+    t_out.arTotalElectroOn          = np.zeros(T)
+    t_out.arElectroDemand           = np.zeros((num_units, T))
+    t_out.arI_unit                  = np.zeros((num_units, T))
+    t_out.arV_unit                  = np.zeros((num_units, T))
+    t_out.arV_unitUseful            = np.zeros((num_units, T))
+    t_out.arPower_unit              = np.zeros((num_units, T))
+    t_out.arPower_unitUseful        = np.zeros((num_units, T))
+    t_out.arDegradationInEfficiency = np.zeros((num_units, T))
+    t_out.arV_cell                  = np.zeros((num_units, T))
+    t_out.arProducedH2Dot           = np.zeros((num_units, T - settings.rTransientSteps + 1))
+    t_out.arHydroEfficiency         = np.zeros((num_units, T))
+    t_out.arP_el_total              = np.zeros(T)
+    t_out.arT_stack                 = np.zeros(T)
+    t_out.arH2Dot_total             = np.zeros(T)
+    t_out.arV_cell_avg              = np.zeros(T)
+    t_out.arEta_el_total            = np.zeros(T)
+    t_out.arEta_system_total        = np.zeros(T)
+    t_out.arP_el_banks              = np.zeros((num_banks_total, T))
+    t_out.arT_banks                 = np.zeros((num_banks_total, T))
+    t_out.arP_el_unit               = np.zeros((num_units, T))
+    t_out.arQ_gain_unit             = np.zeros((num_units, T))
+    t_out.arVtn_unit                = np.zeros((num_units, T))
+    t_out.arT_unit_bank             = np.zeros((num_units, T))
+    t_out.arQ_gain_banks            = np.zeros((num_banks_total, T))
+    t_out.arQ_lost_banks            = np.zeros((num_banks_total, T))
+    t_out.arQ_cool_banks            = np.zeros((num_banks_total, T))
+    t_out.arP_cool_elec_banks       = np.zeros((num_banks_total, T))
+    t_out.arG_eq_banks              = np.zeros((num_banks_total, T))
+    t_out.arC_th_banks              = np.zeros((num_banks_total, T))
+    t_out.arQ_gain_total            = np.zeros(T)
+    t_out.arQ_lost_total            = np.zeros(T)
+    t_out.arQ_cool_total            = np.zeros(T)
+    t_out.arP_cool_elec_total       = np.zeros(T)
+
+    # ── Dynamic control pass ─────────────────────────────────────────────────
+    units, t_out, battery = dynamicControl(units, battery, t_out, settings)
+
+    min_power   = units[0].rMinPower_s
+    rated_power = units[0].rRatedPower_s
+    t_out.arTotalElectroDemand = np.clip(
+        t_out.arElectroAvailablePower,
+        min_power  * t_out.arTotalElectroOn,
+        rated_power * t_out.arTotalElectroOn,
+    )
+    for i in range(num_units):
+        t_out.arElectroDemand[i, :] = np.minimum(
+            rated_power,
+            t_out.arProportionPower[i, :] * t_out.arTotalElectroDemand,
+        )
+
+    T_amb_hour = 15.0
+    dt = settings.rTimeStep
+    step0 = settings.rTransientSteps
+    H2_LHV = 119_988.0  # J/g
+
+    arH2Dot_time = np.zeros((num_units, T))
+
+    t_out.aiIsOn[:, step0 - 1]      = t_out.aiIsOn[:, -1]
+    t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
+    if t_out.arTotalElectroOn[step0 - 1] > 0:
+        t_out.arProportionPower[:, step0 - 1] = (
+            t_out.aiIsOn[:, step0 - 1] / t_out.arTotalElectroOn[step0 - 1]
+        )
+
+    # ── Per-second coupled loop ──────────────────────────────────────────────
+    for k in range(step0, T):
+
+        # 1) Rebuild curves per bank if temperature changed enough
+        for b, idxs in enumerate(bank_to_units):
+            T_b = th_banks[b].rT
+            if not np.isfinite(last_T_bank[b]) or abs(T_b - last_T_bank[b]) > temp_cache_threshold:
+                ec_state_banks[b].rT = T_b
+                ec_curves_b = ec_state_banks[b].build_curves()
+                bank_ec_curves[b] = ec_curves_b
+                last_T_bank[b] = T_b
+
+                rLHV_H2  = 119_988.0
+                rMu      = 2.01588
+                rF_const = 9.6485e4
+                rN_const = 2
+                rLossDry = 0.03
+                rConstantPart = rMu / rF_const / rN_const * (1 - rLossDry)
+
+                arJ   = ec_curves_b.arCurrentDensity
+                arFEff = ec_curves_b.faraday_efficiency(arJ)
+                arVc   = ec_curves_b.arV_cell
+                rA     = ec_curves_b.rA_cell
+
+                for j in idxs:
+                    e = units[j]
+                    if e.iControlLevel == 1:
+                        arV_s  = arVc * e.iN_cell * e.iN_stacks * e.iN_banks
+                        arV_sd = (arVc + e.rSummedDegradation) * e.iN_cell * e.iN_stacks * e.iN_banks
+                        arI_s  = arJ * rA
+                        arH2   = arFEff * rConstantPart * arI_s * e.iN_cell * e.iN_stacks * e.iN_banks
+                    elif e.iControlLevel == 2:
+                        arV_s  = arVc * e.iN_cell * e.iN_stacks
+                        arV_sd = (arVc + e.rSummedDegradation) * e.iN_cell * e.iN_stacks
+                        arI_s  = arJ * rA
+                        arH2   = arFEff * rConstantPart * arI_s * e.iN_cell * e.iN_stacks
+                    else:
+                        arV_s  = arVc * e.iN_cell
+                        arV_sd = (arVc + e.rSummedDegradation) * e.iN_cell
+                        arI_s  = arJ * rA
+                        arH2   = arFEff * rConstantPart * arI_s * e.iN_cell
+
+                    arP = arI_s * arV_sd
+                    cache_arP[j]   = arP
+                    cache_arI[j]   = arI_s
+                    cache_arVsd[j] = arV_sd
+                    cache_arVs[j]  = arV_s
+                    cache_arH2[j]  = arH2
+
+        # 2) Interpolate per-unit quantities + accumulate per-bank heat
+        P_bank_k     = np.zeros(num_banks_total)
+        H2_bank_k    = np.zeros(num_banks_total)
+        Qgain_bank_k = np.zeros(num_banks_total)
+
+        for i in range(num_units):
+            demand_target = float(t_out.arElectroDemand[i, k])
+            prev_P = float(t_out.arPower_unit[i, k - 1]) if k > 0 else 0.0
+
+            up_Ws   = units[i].rRampUp_W_s
+            down_Ws = units[i].rRampDown_W_s
+            if not np.isfinite(up_Ws):   up_Ws   = 1e99
+            if not np.isfinite(down_Ws): down_Ws = 1e99
+
+            demand_ik = float(np.clip(
+                demand_target,
+                prev_P - down_Ws * dt,
+                prev_P + up_Ws  * dt,
+            ))
+            t_out.arElectroDemand[i, k] = demand_ik
+
+            on = t_out.aiIsOn[i, k]
+            I_ik   = np.interp(demand_ik, cache_arP[i], cache_arI[i])   * on
+            V_deg  = np.interp(I_ik,      cache_arI[i], cache_arVsd[i]) * on
+            V_use  = np.interp(I_ik,      cache_arI[i], cache_arVs[i])  * on
+
+            t_out.arI_unit[i, k]       = I_ik
+            t_out.arV_unit[i, k]       = V_deg
+            t_out.arV_unitUseful[i, k] = V_use
+
+            P_deg = I_ik * V_deg
+            P_use = I_ik * V_use
+            t_out.arPower_unit[i, k]       = P_deg
+            t_out.arPower_unitUseful[i, k] = P_use
+            t_out.arP_el_unit[i, k]        = P_deg
+
+            t_out.arDegradationInEfficiency[i, k] = (
+                0.0 if demand_ik == 0.0 else 1.0 - P_use / demand_ik
+            )
+            t_out.arV_cell[i, k] = V_deg / max(settings.rDivisor, 1.0)
+
+            arH2Dot_time[i, k] = np.interp(I_ik, cache_arI[i], cache_arH2[i])
+
+            if units[i].iControlLevel == 3:
+                cells_equiv = units[i].iN_cell
+            elif units[i].iControlLevel == 2:
+                cells_equiv = units[i].iN_cell * units[i].iN_stacks
+            else:
+                cells_equiv = units[i].iN_cell * units[i].iN_stacks * units[i].iN_banks
+
+            Vtn_equiv = V_TN_CELL * cells_equiv
+            q_gain_i  = I_ik * max(V_deg - Vtn_equiv, 0.0)
+            t_out.arVtn_unit[i, k]    = Vtn_equiv
+            t_out.arQ_gain_unit[i, k] = q_gain_i
+
+            b = int(unit_to_bank[i])
+            P_bank_k[b]     += P_deg
+            H2_bank_k[b]    += arH2Dot_time[i, k]
+            Qgain_bank_k[b] += q_gain_i
+            t_out.arT_unit_bank[i, k] = th_banks[b].rT
+
+        # 3) Global totals and bank thermal advance
+        P_el_k   = float(np.sum(P_bank_k))
+        H2dot_k  = float(np.sum(H2_bank_k))
+        Vcell_avg_k = (float(np.mean(t_out.arV_cell[:, k]))
+                       if t_out.arTotalElectroOn[k] > 0 else 0.0)
+        eta_stack_k = 0.0 if P_el_k <= 0.0 else (H2_LHV * H2dot_k) / P_el_k
+
+        Qg_sum = Ql_sum = Qc_sum = Pc_sum = 0.0
+        for b in range(num_banks_total):
+            diag: dict = {}
+            th_banks[b] = thermal_step(
+                th_banks[b], Q_el=float(Qgain_bank_k[b]),
+                T_amb=T_amb_hour, dt=dt, out=diag,
+            )
+            t_out.arP_el_banks[b, k] = P_bank_k[b]
+            t_out.arT_banks[b, k]    = th_banks[b].rT
+            t_out.arQ_gain_banks[b, k]      = diag.get("q_gain", 0.0)
+            t_out.arQ_lost_banks[b, k]      = diag.get("q_lost", 0.0)
+            t_out.arQ_cool_banks[b, k]      = diag.get("q_cool", 0.0)
+            t_out.arP_cool_elec_banks[b, k] = diag.get("p_cool_elec", 0.0)
+            t_out.arG_eq_banks[b, k]        = diag.get("G_eq", 0.0)
+            t_out.arC_th_banks[b, k]        = diag.get("C_th", 0.0)
+            Qg_sum += t_out.arQ_gain_banks[b, k]
+            Ql_sum += t_out.arQ_lost_banks[b, k]
+            Qc_sum += t_out.arQ_cool_banks[b, k]
+            Pc_sum += t_out.arP_cool_elec_banks[b, k]
+
+        t_out.arQ_gain_total[k]      = Qg_sum
+        t_out.arQ_lost_total[k]      = Ql_sum
+        t_out.arQ_cool_total[k]      = Qc_sum
+        t_out.arP_cool_elec_total[k] = Pc_sum
+
+        total_power_w_cool  = P_el_k + Pc_sum
+        eta_system_k = (0.0 if total_power_w_cool <= 0.0
+                        else (H2_LHV * H2dot_k) / total_power_w_cool)
+
+        t_out.arP_el_total[k]       = P_el_k
+        t_out.arH2Dot_total[k]      = H2dot_k
+        t_out.arV_cell_avg[k]       = Vcell_avg_k
+        t_out.arEta_el_total[k]     = eta_stack_k
+        t_out.arEta_system_total[k] = eta_system_k
+        t_out.arT_stack[k]          = float(np.mean(t_out.arT_banks[:, k]))
+
+    # ── Post-loop: degradation + H2 outputs ─────────────────────────────────
+    for i in range(num_units):
+        seg_v = t_out.arV_cell[i, step0 - 1:] * t_out.aiIsOn[i, step0 - 1:]
+        c_s = float(np.sum(seg_v) * dt)
+
+        c_f = 0.0
+        if np.any(seg_v != 0.0):
+            rf = rainflow(seg_v, dt=dt)
+            if rf.shape[0] > 0:
+                c_f = float(np.sum((2.0 * rf[:, 1]) * rf[:, 0]))
+
+        if not hasattr(units[i], "arDegradationSteady") or units[i].arDegradationSteady is None:
+            units[i].arDegradationSteady  = []
+            units[i].arDegradationFatigue = []
+            units[i].arDegradationOnOff   = []
+
+        units[i].arDegradationSteady.append(units[i].r_s * c_s)
+        units[i].arDegradationFatigue.append(units[i].r_f * c_f)
+        units[i].arDegradationOnOff.append(0.0)
+
+        t_out.arProducedH2Dot[i, :] = arH2Dot_time[i, step0 - 1:]
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            eff_vec = np.divide(
+                t_out.arPower_unitUseful[i, :],
+                t_out.arElectroDemand[i, :],
+                out=np.zeros_like(t_out.arElectroDemand[i, :]),
+                where=t_out.arElectroDemand[i, :] != 0.0,
+            )
+        t_out.arDegradationInEfficiency[i, :] = 1.0 - eff_vec
+        t_out.arHydroEfficiency[i, :] = np.interp(
+            t_out.arElectroDemand[i, :],
+            units[i].arP_Total_s,
+            units[i].arEfficiency_s,
+        )
+
+        units[i].arDegradationOnOff[-1]  = units[i].r_o * float(t_out.aiNumOn[i])
+        units[i].rDegradationOnOffTotal  = float(np.sum(units[i].arDegradationOnOff))
+        units[i].rDegradationSteadyTotal = float(np.sum(units[i].arDegradationSteady))
+        units[i].rDegradationFatigueTotal = float(np.sum(units[i].arDegradationFatigue))
+
+        total_this_hour = (units[i].arDegradationSteady[-1]
+                           + units[i].arDegradationFatigue[-1]
+                           + units[i].arDegradationOnOff[-1])
+        units[i].rSummedDegradation += float(total_this_hour)
+
+    t_out.arTotalElectroDemand = (
+        np.sum(t_out.arElectroDemand, axis=0)
+        + units[0].rAncilliaryPower_s * num_units
+    )
+
+    return units, t_out, battery, th_banks
+
+
+# ---------------------------------------------------------------------------
+# Battery model (per-hour)
+# ---------------------------------------------------------------------------
+
+def runBattery1(t_out, battery, settings) -> "Battery":
+    """Update battery SoC and degradation for one hour."""
+    start = settings.rTransientSteps - 1
+    P_batt = t_out.arAvailablePower[start:] - t_out.arTotalElectroDemand[start:]
+
+    dt = settings.rTimeStep
+    SoC = np.empty_like(P_batt)
+    effective_power = np.zeros_like(P_batt)
+    soc_prev = float(np.clip(battery.arInitialSoC, 0.0, 1.0))
+    for k in range(len(P_batt)):
+        if battery.rBatteryRating <= 0.0 or dt <= 0.0:
+            delta = 0.0
+        else:
+            delta = float(np.clip(
+                P_batt[k] * dt / battery.rBatteryRating, -soc_prev, 1.0 - soc_prev
+            ))
+        soc_curr = soc_prev + delta
+        SoC[k] = soc_curr
+        effective_power[k] = 0.0 if dt <= 0.0 else delta * battery.rBatteryRating / dt
+        soc_prev = soc_curr
+
+    battery.arSoC          = SoC
+    battery.arDoD          = 1.0 - SoC
+    battery.arBatteryPower = effective_power
+
+    cycles = rainflow(battery.arSoC, dt=dt)
+
+    battery.rSocAv  = float(np.mean(SoC))
+    battery.rSocMax = float(np.max(SoC))
+    battery.rSocMin = float(np.min(SoC))
+    battery.rDodAv  = float(np.mean(battery.arDoD))
+
+    rStAv = battery.rKt * (settings.rTotalTime - settings.rTransientSteps * settings.rTimeStep + 1)
+    rSsAv = np.exp(battery.rKs * (battery.rSocAv - battery.rSoCRef))
+    battery.rFt += rStAv * rSsAv
+
+    for i in range(cycles.shape[0]):
+        Ci      = cycles[i, 0]
+        DoD     = cycles[i, 1] * 2.0
+        SoC_m   = cycles[i, 2]
+        Sd      = 1.0 / (battery.rKd1 * (DoD ** battery.rKd2) + battery.rKd3)
+        Ss      = np.exp(battery.rKs * (SoC_m - battery.rSoCRef))
+        battery.rFc += Ci * Sd * Ss
+
+    rFd = battery.rFc + battery.rFt
+    battery.rRCD = (battery.rAlphaSei * np.exp(-battery.rBetaSei * rFd)
+                    + (1.0 - battery.rAlphaSei) * np.exp(-rFd))
+
+    battery.rFc = 0.0
+    battery.rFt = 0.0
+
+    battery.rBatteryRating = battery.rBatteryRating * battery.rRCD
+
+    if np.any(battery.arSoC > 1.0) or np.any(battery.arSoC < 0.0):
+        battery.rBatteryRating  = battery.rInitialBatteryRating
+        battery.iNumReplacements += 1
+
+    battery.arInitialSoC = float(battery.arSoC[-1])
+    return battery
+
 
 ###############################################################################################################
 
@@ -72,27 +925,70 @@ class R2H2():
         
         raise ValueError(f"Class '{class_name}' not found in components module or current namespace")
     
-    def __init__(self, simulation_name=None, verbose=False):
-        
+    def __init__(self, simulation_name=None, verbose=False,
+                 kind: str = "PEM",
+                 use_cooling_feedback: bool = False,
+                 insulated: bool = False,
+                 wind_h5_path: Optional[str] = None):
+        """
+        Initialise an R2H2 simulation.
+
+        Args:
+            simulation_name: Django ORM ``Simulation`` model instance (optional).
+                             When provided, ``run()`` will load component values
+                             from the DB via ``map_to_db_objects()``.
+            verbose:         Print progress messages.
+            kind:            Technology preset – currently only ``"PEM"``.
+            use_cooling_feedback: Two-pass cooling feedback in the hourly loop.
+            insulated:       Start thermal banks in insulated mode.
+            wind_h5_path:    Path to a wind HDF5 file.  When given the wind data
+                             is loaded immediately and stored on ``self.windinputs``.
+        """
         self.simulation_name = simulation_name
-
-        # Initialise `r2h2` object with data_root location
         self.verbose = verbose
+        self.kind = kind
+        self.use_cooling_feedback = use_cooling_feedback
+        self.insulated = insulated
+
         self.paths = Paths(verbose=self.verbose)
-
         self.simulation = Simulation()
-        
-        # Build components
-        for component in self.simulation.components:
-            class_name = component['class']
-            component_name = component['name']
-            target_file = self.paths.data_root / 'component_library' / f'{component_name}.yaml'
 
-            component_instance = self._safe_instantiate_component(
-                class_name, 
-                target_file
-            )
+        # ── Build YAML-backed component instances ────────────────────────────
+        for component in self.simulation.components:
+            class_name    = component['class']
+            component_name = component['name']
+            target_file   = self.paths.data_root / 'component_library' / f'{component_name}.yaml'
+            component_instance = self._safe_instantiate_component(class_name, target_file)
             setattr(self, class_name.lower(), component_instance)
+
+        # ── Apply technology topology + dynamics to ElectrolyserUnit ─────────
+        el = self.electrolyserunit
+        el = apply_unit_topology(self.kind, el)
+        el.iControlLevel = getattr(el, 'iControlLevel', 2)   # default: bank-level
+
+        if el.iControlLevel == 1:
+            el.iNumUnits = el.iNumElectro
+            self.simulation.rDivisor = el.iN_banks * el.iN_stacks * el.iN_cell
+        elif el.iControlLevel == 2:
+            el.iNumUnits = el.iNumElectro * el.iN_banks
+            self.simulation.rDivisor = el.iN_stacks * el.iN_cell
+        else:
+            el.iNumUnits = el.iNumElectro * el.iN_banks * el.iN_stacks
+            self.simulation.rDivisor = el.iN_cell
+
+        el = apply_unit_profile(self.kind, el)
+        self.electrolyserunit = el
+
+        # ── Size battery  (MWh → J, derive proportional gain) ────────────────
+        bat = self.battery
+        bat.rInitialBatteryRating   = bat.rBatteryMWh * 3.6e9
+        bat.rBatteryRating          = bat.rInitialBatteryRating
+        bat.rBatteryProportionalGain = bat.rInitialBatteryRating / 3600.0 / 10e6
+        self.battery = bat
+
+        # ── Optionally load wind data from HDF5 ──────────────────────────────
+        if wind_h5_path is not None:
+            self.windinputs = load_wind_h5(wind_h5_path)
 
 
     # ---  GENERIC UPDATE FUNCTION TO RE-LOAD PARAMETERS FROM YAML FILES  --- #
@@ -272,157 +1168,149 @@ class R2H2():
                     f"(DB record: {db_obj})"
                 )
 
-    # ---  SIMULATION RUN FUNCTION : MIGRATED FROM LEGACY CODE (WIP)  --- #
-    def run(self, # PREVIOUSLY: NO `self` ARGUMENT, ALL BELOW WERE PASSED AS FUNCTION ARGUMENTS
-        # settings,
-        # wind,
-        # el_unit,
-        # el_cell,
-        # battery,
-        # kind,
-        # use_cooling_feedback,
-        # insulated,
-        # plot_initial=False
-        ):
-        
-        # import numpy as np
-        # import copy
-        import time
-        
-        time.sleep(.1)  # Simulate some startup time
-        # Setup electrolyser units and cell
+    # ---  SIMULATION RUN FUNCTION  --- #
+    def run(self,
+            wind_h5_path: Optional[str] = None,
+            kind: Optional[str] = None,
+            use_cooling_feedback: Optional[bool] = None,
+            insulated: Optional[bool] = None):
+        """Run the full multi-year simulation.
 
-        self.map_to_db_objects()
-        self.setUpElectro1()
+        Parameters override the values set in ``__init__`` if provided.
+
+        Args:
+            wind_h5_path:         Path to a wind HDF5 file.  If ``None`` the
+                                  ``windinputs`` attribute must already hold a
+                                  valid :class:`WindInputs` with ``arPowerInput``
+                                  and ``arTime`` populated.
+            kind:                 Technology preset (``"PEM"``).
+            use_cooling_feedback: Two-pass cooling feedback loop.
+            insulated:            Insulated thermal banks.
+
+        Returns:
+            dict with keys ``YearResults``, ``Settings``, ``ElectroCell``,
+            ``Runtime_s``, ``Kind``, ``UseCoolingFeedback``, ``Insulated``.
         """
+        _kind      = kind      if kind      is not None else self.kind
+        _feedback  = use_cooling_feedback if use_cooling_feedback is not None else self.use_cooling_feedback
+        _insulated = insulated if insulated is not None else self.insulated
 
-        # Create bank thermal states (one per bank*electrolyser) using tech template
-        num_banks_total = el_unit.iN_banks * el_unit.iNumElectro
-        th_template = bank_thermal_from_kind(kind, el_unit, insulated=insulated)
+        # ── Optionally pull DB values into component instances ───────────────
+        if self.simulation_name is not None:
+            self.map_to_db_objects()
+
+        # ── Load wind data ───────────────────────────────────────────────────
+        if wind_h5_path is not None:
+            self.windinputs = load_wind_h5(wind_h5_path)
+
+        wind = self.windinputs
+        if not hasattr(wind, 'arPowerInput') or wind.arPowerInput is None:
+            raise ValueError(
+                "No wind power data found.  Supply wind_h5_path= or set "
+                "self.windinputs.arPowerInput before calling run()."
+            )
+
+        # ── Initialise electrolyser units and PEM cell curves ────────────────
+        self.setUpElectro1()
+        units    = self.electrolyserunits
+        ec_curves = self.electrocellpem   # already built by setUpElectro1
+
+        # ── Bank thermal states ──────────────────────────────────────────────
+        el = self.electrolyserunit
+        num_banks_total = el.iN_banks * el.iNumElectro
+        th_template = bank_thermal_from_kind(_kind, el, insulated=_insulated)
         th_banks = [copy.deepcopy(th_template) for _ in range(num_banks_total)]
 
-        # Optional initial plots (keep as in your old structure)
-        if plot_initial and plt is not None:
-            plt.figure(1)
-            for u in units:
-                plt.plot(u.arP_Total_s, u.arEfficiency_s, 'k', linewidth=2)
-                plt.plot(u.arP_Total_s, 0.8 * u.arEfficiency_s, 'r--', linewidth=2)
-            plt.grid(True)
-            plt.ylim([0.7 * 0.6244, 0.85])
-
-            plt.figure(2)
-            for u in units:
-                plt.plot(u.arI_s, u.arV_sd)
-            plt.grid(True)
-            plt.xlabel("Current [A]")
-            plt.ylabel("Voltage [V]")
-
+        settings = self.simulation
+        battery  = self.battery
         num_hours = wind.arPowerInput.shape[1]
         arTotalH2 = np.zeros(num_hours)
         zYearResults = []
         t_out_prev = None
 
-        sim_start_time = time.perf_counter()
+        sim_start = time.perf_counter()
 
         for y in range(settings.iNumYears):
-            # Preallocate log arrays
             zLogOut = {
-                "arSoc": np.zeros(num_hours),
-                "arSocMax": np.zeros(num_hours),
-                "arSocMin": np.zeros(num_hours),
-                "arSocAv": np.zeros(num_hours),
-                "arRCD": np.zeros(num_hours),
-                "arBatteryRating": np.zeros(num_hours),
-                "arElecOnAv": np.zeros(num_hours),
+                "arSoc":             np.zeros(num_hours),
+                "arSocMax":          np.zeros(num_hours),
+                "arSocMin":          np.zeros(num_hours),
+                "arSocAv":           np.zeros(num_hours),
+                "arRCD":             np.zeros(num_hours),
+                "arBatteryRating":   np.zeros(num_hours),
+                "arElecOnAv":        np.zeros(num_hours),
                 "arHourlyDegradation": np.zeros((units[0].iNumUnits, num_hours)),
             }
 
             for h in range(num_hours):
+                P_hour = wind.arPowerInput[:, h]
 
-                if use_cooling_feedback:
-                    # First pass: estimate chiller demand without feedback
+                if _feedback:
+                    # First pass: estimate cooling demand
                     _, t_out_est, _, _ = runElectroStackStep1(
                         ec_curves,
                         copy.deepcopy(th_banks),
                         copy.deepcopy(battery),
-                        wind.arPowerInput[:, h],
+                        P_hour,
                         copy.deepcopy(units),
                         wind.arTime,
-                        settings,
-                        h,
-                        t_out_prev,
+                        settings, h, t_out_prev,
                         cooling_power_feedback=None,
                     )
                     cooling_feedback = t_out_est.arP_cool_elec_total.copy()
 
-                    # Second pass: enforce chiller power draw on available wind
+                    # Second pass: enforce cooling draw on available wind
                     units, t_out, battery, th_banks = runElectroStackStep1(
-                        ec_curves,
-                        th_banks,
-                        battery,
-                        wind.arPowerInput[:, h],
-                        units,
-                        wind.arTime,
-                        settings,
-                        h,
-                        t_out_prev,
+                        ec_curves, th_banks, battery, P_hour,
+                        units, wind.arTime, settings, h, t_out_prev,
                         cooling_power_feedback=cooling_feedback,
                     )
                 else:
                     units, t_out, battery, th_banks = runElectroStackStep1(
-                        ec_curves,
-                        th_banks,
-                        battery,
-                        wind.arPowerInput[:, h],
-                        units,
-                        wind.arTime,
-                        settings,
-                        h,
-                        t_out_prev,
+                        ec_curves, th_banks, battery, P_hour,
+                        units, wind.arTime, settings, h, t_out_prev,
                         cooling_power_feedback=None,
                     )
 
                 battery = runBattery1(t_out, battery, settings)
 
-                # Log battery and electrolyser metrics
-                zLogOut["arSoc"][h] = battery.arInitialSoC
-                zLogOut["arSocMax"][h] = battery.rSocMax
-                zLogOut["arSocMin"][h] = battery.rSocMin
-                zLogOut["arSocAv"][h] = battery.rSocAv
-                zLogOut["arRCD"][h] = battery.rRCD
-                zLogOut["arBatteryRating"][h] = battery.rBatteryRating
-                zLogOut["arElecOnAv"][h] = float(np.nanmean(t_out.arTotalElectroOn))
-
+                zLogOut["arSoc"][h]           = battery.arInitialSoC
+                zLogOut["arSocMax"][h]         = battery.rSocMax
+                zLogOut["arSocMin"][h]         = battery.rSocMin
+                zLogOut["arSocAv"][h]          = battery.rSocAv
+                zLogOut["arRCD"][h]            = battery.rRCD
+                zLogOut["arBatteryRating"][h]  = battery.rBatteryRating
+                zLogOut["arElecOnAv"][h]       = float(np.nanmean(t_out.arTotalElectroOn))
                 for i in range(units[0].iNumUnits):
                     zLogOut["arHourlyDegradation"][i, h] = units[i].rSummedDegradation
 
-                # Accumulate H2 production
-                produced_h2 = np.sum(t_out.arProducedH2Dot)
-                arTotalH2[h] = arTotalH2[h - 1] + produced_h2 if h > 0 else produced_h2
+                produced_h2   = float(np.sum(t_out.arProducedH2Dot))
+                arTotalH2[h]  = (arTotalH2[h - 1] + produced_h2) if h > 0 else produced_h2
+                t_out_prev    = t_out
 
-                # Carry state forward
-                t_out_prev = t_out
+                if self.verbose:
+                    print(f"  year {y+1}/{settings.iNumYears}  hour {h+1}/{num_hours}  "
+                          f"H2={produced_h2:.3f} g/s  SoC={battery.arInitialSoC:.3f}",
+                          flush=True)
 
-            result = {
+            zYearResults.append({
                 "ElectrolyserUnit": copy.deepcopy(units),
-                "Battery": copy.deepcopy(battery),
-                "ThermalBanks": copy.deepcopy(th_banks),
-                "TotalH2": arTotalH2.copy(),
-                "Log": zLogOut,
-            }
-            zYearResults.append(result)
+                "Battery":          copy.deepcopy(battery),
+                "ThermalBanks":     copy.deepcopy(th_banks),
+                "TotalH2":          arTotalH2.copy(),
+                "Log":              zLogOut,
+            })
 
-        simulation_runtime_s = time.perf_counter() - sim_start_time
+        runtime = time.perf_counter() - sim_start
+        if self.verbose:
+            print(f"Simulation complete in {runtime:.2f} s")
 
-        output = {
-            "YearResults": zYearResults,
-            "Settings": settings,
-            "ElectroCell": el_cell,          # oppure ec_curves se preferisci esportare quello
-            "Runtime_s": simulation_runtime_s,
-            "Kind": kind,
-            "UseCoolingFeedback": use_cooling_feedback,
-            "Insulated": insulated,
+        return {
+            "YearResults":          zYearResults,
+            "Settings":             settings,
+            "ElectroCell":          ec_curves,
+            "Runtime_s":            runtime,
+            "Kind":                 _kind,
+            "UseCoolingFeedback":   _feedback,
+            "Insulated":            _insulated,
         }
-        """
-        output = {'msg': 'Complete'}
-        return output

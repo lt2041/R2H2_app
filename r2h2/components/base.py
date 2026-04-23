@@ -61,14 +61,30 @@ class ComponentBase:
         for section_name, section_values in merged_config.items():
             if isinstance(section_values, dict):
                 for key, value in section_values.items():
-                    setattr(self, key, value)
+                    setattr(self, key, self._coerce_numeric(value))
             else:
                 # Handle top-level values if any
-                setattr(self, section_name, section_values)
+                setattr(self, section_name, self._coerce_numeric(section_values))
 
     # ------------------------------------------------------------------ #
     #  ORM path                                                            #
     # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _coerce_numeric(value: Any) -> Any:
+        """Convert string values that represent numbers to int or float."""
+        if not isinstance(value, str):
+            return value
+        v = value.strip()
+        try:
+            return int(v)
+        except ValueError:
+            pass
+        try:
+            return float(v)
+        except ValueError:
+            pass
+        return value
 
     def _load_from_orm(self, orm_object: Any) -> None:
         """Copy scalar field values from a Django model instance.

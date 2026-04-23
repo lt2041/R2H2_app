@@ -250,11 +250,17 @@ class TimeOutput(models.Model):
     
 class WindInput(models.Model):
     name = models.CharField(max_length=100, default='WindInput')
+    wind_file = models.FileField(
+        upload_to='wind_data/',
+        blank=True,
+        null=True,
+        help_text='HDF5 wind data file (.h5 / .hdf5 / .hdf)',
+    )
     arPowerInput = models.JSONField(default=None, blank=True, null=True)
     arTime = models.JSONField(default=None, blank=True, null=True)
 
     def __str__(self):
-        return f"ID: {self.id}, Name: {self.name}, Time Steps: {len(self.arTime) if self.arTime else 0}"
+        return f"ID: {self.id}, Name: {self.name}, File: {self.wind_file or '—'}"
 
 
 #### ---------------------- SIMULATION RUN (JOB TRACKING) ---------------------- ####

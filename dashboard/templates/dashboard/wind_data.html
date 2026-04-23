@@ -97,6 +97,7 @@
               <th>File name</th>
               <th style="text-align:right; width:90px;">Size (MB)</th>
               <th style="width:160px;">Last modified</th>
+              <th style="width:130px;">WindInput</th>
             </tr>
           </thead>
           <tbody id="file-table-body">
@@ -109,6 +110,17 @@
               </td>
               <td style="text-align:right;">{{ f.size_mb }}</td>
               <td class="grey-text">{{ f.modified }}</td>
+              <td>
+                {% if f.wind_input_id %}
+                <a href="{% url 'dashboard-browse' 'WindInput' %}?id={{ f.wind_input_id }}"
+                   class="chip teal lighten-4" style="font-size:0.78rem; cursor:pointer;">
+                  <span class="material-symbols-outlined" style="font-size:0.9rem; vertical-align:middle;">link</span>
+                  #{{ f.wind_input_id }}
+                </a>
+                {% else %}
+                <span class="grey-text" style="font-size:0.8rem;">—</span>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -208,7 +220,7 @@
 
       saved.forEach(s => {
         setBadge(s.name, 'teal lighten-2 white-text', '✓ Saved');
-        appendRow(s.name, s.size_mb);
+        appendRow(s.name, s.size_mb, s.wind_input_id);
       });
       errors.forEach(e => {
         const name = e.split(':')[0];
@@ -239,7 +251,7 @@
     if (badge) { badge.className = ''; badge.classList.add(...classes.split(' ')); badge.style.cssText = 'border-radius:4px; padding:2px 8px; font-size:0.78rem;'; badge.textContent = text; }
   }
 
-  function appendRow(name, size_mb) {
+  function appendRow(name, size_mb, wind_input_id) {
     let tbody = document.getElementById('file-table-body');
     if (!tbody) {
       // Table doesn't exist yet — build it
@@ -251,6 +263,7 @@
         <th>File name</th>
         <th style="text-align:right;width:90px;">Size (MB)</th>
         <th style="width:160px;">Last modified</th>
+        <th style="width:130px;">WindInput</th>
       </tr></thead><tbody id="file-table-body"></tbody>`;
       card.appendChild(tbl);
       tbody = document.getElementById('file-table-body');
@@ -259,11 +272,16 @@
     const tr = document.createElement('tr');
     tr.dataset.name = name;
     const now = new Date().toISOString().slice(0,16).replace('T',' ');
+    const wiCell = wind_input_id
+      ? `<a href="/browse/WindInput?id=${wind_input_id}" class="chip teal lighten-4" style="font-size:0.78rem;cursor:pointer;">
+           <span class="material-symbols-outlined" style="font-size:0.9rem;vertical-align:middle;">link</span> #${wind_input_id}</a>`
+      : `<span class="grey-text" style="font-size:0.8rem;">—</span>`;
     tr.innerHTML = `<td>
       <span class="material-symbols-outlined" style="font-size:1rem;vertical-align:middle;color:#80CBC4;margin-right:4px;">data_object</span>
       ${escHtml(name)}</td>
       <td style="text-align:right;">${size_mb}</td>
-      <td class="grey-text">${now}</td>`;
+      <td class="grey-text">${now}</td>
+      <td>${wiCell}</td>`;
     tbody.appendChild(tr);
   }
 

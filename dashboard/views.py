@@ -491,12 +491,18 @@ from pathlib import Path as _Path
 def wind_data(request):
     """Page listing uploaded wind HDF5 files with a drag-and-drop uploader."""
     wind_dir = get_wind_data_dir()
+    # Build a lookup: filename -> WindInput id (using wind_file field)
+    linked = {
+        _Path(wi.wind_file.name).name: wi.id
+        for wi in WindInput.objects.exclude(wind_file='').exclude(wind_file__isnull=True)
+    }
     files = sorted(
         [
             {
                 'name': f.name,
                 'size_mb': round(f.stat().st_size / 1e6, 2),
                 'modified': _pd.Timestamp(f.stat().st_mtime, unit='s').strftime('%Y-%m-%d %H:%M'),
+                'wind_input_id': linked.get(f.name),
             }
             for f in wind_dir.iterdir()
             if f.suffix.lower() in ('.h5', '.hdf5', '.hdf')
@@ -531,7 +537,17 @@ def wind_data_upload(request):
             with open(dest, 'wb') as fh:
                 for chunk in uploaded_file.chunks():
                     fh.write(chunk)
-            saved.append({'name': name, 'size_mb': round(dest.stat().st_size / 1e6, 2)})
+            # Create or retrieve the linked WindInput record
+            rel_path = 'wind_data/' + name
+            wind_input, _ = WindInput.objects.get_or_create(
+                wind_file=rel_path,
+                defaults={'name': _Path(name).stem},
+            )
+            saved.append({
+                'name': name,
+                'size_mb': round(dest.stat().st_size / 1e6, 2),
+                'wind_input_id': wind_input.id,
+            })
         except OSError as exc:
             errors.append(f'{name}: {exc}')
 

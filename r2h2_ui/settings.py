@@ -122,3 +122,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Media files (user-uploaded content – HDF5 wind data etc.)
+MEDIA_ROOT = config.data_root
+MEDIA_URL = '/media/'

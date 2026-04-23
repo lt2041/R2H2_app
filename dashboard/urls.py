@@ -11,4 +11,7 @@ urlpatterns = [
     path('simulations/<int:sim_id>/run/<int:run_id>/',   views.poll_simulation_run, name='dashboard-poll-simulation-run'),
     path('browse/<str:table_name>', views.browse, name='dashboard-browse'),
     path('browse/<str:table_name>/add', views.add_component, name='dashboard-add-component'),
+    path('wind-data/', views.wind_data, name='dashboard-wind-data'),
+    path('wind-data/upload/', views.wind_data_upload, name='dashboard-wind-data-upload'),
+    path('wind-data/set-dir/', views.wind_data_set_dir, name='dashboard-wind-data-set-dir'),
 ]

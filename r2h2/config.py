@@ -114,6 +114,59 @@ def update_data_root(new_path: str):
     return cfg
 
 
+def update_wind_data_dir(new_path: str):
+    """
+    Update the wind_data_dir path in config.yaml.
+
+    Args:
+        new_path: Directory where uploaded wind HDF5 files are stored.
+
+    Returns:
+        dict: Updated config.
+    """
+    if yaml is None:
+        raise ImportError("PyYAML is required. Install with: pip install pyyaml")
+
+    cfg = load_config()
+    if cfg is None:
+        cfg = {"paths": {}}
+
+    cfg.setdefault("paths", {})
+    wind_dir = Path(new_path).expanduser().resolve()
+    wind_dir.mkdir(parents=True, exist_ok=True)
+    cfg["paths"]["wind_data_dir"] = wind_dir.as_posix()
+    cfg["modified"] = pd.Timestamp.now().isoformat()
+
+    cfg_file = get_config_path()
+    with open(cfg_file, "w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+    return cfg
+
+
+def get_wind_data_dir() -> Path:
+    """
+    Return the configured wind data directory, falling back to
+    ``<data_root>/wind_data`` if not explicitly set.
+    """
+    cfg = load_config()
+    if cfg:
+        wind_dir = cfg.get("paths", {}).get("wind_data_dir")
+        if wind_dir:
+            p = Path(wind_dir)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+    # Fallback: derive from data_root
+    if cfg:
+        data_root = cfg.get("paths", {}).get("data_root")
+        if data_root:
+            p = Path(data_root) / "wind_data"
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+    # Last resort: app data/wind_data
+    here = Path(__file__).resolve().parent.parent / "data" / "wind_data"
+    here.mkdir(parents=True, exist_ok=True)
+    return here
+
 
 ############################################################
 

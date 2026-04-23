@@ -475,3 +475,79 @@ def browse(request, table_name=None):
     }
 
     return render(request, "dashboard/browse.html", context)
+
+
+# ─── Wind data upload ──────────────────────────────────────────────────────────
+
+import os as _os
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from r2h2.config import get_wind_data_dir, load_config, get_config_path
+import yaml as _yaml
+import pandas as _pd
+from pathlib import Path as _Path
+
+
+def wind_data(request):
+    """Page listing uploaded wind HDF5 files with a drag-and-drop uploader."""
+    wind_dir = get_wind_data_dir()
+    files = sorted(
+        [
+            {
+                'name': f.name,
+                'size_mb': round(f.stat().st_size / 1e6, 2),
+                'modified': _pd.Timestamp(f.stat().st_mtime, unit='s').strftime('%Y-%m-%d %H:%M'),
+            }
+            for f in wind_dir.iterdir()
+            if f.suffix.lower() in ('.h5', '.hdf5', '.hdf')
+        ],
+        key=lambda x: x['name'],
+    )
+    cfg = load_config() or {}
+    wind_dir_str = cfg.get('paths', {}).get('wind_data_dir', str(wind_dir))
+    return render(request, 'dashboard/wind_data.html', {
+        'files': files,
+        'wind_dir': wind_dir_str,
+    })
+
+
+@require_POST
+def wind_data_upload(request):
+    """AJAX endpoint: receive one or more HDF5 files and save them to wind_data_dir."""
+    if not request.FILES:
+        return JsonResponse({'error': 'No files received.'}, status=400)
+
+    wind_dir = get_wind_data_dir()
+    saved = []
+    errors = []
+
+    for field_name, uploaded_file in request.FILES.items():
+        name = _Path(uploaded_file.name).name  # strip any path components
+        if _Path(name).suffix.lower() not in ('.h5', '.hdf5', '.hdf'):
+            errors.append(f'{name}: not a recognised HDF5 extension (.h5 / .hdf5 / .hdf)')
+            continue
+        dest = wind_dir / name
+        try:
+            with open(dest, 'wb') as fh:
+                for chunk in uploaded_file.chunks():
+                    fh.write(chunk)
+            saved.append({'name': name, 'size_mb': round(dest.stat().st_size / 1e6, 2)})
+        except OSError as exc:
+            errors.append(f'{name}: {exc}')
+
+    status = 200 if saved else 400
+    return JsonResponse({'saved': saved, 'errors': errors}, status=status)
+
+
+@require_POST
+def wind_data_set_dir(request):
+    """AJAX endpoint: update wind_data_dir in config.yaml."""
+    new_dir = request.POST.get('wind_data_dir', '').strip()
+    if not new_dir:
+        return JsonResponse({'error': 'No directory provided.'}, status=400)
+    try:
+        from r2h2.config import update_wind_data_dir
+        cfg = update_wind_data_dir(new_dir)
+        return JsonResponse({'wind_data_dir': cfg['paths']['wind_data_dir']})
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=500)

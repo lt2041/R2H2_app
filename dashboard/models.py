@@ -146,8 +146,8 @@ class ElectrolyserUnit(models.Model):
     rAncilliaryPowerFrac = models.FloatField(default=0.0, help_text="Always required (For WT and all - set to zero for weak grid rather than off gid)")
     rDeadBandRatio = models.FloatField(default=2.0)
     # RAMP_LIMITS
-    rRampUp_W_s = models.FloatField(default=None)
-    rRampDown_W_s = models.FloatField(default=None)
+    rRampUp_W_s = models.FloatField(default=None, null=True, blank=True)
+    rRampDown_W_s = models.FloatField(default=None, null=True, blank=True)
     # DERIVED
     iNumUnits = models.PositiveIntegerField(default=0)
     rTotalTurnOns = models.FloatField(default=0.0)

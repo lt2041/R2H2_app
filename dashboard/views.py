@@ -202,22 +202,32 @@ def link_components(request, sim_id):
     return redirect('dashboard-simulation-detail', sim_id=sim_id)
 
 
+def _resolve_wind_h5_path(sim):
+    """Return the absolute Path to the HDF5 file from the first linked WindInput
+    that has a wind_file set.  Raises ValueError if none is found."""
+    from django.conf import settings as _settings
+    for wi in sim.wind_inputs.exclude(wind_file='').exclude(wind_file__isnull=True):
+        abs_path = _Path(_settings.MEDIA_ROOT) / wi.wind_file.name
+        if abs_path.exists():
+            return abs_path
+    raise ValueError(
+        f"Simulation '{sim.name}' has no linked WindInput with a valid wind file. "
+        "Upload an HDF5 file on the Wind Data page and link it via a WindInput component."
+    )
+
+
 def _run_simulation_thread(run_id):
     """Background worker: update SimulationRun status while running."""
-    import time, random
     from django.utils import timezone
     try:
-        run = SimulationRun.objects.get(pk=run_id)
+        run = SimulationRun.objects.select_related('simulation').get(pk=run_id)
         run.status = SimulationRun.RUNNING
         run.save(update_fields=['status'])
 
-        # TODO: replace with real runner, e.g.
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         from r2h2.r2h2 import R2H2
-        run.simulation.electro_cells.all().first().rR
-        R2H2(run.simulation).run()
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # time.sleep(15 + random.uniform(-2, 2))  # simulate variable runtime
+        wind_path = _resolve_wind_h5_path(run.simulation)
+        sim_engine = R2H2(run.simulation, wind_h5_path=str(wind_path))
+        sim_engine.run()
 
         run.status  = SimulationRun.DONE
         run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'

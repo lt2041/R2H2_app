@@ -1198,6 +1198,30 @@ class R2H2():
         # ── Optionally pull DB values into component instances ───────────────
         if self.simulation_name is not None:
             self.map_to_db_objects()
+            # Re-derive electrolyser topology and dynamics.
+            # map_to_db_objects may have copied zero-valued topology fields
+            # from the DB (e.g. iN_stacks=0 meaning "not configured in DB").
+            # Patch any zero topology field with the technology preset so the
+            # simulation never divides by zero in dynamicControl / electrolyser().
+            el = self.electrolyserunit
+            topo_preset = _preset_section(_kind, "topology")
+            for attr, preset_val in topo_preset.items():
+                if getattr(el, attr, 0) == 0:
+                    setattr(el, attr, preset_val)
+            # Re-derive iNumUnits and rDivisor (may have been zeroed by DB copy)
+            el.iControlLevel = getattr(el, 'iControlLevel', 2)
+            if el.iControlLevel == 1:
+                el.iNumUnits = el.iNumElectro
+                self.simulation.rDivisor = el.iN_banks * el.iN_stacks * el.iN_cell
+            elif el.iControlLevel == 2:
+                el.iNumUnits = el.iNumElectro * el.iN_banks
+                self.simulation.rDivisor = el.iN_stacks * el.iN_cell
+            else:
+                el.iNumUnits = el.iNumElectro * el.iN_banks * el.iN_stacks
+                self.simulation.rDivisor = el.iN_cell
+            # Re-apply dynamics preset (rRampUp/Down, rTimeConst etc.)
+            el = apply_unit_profile(_kind, el)
+            self.electrolyserunit = el
 
         # ── Load wind data ───────────────────────────────────────────────────
         if wind_h5_path is not None:

@@ -240,11 +240,15 @@ def _run_simulation_thread(run_id):
                 pct = int(done_steps / total_steps * 100) if total_steps else 0
                 elapsed = (timezone.now() - _progress_start).total_seconds()
                 if done_steps > 0 and elapsed > 0:
-                    eta_s = elapsed / done_steps * (total_steps - done_steps)
-                    eta_str = f' [ETA {_fmt_duration(eta_s)}]'
+                    total_s   = elapsed / done_steps * total_steps
+                    finish_at = timezone.localtime(
+                        _progress_start + timezone.timedelta(seconds=total_s)
+                    )
+                    eta_str = (f' [est. {_fmt_duration(total_s)}'
+                               f', done ~{finish_at.strftime("%H:%M:%S")}]')
                 else:
                     eta_str = ''
-                msg = (f'Year {year+1}/{total_years} \u2014 hour {hour+1}/{total_hours} ({pct}\u00a0%){eta_str}')
+                msg = (f'Year {year+1}/{total_years} \u2014 hour {hour+1}/{total_hours} \u2014 {pct}\u00a0%{eta_str}')
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
 
         sim_engine.run(run_id=run.pk, progress_callback=_on_progress)

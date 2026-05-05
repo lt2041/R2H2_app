@@ -411,7 +411,7 @@ def dynamicControl(units, battery, t_out, settings):
     arMinElectroSum = np.ceil(t_out.arElectroAvailablePower / rRated).astype(int)
 
     T = len(t_out.arElectroAvailablePower)
-    step0 = settings.rTransientSteps
+    step0 = int(settings.rTransientSteps)
     t_out.aiIsOn[:, step0 - 1] = t_out.aiIsOn[:, -1]
     t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
     if t_out.arTotalElectroOn[step0 - 1] > 0:
@@ -586,7 +586,7 @@ def runElectroStackStep1(
 
     T_amb_hour = 15.0
     dt = settings.rTimeStep
-    step0 = settings.rTransientSteps
+    step0 = int(settings.rTransientSteps)
     H2_LHV = 119_988.0  # J/g
 
     arH2Dot_time = np.zeros((num_units, T))
@@ -811,7 +811,7 @@ def runElectroStackStep1(
 
 def runBattery1(t_out, battery, settings) -> "Battery":
     """Update battery SoC and degradation for one hour."""
-    start = settings.rTransientSteps - 1
+    start = int(settings.rTransientSteps) - 1
     P_batt = t_out.arAvailablePower[start:] - t_out.arTotalElectroDemand[start:]
 
     dt = settings.rTimeStep
@@ -1264,6 +1264,40 @@ class R2H2():
         settings = self.simulation
         battery  = self.battery
         num_hours = wind.arPowerInput.shape[1]
+
+        # ── Align simulation time settings to the actual wind data ───────────
+        # The per-hour time axis is fully determined by the wind HDF5 file.
+        # Overwrite rTotalTime / rTimeStep so the simulation is self-consistent
+        # regardless of what was stored in the DB or YAML.
+        T_wind = len(wind.arTime)
+        if T_wind > 1:
+            dt_wind = float(wind.arTime[1] - wind.arTime[0])
+        else:
+            dt_wind = float(settings.rTimeStep) if hasattr(settings, 'rTimeStep') else 1.0
+        settings.rTotalTime = float(T_wind * dt_wind)
+        settings.rTimeStep  = dt_wind
+
+        # Cap rTransientSteps to at most 10 % of T_wind (safety guard).
+        max_transient = max(1, T_wind // 10)
+        if int(settings.rTransientSteps) > max_transient:
+            settings.rTransientSteps = max_transient
+
+        # Auto-derive iNumYears from the wind data length when the stored value
+        # is the default (1) and the data covers more than one year.
+        # A "year" here is 8760 hours; the wind data may cover fewer (e.g. 360
+        # days = 8640 h).  We floor to at least 1.
+        implied_years = max(1, round(num_hours / 8760))
+        if int(settings.iNumYears) == 1 and implied_years > 1:
+            settings.iNumYears = implied_years
+            if self.verbose:
+                print(f"  [run] iNumYears auto-set to {implied_years} "
+                      f"based on wind data ({num_hours} hours)", flush=True)
+        elif self.verbose and int(settings.iNumYears) != implied_years:
+            print(f"  [run] Note: iNumYears={settings.iNumYears} but wind data "
+                  f"covers ~{implied_years} year(s) ({num_hours} hours). "
+                  f"Using iNumYears={settings.iNumYears} (multi-year replay).",
+                  flush=True)
+
         arTotalH2 = np.zeros(num_hours)
         zYearResults = []
         t_out_prev = None

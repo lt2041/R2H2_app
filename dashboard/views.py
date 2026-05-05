@@ -229,6 +229,96 @@ def _resolve_wind_h5_path(sim):
     )
 
 
+def _save_run_outputs(run, results: dict) -> str:
+    """Serialise simulation results to an HDF5 file under MEDIA_ROOT/outputs/.
+
+    Returns the relative path (from MEDIA_ROOT) of the saved file, e.g.
+    ``outputs/run_42_Simulation-0_20260505-143012.h5``.
+
+    Structure written to HDF5
+    ─────────────────────────
+    /meta/
+        sim_name        str
+        run_id          int
+        kind            str
+        runtime_s       float
+        use_cooling_feedback  bool
+        insulated       bool
+    /year_<N>/          (one group per simulated year)
+        battery/
+            arSoc, arSocMax, arSocMin, arSocAv, arRCD, arBatteryRating  (1-D float64)
+        electrolyser/
+            arElecOnAv          (1-D float64)
+            arHourlyDegradation (2-D float64, shape [n_units, n_hours])
+        h2/
+            arTotalH2           (1-D float64, cumulative kg/s per hour)
+    """
+    import h5py
+    import numpy as np
+    import re
+    from django.conf import settings as dj_settings
+    from pathlib import Path
+    from django.utils import timezone as tz
+
+    media_root = Path(dj_settings.MEDIA_ROOT)
+    out_dir = media_root / 'outputs'
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    sim_name_slug = re.sub(r'[^\w\-]', '_', run.simulation.name)[:40]
+    ts = tz.localtime(run.started_at).strftime('%Y%m%d-%H%M%S') if run.started_at else 'unknown'
+    filename = f'run_{run.pk}_{sim_name_slug}_{ts}.h5'
+    abs_path = out_dir / filename
+
+    year_results = results.get('YearResults', [])
+
+    with h5py.File(abs_path, 'w') as f:
+        # ── /meta ────────────────────────────────────────────────────────────
+        meta = f.create_group('meta')
+        meta.attrs['sim_name']             = run.simulation.name
+        meta.attrs['run_id']               = run.pk
+        meta.attrs['kind']                 = str(results.get('Kind', ''))
+        meta.attrs['runtime_s']            = float(results.get('Runtime_s', 0.0))
+        meta.attrs['use_cooling_feedback'] = bool(results.get('UseCoolingFeedback', False))
+        meta.attrs['insulated']            = bool(results.get('Insulated', False))
+
+        # ── /year_N ──────────────────────────────────────────────────────────
+        for yr_idx, yr in enumerate(year_results):
+            grp = f.create_group(f'year_{yr_idx}')
+            log = yr.get('Log', {})
+
+            # Battery time-series
+            bat = grp.create_group('battery')
+            for key in ('arSoc', 'arSocMax', 'arSocMin', 'arSocAv',
+                        'arRCD', 'arBatteryRating'):
+                arr = log.get(key)
+                if arr is not None:
+                    bat.create_dataset(key, data=np.asarray(arr, dtype=np.float64),
+                                       compression='gzip', compression_opts=4)
+
+            # Electrolyser time-series
+            elec = grp.create_group('electrolyser')
+            for key in ('arElecOnAv',):
+                arr = log.get(key)
+                if arr is not None:
+                    elec.create_dataset(key, data=np.asarray(arr, dtype=np.float64),
+                                        compression='gzip', compression_opts=4)
+            deg = log.get('arHourlyDegradation')
+            if deg is not None:
+                elec.create_dataset('arHourlyDegradation',
+                                    data=np.asarray(deg, dtype=np.float64),
+                                    compression='gzip', compression_opts=4)
+
+            # H2 production
+            h2 = grp.create_group('h2')
+            arr = yr.get('TotalH2')
+            if arr is not None:
+                h2.create_dataset('arTotalH2', data=np.asarray(arr, dtype=np.float64),
+                                  compression='gzip', compression_opts=4)
+
+    # Return path relative to MEDIA_ROOT
+    return str(abs_path.relative_to(media_root))
+
+
 def _run_simulation_thread(run_id):
     """Background worker: update SimulationRun status while running."""
     from django.utils import timezone
@@ -263,17 +353,32 @@ def _run_simulation_thread(run_id):
                 msg = (f'Year {year+1}/{total_years} \u2014 hour {hour+1}/{total_hours} \u2014 {pct}\u00a0%{eta_str}')
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
 
-        sim_engine.run(run_id=run.pk, progress_callback=_on_progress)
+        results = sim_engine.run(run_id=run.pk, progress_callback=_on_progress)
 
         # Only mark DONE if user hasn't cancelled in the meantime
         run.refresh_from_db(fields=['status'])
         if run.status == SimulationRun.CANCELLED:
             return
 
+        # Persist outputs to HDF5
+        try:
+            rel_path = _save_run_outputs(run, results)
+            run.output_path = rel_path
+        except Exception as save_exc:
+            run.output_path = ''
+            import logging
+            logging.getLogger(__name__).warning(
+                'Could not save run #%s outputs: %s', run.pk, save_exc)
+
         run.status  = SimulationRun.DONE
-        run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'
+        desc = run.description.strip()
+        if desc:
+            suffix = desc if len(desc) <= 80 else desc[:77] + '…'
+            run.message = f'Completed. {suffix}'
+        else:
+            run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'
         run.finished_at = timezone.now()
-        run.save(update_fields=['status', 'message', 'finished_at'])
+        run.save(update_fields=['status', 'message', 'finished_at', 'output_path'])
     except InterruptedError:
         # User cancelled — the cancel view already wrote CANCELLED status; nothing to do
         pass
@@ -324,10 +429,11 @@ def poll_simulation_run(request, sim_id, run_id):
     else:
         duration_str = ''
     return JsonResponse({
-        'status':   run.status,
-        'message':  run.message or '',
-        'duration': duration_str,
-        'done':     run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
+        'status':      run.status,
+        'message':     run.message or '',
+        'duration':    duration_str,
+        'output_path': run.output_path or '',
+        'done':        run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
     })
 
 
@@ -355,8 +461,38 @@ def delete_simulation_run(request, sim_id, run_id):
     # Refuse to delete an active run — cancel it first
     if run.status in (SimulationRun.PENDING, SimulationRun.RUNNING):
         return JsonResponse({'error': 'Cannot delete an active run. Cancel it first.'}, status=400)
+    # Remove the HDF5 output file if it exists
+    if run.output_path:
+        from django.conf import settings as dj_settings
+        from pathlib import Path
+        abs_path = Path(dj_settings.MEDIA_ROOT) / run.output_path
+        try:
+            abs_path.unlink(missing_ok=True)
+        except Exception:
+            pass
     run.delete()
     return JsonResponse({'deleted': run_id})
+
+
+@require_POST
+def update_run_description(request, sim_id, run_id):
+    """POST: save a user-supplied description for a SimulationRun."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    desc = request.POST.get('description', '').strip()[:200]
+    run.description = desc
+    # Refresh the completion message to reflect the new description
+    if run.status == SimulationRun.DONE:
+        if desc:
+            suffix = desc if len(desc) <= 80 else desc[:77] + '\u2026'
+            run.message = f'Completed. {suffix}'
+        else:
+            run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'
+        run.save(update_fields=['description', 'message'])
+    else:
+        run.save(update_fields=['description'])
+    return JsonResponse({'description': run.description, 'message': run.message})
 
 
 

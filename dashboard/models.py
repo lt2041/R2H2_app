@@ -294,8 +294,12 @@ class SimulationRun(models.Model):
     simulation  = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name='runs')
     status      = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
     message     = models.TextField(blank=True, default='')
+    description = models.CharField(max_length=200, blank=True, default='',
+                                   help_text='Optional user note for this run (up to 200 chars).')
     started_at  = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    output_path = models.CharField(max_length=512, blank=True, default='',
+                                   help_text='Relative path (under MEDIA_ROOT/outputs/) to the saved HDF5 results file.')
 
     class Meta:
         ordering = ['-started_at']

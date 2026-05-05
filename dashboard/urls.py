@@ -12,6 +12,7 @@ urlpatterns = [
     path('simulations/<int:sim_id>/run/<int:run_id>/',          views.poll_simulation_run,   name='dashboard-poll-simulation-run'),
     path('simulations/<int:sim_id>/run/<int:run_id>/cancel/',   views.cancel_simulation_run,  name='dashboard-cancel-simulation-run'),
     path('simulations/<int:sim_id>/run/<int:run_id>/delete/',   views.delete_simulation_run,  name='dashboard-delete-simulation-run'),
+    path('simulations/<int:sim_id>/run/<int:run_id>/description/', views.update_run_description, name='dashboard-update-run-description'),
     path('browse/<str:table_name>', views.browse, name='dashboard-browse'),
     path('browse/<str:table_name>/add', views.add_component, name='dashboard-add-component'),
     path('wind-data/', views.wind_data, name='dashboard-wind-data'),

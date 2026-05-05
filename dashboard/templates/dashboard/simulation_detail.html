@@ -174,6 +174,42 @@
     .run-delete-btn:hover { color: #e53935; }
     .run-delete-btn .material-symbols-outlined { font-size: 0.95rem !important; padding: 0 !important; pointer-events: none; vertical-align: middle; }
 
+    /* ── Run description pencil button ── */
+    .run-edit-btn {
+        background: none; border: none; padding: 0 4px;
+        cursor: pointer; color: #ccc; line-height: 1; transition: color 0.15s;
+    }
+    .run-edit-btn:hover { color: #00897b; }
+    .run-edit-btn .material-symbols-outlined { font-size: 0.95rem !important; padding: 0 !important; pointer-events: none; vertical-align: middle; }
+
+    /* ── Description modal ── */
+    #desc-modal-overlay {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,0.35); z-index: 9000;
+        align-items: center; justify-content: center;
+    }
+    #desc-modal-overlay.open { display: flex; }
+    #desc-modal {
+        background: #fff; border-radius: 8px; padding: 1.8rem 2rem;
+        width: 420px; max-width: 95vw; box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+        position: relative;
+    }
+    #desc-modal h6 { margin: 0 0 0.3rem; font-weight: 600; font-size: 1rem; color: #004d40; }
+    #desc-modal .desc-sub { font-size: 0.8rem; color: #888; margin-bottom: 1rem; }
+    #desc-modal-input {
+        width: 100%; border: 1px solid #b2dfdb; border-radius: 4px;
+        padding: 0.55rem 0.75rem; font-size: 0.95rem; font-family: inherit;
+        outline: none; box-sizing: border-box; box-shadow: none !important; height: auto;
+        resize: none;
+    }
+    #desc-modal-input:focus { border-color: #00897b; }
+    #desc-modal-charcount { font-size: 0.75rem; color: #aaa; text-align: right; margin-top: 3px; }
+    #desc-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.1rem; }
+    #desc-modal-save { background: #00897b; color: #fff; border: none; border-radius: 4px; padding: 0.45rem 1.2rem; font-size: 0.9rem; cursor: pointer; font-weight: 600; }
+    #desc-modal-save:hover { background: #00695c; }
+    #desc-modal-cancel { background: none; border: 1px solid #ccc; border-radius: 4px; padding: 0.45rem 1rem; font-size: 0.9rem; cursor: pointer; color: #555; }
+    #desc-modal-cancel:hover { border-color: #999; }
+
     /* ── Run history table ── */
     .run-history-table {
         width: 100%;
@@ -611,7 +647,8 @@
                     <th style="text-align:center;">Status</th>
                     <th style="text-align:center;">Started</th>
                     <th style="text-align:center;">Duration</th>
-                    <th>Message</th>
+                    <th>Status message</th>
+                    <th style="text-align:center;">Results</th>
                     <th></th>
                 </tr>
             </thead>
@@ -644,10 +681,32 @@
                             <span style="color:#b2e0e4;">—</span>
                         {% endif %}
                     </td>
-                    <td id="run-msg-{{ run.id }}" style="color:#4a7a80; font-size:0.78rem;">
+                    <td id="run-msg-{{ run.id }}" style="color:#4a7a80; font-size:0.78rem; max-width:220px;">
                         {{ run.message|default:"—" }}
                     </td>
-                    <td style="text-align:center;">
+                    <td style="text-align:center;" id="run-dl-{{ run.id }}">
+                        {% if run.output_path %}
+                        <a href="{{ MEDIA_URL }}{{ run.output_path }}"
+                           download
+                           title="Download HDF5 results"
+                           style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;">
+                            <span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5
+                        </a>
+                        {% else %}
+                        <span style="color:#ccc;font-size:0.8rem;">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:center;white-space:nowrap;">
+                        {% if run.status != 'pending' %}
+                        <button class="run-edit-btn"
+                                data-run-id="{{ run.id }}"
+                                data-desc="{{ run.description|escapejs }}"
+                                data-url="{% url 'dashboard-update-run-description' sim_id=sim.id run_id=run.id %}"
+                                data-csrf="{{ csrf_token }}"
+                                title="Edit note">
+                            <span class="material-symbols-outlined">edit</span>
+                        </button>
+                        {% endif %}
                         {% if run.status != 'pending' and run.status != 'running' %}
                         <button class="run-delete-btn"
                                 data-url="{% url 'dashboard-delete-simulation-run' sim_id=sim.id run_id=run.id %}"
@@ -695,22 +754,45 @@
                 if (msg) msg.textContent = data.message  || '—';
                 if (runBtn)  runBtn.disabled = false;
                 if (stopBtn) stopBtn.classList.remove('visible');
-                // Inject a delete button into the last cell of this run's row
-                var row = document.getElementById('run-row-' + runId);
-                if (row) {
-                    var lastCell = row.querySelector('td:last-child');
-                    if (lastCell && !lastCell.querySelector('.run-delete-btn')) {
+                // Inject pencil + delete buttons into the actions cell
+                var actRow = document.getElementById('run-row-' + runId);
+                if (actRow) {
+                    var lastCell = actRow.querySelector('td:last-child');
+                    if (lastCell) {
+                        var descUrl   = "{% url 'dashboard-update-run-description' sim_id=sim.id run_id=latest_run.id %}";
                         var deleteUrl = "{% url 'dashboard-delete-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
                         var csrf      = '{{ csrf_token }}';
-                        var btn = document.createElement('button');
-                        btn.className = 'run-delete-btn';
-                        btn.dataset.runId = runId;
-                        btn.dataset.url   = deleteUrl;
-                        btn.dataset.csrf  = csrf;
-                        btn.title = 'Delete this run';
-                        btn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
-                        btn.addEventListener('click', deleteRunHandler);
-                        lastCell.appendChild(btn);
+                        if (!lastCell.querySelector('.run-edit-btn')) {
+                            var editBtn = document.createElement('button');
+                            editBtn.className = 'run-edit-btn';
+                            editBtn.dataset.runId = runId;
+                            editBtn.dataset.desc  = '';
+                            editBtn.dataset.url   = descUrl;
+                            editBtn.dataset.csrf  = csrf;
+                            editBtn.title = 'Edit note';
+                            editBtn.innerHTML = '<span class="material-symbols-outlined">edit</span>';
+                            if (window._attachEditBtn) { window._attachEditBtn(editBtn); }
+                            lastCell.insertBefore(editBtn, lastCell.firstChild);
+                        }
+                        if (!lastCell.querySelector('.run-delete-btn')) {
+                            var delBtn = document.createElement('button');
+                            delBtn.className = 'run-delete-btn';
+                            delBtn.dataset.runId = runId;
+                            delBtn.dataset.url   = deleteUrl;
+                            delBtn.dataset.csrf  = csrf;
+                            delBtn.title = 'Delete this run';
+                            delBtn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+                            delBtn.addEventListener('click', deleteRunHandler);
+                            lastCell.appendChild(delBtn);
+                        }
+                    }
+                }
+                // Inject download link if output path was returned
+                if (data.output_path) {
+                    var dlCell = document.getElementById('run-dl-' + runId);
+                    if (dlCell) {
+                        dlCell.innerHTML = '<a href="{{ MEDIA_URL }}" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
+                        dlCell.querySelector('a').href = '{{ MEDIA_URL }}' + data.output_path;
                     }
                 }
             }
@@ -775,6 +857,91 @@
         document.querySelectorAll('.run-delete-btn').forEach(function(btn) {
             btn.addEventListener('click', deleteRunHandler);
         });
+    </script>
+
+    <!-- Description modal JS -->
+    <script>
+    (function() {
+        // Modal elements (inserted once into DOM)
+        var overlay = document.createElement('div');
+        overlay.id = 'desc-modal-overlay';
+        overlay.innerHTML =
+            '<div id="desc-modal">'
+            + '<h6>Edit run note</h6>'
+            + '<div class="desc-sub" id="desc-modal-sub"></div>'
+            + '<textarea id="desc-modal-input" maxlength="200" rows="3" placeholder="Add a note\u2026"></textarea>'
+            + '<div id="desc-modal-charcount">0 / 200</div>'
+            + '<div id="desc-modal-actions">'
+            +   '<button id="desc-modal-cancel">Cancel</button>'
+            +   '<button id="desc-modal-save">Save</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(overlay);
+
+        var modalInput    = document.getElementById('desc-modal-input');
+        var modalCharcount= document.getElementById('desc-modal-charcount');
+        var modalSub      = document.getElementById('desc-modal-sub');
+        var modalSave     = document.getElementById('desc-modal-save');
+        var modalCancel   = document.getElementById('desc-modal-cancel');
+        var _activeBtn    = null;
+
+        modalInput.addEventListener('input', function() {
+            modalCharcount.textContent = modalInput.value.length + ' / 200';
+        });
+
+        function openModal(btn) {
+            _activeBtn = btn;
+            var runId = btn.dataset.runId;
+            modalSub.textContent = 'Run #' + runId;
+            modalInput.value = btn.dataset.desc || '';
+            modalCharcount.textContent = modalInput.value.length + ' / 200';
+            overlay.classList.add('open');
+            setTimeout(function() { modalInput.focus(); modalInput.select(); }, 50);
+        }
+
+        function closeModal() {
+            overlay.classList.remove('open');
+            _activeBtn = null;
+        }
+
+        function saveDesc() {
+            if (!_activeBtn) return;
+            var btn     = _activeBtn;
+            var runId   = btn.dataset.runId;
+            var desc    = modalInput.value.trim().slice(0, 200);
+            var msgCell = document.getElementById('run-msg-' + runId);
+            var fd = new FormData();
+            fd.append('description', desc);
+            fd.append('csrfmiddlewaretoken', btn.dataset.csrf);
+            modalSave.disabled = true;
+            fetch(btn.dataset.url, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    btn.dataset.desc = data.description || desc;
+                    if (msgCell && data.message) { msgCell.textContent = data.message; }
+                    closeModal();
+                })
+                .catch(function() { modalSave.disabled = false; })
+                .finally(function() { modalSave.disabled = false; });
+        }
+
+        modalSave.addEventListener('click', saveDesc);
+        modalCancel.addEventListener('click', closeModal);
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+        document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+        modalInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveDesc(); }
+        });
+
+        function attachEditBtn(btn) {
+            btn.addEventListener('click', function() { openModal(btn); });
+        }
+        document.querySelectorAll('.run-edit-btn').forEach(attachEditBtn);
+
+        // Expose for markDone
+        window._attachEditBtn = attachEditBtn;
+        window._openDescModal = openModal;
+    })();
     </script>
 
     <!-- Simulation settings panel -->

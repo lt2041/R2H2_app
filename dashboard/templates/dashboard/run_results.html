@@ -21,10 +21,22 @@
     border-radius: 10px;
     padding: 1.1rem 1.5rem;
     display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    box-shadow: 0 4px 16px rgba(34,166,179,0.25);
+}
+.results-header-row {
+    display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 2rem;
-    box-shadow: 0 4px 16px rgba(34,166,179,0.25);
+}
+.results-note-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    border-top: 1px solid rgba(255,255,255,0.18);
+    padding-top: 0.5rem;
 }
 .results-meta-item { display: flex; flex-direction: column; gap: 0.15rem; }
 .results-meta-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
@@ -48,6 +60,7 @@
     transition: background 0.15s;
     width: 100%;
     box-sizing: border-box;
+    line-height: 1;
 }
 .results-back-btn:hover { background: rgba(255,255,255,0.28); color: #fff; }
 .results-back-btn .material-symbols-outlined { font-size: 1rem; padding: 0 !important; }
@@ -164,13 +177,17 @@
     background: rgba(255,255,255,0.18);
     border: 1.5px solid rgba(255,255,255,0.45);
     border-radius: 8px;
-    padding: 0.45rem 0.75rem;
+    padding: 0.45rem 1rem;
     color: #fff;
     font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s;
     margin-left: 0.5rem;
+    box-sizing: border-box;
+    width: 100%;
+    justify-content: center;
+    line-height: 1;
 }
 .chart-settings-btn:hover { background: rgba(255,255,255,0.28); }
 .chart-settings-btn .material-symbols-outlined { font-size: 1rem; padding: 0 !important; }
@@ -230,6 +247,8 @@
 
     <!-- Header strip -->
     <div class="results-header-card">
+        <!-- Row 1: meta + actions -->
+        <div class="results-header-row">
         <div class="results-meta-item">
             <span class="results-meta-label">Run</span>
             <span class="results-meta-value">#{{ run.id }}</span>
@@ -238,12 +257,6 @@
             <span class="results-meta-label">Simulation</span>
             <span class="results-meta-value">{{ sim.name }}</span>
         </div>
-        {% if run.description %}
-        <div class="results-meta-item">
-            <span class="results-meta-label">Note</span>
-            <span class="results-meta-value">{{ run.description }}</span>
-        </div>
-        {% endif %}
         <div class="results-meta-item">
             <span class="results-meta-label">Started</span>
             <span class="results-meta-value">{{ run.started_at|date:"d M Y, H:i:s" }}</span>
@@ -268,7 +281,7 @@
         {% endif %}
         <div class="results-action-group">
             <button class="chart-settings-btn" id="chart-settings-btn" title="Chart settings"
-                    style="width:100%;justify-content:center;margin-left:0;">
+                    style="margin-left:0;">
                 <span class="material-symbols-outlined">settings</span>Settings
             </button>
             <a href="{% url 'dashboard-simulation-detail' sim_id=sim.id %}"
@@ -276,6 +289,14 @@
                 <span class="material-symbols-outlined">arrow_back</span>Back to runs
             </a>
         </div>
+        </div><!-- end results-header-row -->
+        {% if run.description %}
+        <!-- Row 2: note -->
+        <div class="results-note-row">
+            <span class="results-meta-label" style="white-space:nowrap;">Note</span>
+            <span class="results-meta-value" style="font-size:0.85rem;">{{ run.description }}</span>
+        </div>
+        {% endif %}
     </div>
 
     {% if n_years == 0 %}
@@ -450,6 +471,13 @@
         return v.toFixed(dec != null ? dec : 2);
     }
 
+    function fmtH2(kg) {
+        if (kg == null || isNaN(kg)) return '—';
+        if (kg >= 1e6)  return (kg / 1e6).toFixed(2)  + ' kt';
+        if (kg >= 1000) return (kg / 1000).toFixed(2) + ' t';
+        return kg.toFixed(0) + ' kg';
+    }
+
     function renderYear(idx) {
         var d = yearsData[idx];
         if (!d) return;
@@ -561,7 +589,7 @@
             stats.push({ v: fmtNum(Math.min.apply(null, d.arSoc), 2), label: 'Min SoC (MWh)' });
         }
         if (d.arTotalH2 && d.arTotalH2.length) {
-            stats.push({ v: fmtNum(d.arTotalH2[d.arTotalH2.length - 1], 0) + ' kg',
+            stats.push({ v: fmtH2(d.arTotalH2[d.arTotalH2.length - 1]),
                          label: 'Total H₂ produced' });
         }
         if (d.arElecOnAv && d.arElecOnAv.length) {

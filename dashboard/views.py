@@ -166,9 +166,14 @@ def simulation_detail(request, sim_id):
 
     wind_type_label = dict(Simulation._meta.get_field('iWindType').choices).get(sim.iWindType, sim.iWindType)
 
+    from datetime import date as _today_date
+    datum_display = sim.datum_date.strftime('%d %b %Y') if sim.datum_date else None
+
     sim_settings = [
         {'name': 'Wind data resolution', 'value': wind_type_label,         'unit': ''},
         {'name': 'Duration',             'value': sim.duration_days,        'unit': 'days', 'editable': 'duration_days'},
+        {'name': 'Datum date',           'value': datum_display,            'unit': '',     'editable': 'datum_date',
+         'raw': sim.datum_date.isoformat() if sim.datum_date else ''},
         {'name': 'Number of years',      'value': sim.iNumYears,            'unit': 'yr'},
         {'name': 'Total time',           'value': sim.rTotalTime,           'unit': 's'},
         {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
@@ -508,6 +513,146 @@ def update_run_description(request, sim_id, run_id):
     else:
         run.save(update_fields=['description'])
     return JsonResponse({'description': run.description, 'message': run.message})
+
+
+def view_run_results(request, sim_id, run_id):
+    """GET: display interactive charts for a completed SimulationRun."""
+    from django.shortcuts import get_object_or_404
+    from django.conf import settings as dj_settings
+    from pathlib import Path
+    import json as _json
+
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    sim = run.simulation
+
+    if not run.output_path:
+        from django.contrib import messages
+        messages.error(request, 'No results file found for this run.')
+        return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+    abs_path = Path(dj_settings.MEDIA_ROOT) / run.output_path
+    if not abs_path.exists():
+        from django.contrib import messages
+        messages.error(request, f'Results file not found: {run.output_path}')
+        return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+    import h5py
+    import numpy as np
+
+    years_data = []      # list of dicts, one per year group
+    meta_info = {}
+
+    with h5py.File(abs_path, 'r') as f:
+        # Read metadata attrs
+        if 'meta' in f:
+            m = f['meta']
+            meta_info = {k: (v.item() if hasattr(v, 'item') else v)
+                         for k, v in m.attrs.items()}
+
+        # Collect sorted year groups
+        year_keys = sorted(
+            [k for k in f.keys() if k.startswith('year_')],
+            key=lambda s: int(s.split('_')[1])
+        )
+
+        for yk in year_keys:
+            yr_grp = f[yk]
+            ydata = {'label': f'Year {int(yk.split("_")[1]) + 1}'}
+
+            # Battery
+            bat = yr_grp.get('battery', {})
+            for key in ('arSoc', 'arSocMax', 'arSocMin', 'arSocAv', 'arRCD', 'arBatteryRating'):
+                if key in bat:
+                    arr = bat[key][:]
+                    # Downsample to at most 8760 points to keep JSON small
+                    if len(arr) > 8760:
+                        step = len(arr) // 8760
+                        arr = arr[::step]
+                    ydata[key] = arr.tolist()
+
+            # Electrolyser
+            elec = yr_grp.get('electrolyser', {})
+            if 'arElecOnAv' in elec:
+                arr = elec['arElecOnAv'][:]
+                if len(arr) > 8760:
+                    arr = arr[:8760]
+                ydata['arElecOnAv'] = arr.tolist()
+            if 'arHourlyDegradation' in elec:
+                deg = elec['arHourlyDegradation'][:]
+                # Sum across units → 1-D
+                if deg.ndim == 2:
+                    deg = deg.mean(axis=0)
+                if len(deg) > 8760:
+                    deg = deg[:8760]
+                ydata['arHourlyDegradation'] = deg.tolist()
+
+            # H2
+            h2g = yr_grp.get('h2', {})
+            if 'arTotalH2' in h2g:
+                arr = h2g['arTotalH2'][:]
+                if len(arr) > 8760:
+                    arr = arr[:8760]
+                ydata['arTotalH2'] = arr.tolist()
+
+            years_data.append(ydata)
+
+    # Compute per-year cumulative hour offsets from datum
+    from datetime import date as _date
+    datum = sim.datum_date or _date.today()
+    datum_iso = datum.isoformat()
+    year_cumulative_hours = []
+    cumulative = 0
+    for yd in years_data:
+        year_cumulative_hours.append(cumulative)
+        ref = (yd.get('arSoc') or yd.get('arTotalH2') or yd.get('arElecOnAv') or [])
+        cumulative += len(ref)
+
+    context = {
+        'run': run,
+        'sim': sim,
+        'meta_info': meta_info,
+        'years_data_json': _json.dumps(years_data),
+        'year_cumulative_hours_json': _json.dumps(year_cumulative_hours),
+        'datum_iso': datum_iso,
+        'n_years': len(years_data),
+        'n_years_range': range(len(years_data)),
+        'xaxis_datetime': run.xaxis_datetime,
+        'update_xaxis_url': f'/simulations/{sim_id}/run/{run_id}/xaxis/',
+    }
+    return render(request, 'dashboard/run_results.html', context)
+
+
+@require_POST
+def update_sim_datum(request, sim_id):
+    """POST: save datum_date for a Simulation (used as datetime axis origin in results)."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    raw = request.POST.get('datum_date', '').strip()
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    if raw == '':
+        sim.datum_date = None
+    else:
+        from datetime import date as _date
+        try:
+            sim.datum_date = _date.fromisoformat(raw)
+        except ValueError:
+            return JsonResponse({'error': 'Invalid date format (expected YYYY-MM-DD).'}, status=400)
+    sim.save(update_fields=['datum_date'])
+    display = sim.datum_date.strftime('%d %b %Y') if sim.datum_date else None
+    return JsonResponse({'datum_date': sim.datum_date.isoformat() if sim.datum_date else '',
+                         'datum_display': display})
+
+
+@require_POST
+def update_run_xaxis(request, sim_id, run_id):
+    """POST: toggle datetime vs hours x-axis preference for a run's results charts."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    val = request.POST.get('xaxis_datetime', 'true').strip().lower()
+    run.xaxis_datetime = (val == 'true')
+    run.save(update_fields=['xaxis_datetime'])
+    return JsonResponse({'xaxis_datetime': run.xaxis_datetime})
 
 
 @require_POST

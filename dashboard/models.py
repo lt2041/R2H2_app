@@ -27,6 +27,9 @@ class Simulation(models.Model):
     duration_days = models.PositiveIntegerField(
         null=True, blank=True,
         help_text='Override simulation duration (days). Truncates wind data to this many days. Leave blank to use the full wind file.')
+    datum_date = models.DateField(
+        null=True, blank=True,
+        help_text='Start date (00:00) used as the datetime axis origin for results charts. Defaults to today if not set.')
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"
@@ -303,6 +306,8 @@ class SimulationRun(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
     output_path = models.CharField(max_length=512, blank=True, default='',
                                    help_text='Relative path (under MEDIA_ROOT/outputs/) to the saved HDF5 results file.')
+    xaxis_datetime = models.BooleanField(default=True,
+                                         help_text='Display results charts with a datetime x-axis (False = hours index).')
 
     class Meta:
         ordering = ['-started_at']

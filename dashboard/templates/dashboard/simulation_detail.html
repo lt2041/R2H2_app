@@ -243,6 +243,11 @@
     .run-history-table tbody tr:last-child td { border-bottom: none; }
     .run-history-table tbody tr:hover td    { background: #f4fafb; }
 
+    .run-row-clickable { cursor: pointer; }
+    .run-row-clickable:hover td { background: #e8f8f9 !important; }
+    .run-row-clickable td:last-child { pointer-events: auto; }
+    .run-row-clickable button { position: relative; z-index: 2; }
+
     .run-history-table td.run-mono {
         font-family: 'Ubuntu Mono', monospace;
         font-size: 0.78rem;
@@ -669,7 +674,12 @@
             </thead>
             <tbody id="run-history-tbody">
                 {% for run in sim_runs %}
-                <tr id="run-row-{{ run.id }}">
+                <tr id="run-row-{{ run.id }}"
+                    {% if run.output_path %}
+                    class="run-row-clickable"
+                    data-results-url="{% url 'dashboard-run-results' sim_id=sim.id run_id=run.id %}"
+                    title="View results for run #{{ run.id }}"
+                    {% endif %}>
                     <td class="run-mono">{{ run.id }}</td>
                     <td style="text-align:center;">
                         <span class="run-status-badge {{ run.status }}" id="run-badge-{{ run.id }}">
@@ -809,6 +819,18 @@
                         dlCell.innerHTML = '<a href="{{ MEDIA_URL }}" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
                         dlCell.querySelector('a').href = '{{ MEDIA_URL }}' + data.output_path;
                     }
+                    // Make the row clickable
+                    var resultsUrl = "{% url 'dashboard-run-results' sim_id=sim.id run_id=latest_run.id %}";
+                    var actRow2 = document.getElementById('run-row-' + runId);
+                    if (actRow2 && !actRow2.classList.contains('run-row-clickable')) {
+                        actRow2.classList.add('run-row-clickable');
+                        actRow2.dataset.resultsUrl = resultsUrl;
+                        actRow2.title = 'View results for run #' + runId;
+                        actRow2.addEventListener('click', function(e) {
+                            if (e.target.closest('button, a')) return;
+                            window.location.href = actRow2.dataset.resultsUrl;
+                        });
+                    }
                 }
             }
 
@@ -872,6 +894,17 @@
         document.querySelectorAll('.run-delete-btn').forEach(function(btn) {
             btn.addEventListener('click', deleteRunHandler);
         });
+    </script>
+
+    <!-- Clickable row → results page -->
+    <script>
+    document.querySelectorAll('.run-row-clickable').forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            // Don't navigate if user clicked a button/link inside the row
+            if (e.target.closest('button, a')) return;
+            window.location.href = row.dataset.resultsUrl;
+        });
+    });
     </script>
 
     <!-- Description modal JS -->
@@ -974,7 +1007,7 @@
                     <td>{{ s.name }}</td>
                     <td>
                         {% if s.editable == 'duration_days' %}
-                        <span class="ss-val" id="ss-duration-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">full file</em>{% endif %}</span>
+                        <span class="ss-val" id="ss-duration-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">tbc</em>{% endif %}</span>
                         <input type="number" class="ss-edit-input" id="ss-duration-input"
                                value="{% if s.value %}{{ s.value }}{% endif %}"
                                min="1" placeholder="—"
@@ -989,6 +1022,23 @@
                         </button>
                         <button class="ss-save-btn" id="ss-duration-cancel" style="display:none;color:#aaa;"
                                 onclick="cancelEditDuration()">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                        {% elif s.editable == 'datum_date' %}
+                        <span class="ss-val" id="ss-datum-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">today</em>{% endif %}</span>
+                        <input type="date" class="ss-edit-input" id="ss-datum-input"
+                               value="{{ s.raw }}"
+                               style="display:none;width:130px;">
+                        <button class="ss-edit-btn" id="ss-datum-btn" title="Edit datum date"
+                                onclick="startEditDatum()">
+                            <span class="material-symbols-outlined">edit</span>
+                        </button>
+                        <button class="ss-save-btn" id="ss-datum-save" style="display:none;"
+                                onclick="saveDatum()">
+                            <span class="material-symbols-outlined">check</span>
+                        </button>
+                        <button class="ss-save-btn" id="ss-datum-cancel" style="display:none;color:#aaa;"
+                                onclick="cancelEditDatum()">
                             <span class="material-symbols-outlined">close</span>
                         </button>
                         {% elif s.value is None %}
@@ -1208,7 +1258,7 @@
                     valEl.innerHTML = data.duration_days;
                     document.getElementById('ss-duration-input').value = data.duration_days;
                 } else {
-                    valEl.innerHTML = '<em style="color:#aaa;">full file</em>';
+                    valEl.innerHTML = '<em style="color:#aaa;">tbc</em>';
                     document.getElementById('ss-duration-input').value = '';
                 }
                 cancelEditDuration();
@@ -1223,6 +1273,54 @@
         var inp = document.getElementById('ss-duration-input');
         if (inp) inp.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') saveDuration();
+        });
+    });
+
+    // ── Datum date inline edit ──
+    var _datumSaveUrl = "{% url 'dashboard-update-sim-datum' sim_id=sim.id %}";
+
+    function startEditDatum() {
+        document.getElementById('ss-datum-val').style.display    = 'none';
+        document.getElementById('ss-datum-btn').style.display    = 'none';
+        document.getElementById('ss-datum-input').style.display  = 'inline-block';
+        document.getElementById('ss-datum-save').style.display   = 'inline-block';
+        document.getElementById('ss-datum-cancel').style.display = 'inline-block';
+        document.getElementById('ss-datum-input').focus();
+    }
+    function cancelEditDatum() {
+        document.getElementById('ss-datum-val').style.display    = '';
+        document.getElementById('ss-datum-btn').style.display    = '';
+        document.getElementById('ss-datum-input').style.display  = 'none';
+        document.getElementById('ss-datum-save').style.display   = 'none';
+        document.getElementById('ss-datum-cancel').style.display = 'none';
+    }
+    function saveDatum() {
+        var val = document.getElementById('ss-datum-input').value.trim();
+        var fd  = new FormData();
+        fd.append('datum_date', val);
+        fd.append('csrfmiddlewaretoken', _durCsrf);
+        document.getElementById('ss-datum-save').disabled = true;
+        fetch(_datumSaveUrl, { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var valEl = document.getElementById('ss-datum-val');
+                if (data.datum_display) {
+                    valEl.innerHTML = data.datum_display;
+                    document.getElementById('ss-datum-input').value = data.datum_date;
+                } else {
+                    valEl.innerHTML = '<em style="color:#aaa;">today</em>';
+                    document.getElementById('ss-datum-input').value = '';
+                }
+                cancelEditDatum();
+            })
+            .catch(function() {})
+            .finally(function() { document.getElementById('ss-datum-save').disabled = false; });
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var datumInp = document.getElementById('ss-datum-input');
+        if (datumInp) datumInp.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') saveDatum();
+            if (e.key === 'Escape') cancelEditDatum();
         });
     });
     function toggleCard(header) {

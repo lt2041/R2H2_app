@@ -228,12 +228,20 @@ def _run_simulation_thread(run_id):
         from r2h2.r2h2 import R2H2
         wind_path = _resolve_wind_h5_path(run.simulation)
         sim_engine = R2H2(run.simulation, wind_h5_path=str(wind_path))
-        sim_engine.run()
+        sim_engine.run(run_id=run.pk)
+
+        # Only mark DONE if user hasn't cancelled in the meantime
+        run.refresh_from_db(fields=['status'])
+        if run.status == SimulationRun.CANCELLED:
+            return
 
         run.status  = SimulationRun.DONE
         run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'
         run.finished_at = timezone.now()
         run.save(update_fields=['status', 'message', 'finished_at'])
+    except InterruptedError:
+        # User cancelled — the cancel view already wrote CANCELLED status; nothing to do
+        pass
     except Exception as exc:
         try:
             run.status  = SimulationRun.ERROR

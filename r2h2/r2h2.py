@@ -502,8 +502,10 @@ def runElectroStackStep1(
         th_banks = th_banks + [copy.deepcopy(th_banks[0])
                                 for _ in range(num_banks_total - len(th_banks))]
 
-    # Per-bank cell state copies (carry rT for curve rebuilds)
-    ec_state_banks = [copy.deepcopy(zElectroCell) for _ in range(num_banks_total)]
+    # Per-bank cell state copies (carry rT for curve rebuilds).
+    # Shallow copy is sufficient: only the scalar .rT attribute is set on each
+    # copy; the underlying numpy arrays are read-only here and never mutated.
+    ec_state_banks = [copy.copy(zElectroCell) for _ in range(num_banks_total)]
     bank_units = [[units[j] for j in idxs] for idxs in bank_to_units]
     last_T_bank = np.full(num_banks_total, np.nan)
     bank_ec_curves: List[Optional[Any]] = [None] * num_banks_total
@@ -1173,7 +1175,8 @@ class R2H2():
             wind_h5_path: Optional[str] = None,
             kind: Optional[str] = None,
             use_cooling_feedback: Optional[bool] = None,
-            insulated: Optional[bool] = None):
+            insulated: Optional[bool] = None,
+            run_id: Optional[int] = None):
         """Run the full multi-year simulation.
 
         Parameters override the values set in ``__init__`` if provided.
@@ -1194,6 +1197,19 @@ class R2H2():
         _kind      = kind      if kind      is not None else self.kind
         _feedback  = use_cooling_feedback if use_cooling_feedback is not None else self.use_cooling_feedback
         _insulated = insulated if insulated is not None else self.insulated
+        _run_id    = run_id
+
+        def _is_cancelled():
+            """Return True if the DB run record has been marked cancelled."""
+            if _run_id is None:
+                return False
+            try:
+                from dashboard.models import SimulationRun
+                return SimulationRun.objects.filter(
+                    pk=_run_id, status=SimulationRun.CANCELLED
+                ).exists()
+            except Exception:
+                return False
 
         # ── Optionally pull DB values into component instances ───────────────
         if self.simulation_name is not None:
@@ -1266,35 +1282,29 @@ class R2H2():
                 "arHourlyDegradation": np.zeros((units[0].iNumUnits, num_hours)),
             }
 
+            # Lagged cooling predictor: use previous hour's cooling output as
+            # the feedback estimate for the current hour.  Thermal states
+            # change slowly hour-to-hour so this is accurate while eliminating
+            # the expensive first-pass deepcopy (th_banks / battery / units)
+            # that the two-pass approach required.  Reset each year so the
+            # first hour always starts unconstrained.
+            _cooling_feedback_prev: Optional[np.ndarray] = None
+
             for h in range(num_hours):
+                # Check for user cancellation every hour
+                if h % 10 == 0 and _is_cancelled():
+                    raise InterruptedError('Simulation cancelled by user.')
+
                 P_hour = wind.arPowerInput[:, h]
 
-                if _feedback:
-                    # First pass: estimate cooling demand
-                    _, t_out_est, _, _ = runElectroStackStep1(
-                        ec_curves,
-                        copy.deepcopy(th_banks),
-                        copy.deepcopy(battery),
-                        P_hour,
-                        copy.deepcopy(units),
-                        wind.arTime,
-                        settings, h, t_out_prev,
-                        cooling_power_feedback=None,
-                    )
-                    cooling_feedback = t_out_est.arP_cool_elec_total.copy()
+                units, t_out, battery, th_banks = runElectroStackStep1(
+                    ec_curves, th_banks, battery, P_hour,
+                    units, wind.arTime, settings, h, t_out_prev,
+                    cooling_power_feedback=_cooling_feedback_prev if _feedback else None,
+                )
 
-                    # Second pass: enforce cooling draw on available wind
-                    units, t_out, battery, th_banks = runElectroStackStep1(
-                        ec_curves, th_banks, battery, P_hour,
-                        units, wind.arTime, settings, h, t_out_prev,
-                        cooling_power_feedback=cooling_feedback,
-                    )
-                else:
-                    units, t_out, battery, th_banks = runElectroStackStep1(
-                        ec_curves, th_banks, battery, P_hour,
-                        units, wind.arTime, settings, h, t_out_prev,
-                        cooling_power_feedback=None,
-                    )
+                if _feedback:
+                    _cooling_feedback_prev = t_out.arP_cool_elec_total.copy()
 
                 battery = runBattery1(t_out, battery, settings)
 

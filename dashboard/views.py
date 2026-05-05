@@ -168,6 +168,7 @@ def simulation_detail(request, sim_id):
 
     sim_settings = [
         {'name': 'Wind data resolution', 'value': wind_type_label,         'unit': ''},
+        {'name': 'Duration',             'value': sim.duration_days,        'unit': 'days', 'editable': 'duration_days'},
         {'name': 'Number of years',      'value': sim.iNumYears,            'unit': 'yr'},
         {'name': 'Total time',           'value': sim.rTotalTime,           'unit': 's'},
         {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
@@ -332,6 +333,20 @@ def _run_simulation_thread(run_id):
         wind_path = _resolve_wind_h5_path(run.simulation)
         sim_engine = R2H2(run.simulation, wind_h5_path=str(wind_path))
 
+        # If user set a duration override, truncate wind data to requested hours
+        duration_days = run.simulation.duration_days
+        if duration_days:
+            import numpy as np
+            max_hours = duration_days * 24
+            wi = sim_engine.windinputs
+            if wi is not None and hasattr(wi, 'arPowerInput') and wi.arPowerInput is not None:
+                n_hours = wi.arPowerInput.shape[1]
+                if max_hours < n_hours:
+                    # arPowerInput shape: (time_steps_per_hour, num_hours)
+                    # Only truncate the hours axis (axis 1); arTime is the
+                    # within-hour time axis and must be left unchanged.
+                    wi.arPowerInput = wi.arPowerInput[:, :max_hours]
+
         _progress_interval = 50  # update DB message every N hours
         _progress_start = timezone.now()
 
@@ -493,6 +508,25 @@ def update_run_description(request, sim_id, run_id):
     else:
         run.save(update_fields=['description'])
     return JsonResponse({'description': run.description, 'message': run.message})
+
+
+@require_POST
+def update_sim_duration(request, sim_id):
+    """POST: save duration_days override for a Simulation."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    raw = request.POST.get('duration_days', '').strip()
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    if raw == '' or raw is None:
+        sim.duration_days = None
+    else:
+        try:
+            days = int(raw)
+            sim.duration_days = max(1, days)
+        except ValueError:
+            return JsonResponse({'error': 'Invalid value.'}, status=400)
+    sim.save(update_fields=['duration_days'])
+    return JsonResponse({'duration_days': sim.duration_days})
 
 
 

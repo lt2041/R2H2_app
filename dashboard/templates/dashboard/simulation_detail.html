@@ -344,7 +344,22 @@
         text-align: right;
     }
 
-    /* ── Group card ── */
+    /* ── Settings inline edit ── */
+    .ss-edit-btn, .ss-save-btn {
+        background: none; border: none; padding: 0 2px; cursor: pointer;
+        color: #b2dfdb; line-height: 1; vertical-align: middle;
+        transition: color 0.15s;
+    }
+    .ss-edit-btn:hover { color: #00897b; }
+    .ss-save-btn:hover { color: #00695c; }
+    .ss-edit-btn .material-symbols-outlined,
+    .ss-save-btn .material-symbols-outlined { font-size: 0.85rem !important; padding: 0 !important; transform: none !important; vertical-align: middle; }
+    .ss-edit-input {
+        border: none; border-bottom: 1px solid #00897b;
+        font-size: 0.88rem; padding: 0 2px; outline: none;
+        font-family: inherit; background: transparent;
+        box-shadow: none !important; height: auto;
+    }
     .group-card {
         border: 1.5px solid #b2e0e4;
         border-radius: 10px;
@@ -958,7 +973,25 @@
                 <tr>
                     <td>{{ s.name }}</td>
                     <td>
-                        {% if s.value is None %}
+                        {% if s.editable == 'duration_days' %}
+                        <span class="ss-val" id="ss-duration-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">full file</em>{% endif %}</span>
+                        <input type="number" class="ss-edit-input" id="ss-duration-input"
+                               value="{% if s.value %}{{ s.value }}{% endif %}"
+                               min="1" placeholder="—"
+                               style="display:none;width:70px;">
+                        <button class="ss-edit-btn" id="ss-duration-btn" title="Edit duration"
+                                onclick="startEditDuration()">
+                            <span class="material-symbols-outlined">edit</span>
+                        </button>
+                        <button class="ss-save-btn" id="ss-duration-save" style="display:none;"
+                                onclick="saveDuration()">
+                            <span class="material-symbols-outlined">check</span>
+                        </button>
+                        <button class="ss-save-btn" id="ss-duration-cancel" style="display:none;color:#aaa;"
+                                onclick="cancelEditDuration()">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                        {% elif s.value is None %}
                             <span style="color:#b2e0e4;">—</span>
                         {% else %}
                             {{ s.value }}
@@ -1141,6 +1174,57 @@
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');
     }
+
+    // ── Duration inline edit ──
+    var _durSaveUrl = "{% url 'dashboard-update-sim-duration' sim_id=sim.id %}";
+    var _durCsrf    = '{{ csrf_token }}';
+
+    function startEditDuration() {
+        document.getElementById('ss-duration-val').style.display   = 'none';
+        document.getElementById('ss-duration-btn').style.display   = 'none';
+        document.getElementById('ss-duration-input').style.display = 'inline-block';
+        document.getElementById('ss-duration-save').style.display  = 'inline-block';
+        document.getElementById('ss-duration-cancel').style.display= 'inline-block';
+        document.getElementById('ss-duration-input').focus();
+    }
+    function cancelEditDuration() {
+        document.getElementById('ss-duration-val').style.display   = '';
+        document.getElementById('ss-duration-btn').style.display   = '';
+        document.getElementById('ss-duration-input').style.display = 'none';
+        document.getElementById('ss-duration-save').style.display  = 'none';
+        document.getElementById('ss-duration-cancel').style.display= 'none';
+    }
+    function saveDuration() {
+        var val = document.getElementById('ss-duration-input').value.trim();
+        var fd  = new FormData();
+        fd.append('duration_days', val);
+        fd.append('csrfmiddlewaretoken', _durCsrf);
+        document.getElementById('ss-duration-save').disabled = true;
+        fetch(_durSaveUrl, { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var valEl = document.getElementById('ss-duration-val');
+                if (data.duration_days) {
+                    valEl.innerHTML = data.duration_days;
+                    document.getElementById('ss-duration-input').value = data.duration_days;
+                } else {
+                    valEl.innerHTML = '<em style="color:#aaa;">full file</em>';
+                    document.getElementById('ss-duration-input').value = '';
+                }
+                cancelEditDuration();
+            })
+            .catch(function() {})
+            .finally(function() { document.getElementById('ss-duration-save').disabled = false; });
+    }
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') cancelEditDuration();
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+        var inp = document.getElementById('ss-duration-input');
+        if (inp) inp.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') saveDuration();
+        });
+    });
     function toggleCard(header) {
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');

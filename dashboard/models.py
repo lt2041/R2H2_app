@@ -24,6 +24,9 @@ class Simulation(models.Model):
     bSingleTurb = models.BooleanField(default=True, help_text="Whether to simulate a single turbine or multiple (weak grid)")
     arLateralDistances = models.JSONField(default=None, blank=True, null=True, help_text="Lateral distances of turbines in weak grid scenario (meters)")
     rDivisor = models.FloatField(default=400.0, help_text="Divisor for normalizing wind power input (e.g. max power of single turbine)")
+    duration_days = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Override simulation duration (days). Truncates wind data to this many days. Leave blank to use the full wind file.')
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"

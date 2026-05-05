@@ -375,6 +375,17 @@
                 </div>
             </div>
 
+            <!-- Wind speed -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <span class="material-symbols-outlined">air</span>
+                    Wind Speed
+                </div>
+                <div class="chart-body">
+                    <div id="chart-wind-{{ i }}" style="height:280px;"></div>
+                </div>
+            </div>
+
         </div>
     </div>
     {% endfor %}
@@ -435,6 +446,7 @@
         yaxis: { gridcolor: '#d4eef0', zeroline: false, exponentformat: 'e', minexponent: 4 },
         legend: { orientation: 'h', y: 1.08, yanchor: 'bottom', x: 0.5, xanchor: 'center', font: { size: 10 } },
         hovermode: 'x unified',
+        dragmode: 'zoom',
     };
 
     var TEAL  = '#22a6b3';
@@ -512,7 +524,7 @@
                 Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'SoC (MWh)', tickformat: '.2f' }),
                     xaxis: xaxisLayout('Hour'),
-                }), { responsive: true, displayModeBar: false });
+                }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-soc-' + idx).innerHTML =
                 '<div class="no-data-notice">No battery SoC data.</div>';
@@ -530,7 +542,7 @@
             Object.assign({}, LAYOUT_DEFAULTS, {
                 yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'kg H₂' }),
                 xaxis: xaxisLayout('Hour'),
-            }), { responsive: true, displayModeBar: false });
+            }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-h2-' + idx).innerHTML =
                 '<div class="no-data-notice">No H₂ production data.</div>';
@@ -553,7 +565,7 @@
                 Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Fraction', range: [0, 1.05] }),
                     xaxis: xaxisLayout('Hour'),
-                }), { responsive: true, displayModeBar: false });
+                }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-elec-' + idx).innerHTML =
                 '<div class="no-data-notice">No electrolyser data.</div>';
@@ -576,10 +588,27 @@
                 Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Power (MW)' }),
                     xaxis: xaxisLayout('Hour'),
-                }), { responsive: true, displayModeBar: false });
+                }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-rcd-' + idx).innerHTML =
-                '<div class="no-data-notice">No battery power data.</div>';
+                '<div class="no-data-notice">No RCD / battery rating data.</div>';
+        }
+
+        // ── Wind speed chart ──────────────────────────────────────────────
+        if (d.arWindSpeed && d.arWindSpeed.length) {
+            Plotly.newPlot('chart-wind-' + idx, [{
+                x: xvals(d.arWindSpeed, cumHours), y: d.arWindSpeed,
+                type: 'scatter', mode: 'lines',
+                line: { color: '#7ecbcf', width: 1 },
+                name: 'Wind speed (m/s)',
+            }],
+            Object.assign({}, LAYOUT_DEFAULTS, {
+                yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'm/s' }),
+                xaxis: xaxisLayout('Hour'),
+            }), { responsive: true, displayModeBar: false, scrollZoom: true });
+        } else {
+            document.getElementById('chart-wind-' + idx).innerHTML =
+                '<div class="no-data-notice">No wind speed data.</div>';
         }
 
         // ── Summary stats ─────────────────────────────────────────────────
@@ -610,7 +639,7 @@
 
     // Clear and re-render all previously rendered year panels
     function reRenderAll() {
-        var chartIds = ['chart-soc-', 'chart-h2-', 'chart-elec-', 'chart-rcd-'];
+        var chartIds = ['chart-soc-', 'chart-h2-', 'chart-elec-', 'chart-rcd-', 'chart-wind-'];
         Object.keys(renderedYears).forEach(function(idx) {
             chartIds.forEach(function(prefix) {
                 var el = document.getElementById(prefix + idx);

@@ -596,6 +596,22 @@ def view_run_results(request, sim_id, run_id):
 
             years_data.append(ydata)
 
+    # Append per-year wind speed data from the linked WindInput H5 file
+    try:
+        wind_path = _resolve_wind_h5_path(sim)
+        with h5py.File(wind_path, 'r') as wf:
+            if 'WindSpeed' in wf:
+                ws_full = wf['WindSpeed'][0].tolist()  # shape (N,)
+                # Distribute hours across years by matching year data lengths
+                offset = 0
+                for yd in years_data:
+                    ref = (yd.get('arSoc') or yd.get('arTotalH2') or yd.get('arElecOnAv') or [])
+                    n = len(ref)
+                    yd['arWindSpeed'] = ws_full[offset: offset + n] if n else []
+                    offset += n
+    except Exception:
+        pass  # wind data is optional — silently skip if unavailable
+
     # Compute per-year cumulative hour offsets from datum
     from datetime import date as _date
     datum = sim.datum_date or _date.today()

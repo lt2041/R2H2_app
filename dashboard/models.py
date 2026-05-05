@@ -266,15 +266,17 @@ class WindInput(models.Model):
 #### ---------------------- SIMULATION RUN (JOB TRACKING) ---------------------- ####
 
 class SimulationRun(models.Model):
-    PENDING  = 'pending'
-    RUNNING  = 'running'
-    DONE     = 'done'
-    ERROR    = 'error'
+    PENDING   = 'pending'
+    RUNNING   = 'running'
+    DONE      = 'done'
+    ERROR     = 'error'
+    CANCELLED = 'cancelled'
     STATUS_CHOICES = [
-        (PENDING, 'Pending'),
-        (RUNNING, 'Running'),
-        (DONE,    'Done'),
-        (ERROR,   'Error'),
+        (PENDING,   'Pending'),
+        (RUNNING,   'Running'),
+        (DONE,      'Done'),
+        (ERROR,     'Error'),
+        (CANCELLED, 'Cancelled'),
     ]
 
     simulation  = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name='runs')

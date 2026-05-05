@@ -133,6 +133,47 @@
         box-shadow: none;
     }
 
+    .sim-stop-btn {
+        display: none;
+        align-items: center;
+        gap: 0.45rem;
+        background: #fff;
+        color: #b71c1c;
+        border: 1.5px solid #f5c6c6;
+        border-radius: 8px;
+        padding: 0.5rem 1.1rem;
+        font-family: 'Ubuntu', sans-serif;
+        font-size: 0.88rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+    }
+
+    .sim-stop-btn:hover {
+        background: #fdecea;
+        border-color: #e57373;
+    }
+
+    .sim-stop-btn.visible { display: inline-flex; }
+
+    .sim-stop-btn .material-symbols-outlined {
+        font-size: 1.1rem !important;
+        padding: 0 !important;
+        pointer-events: none;
+    }
+
+    .run-delete-btn {
+        background: none;
+        border: none;
+        padding: 0 4px;
+        cursor: pointer;
+        color: #ccc;
+        line-height: 1;
+        transition: color 0.15s;
+    }
+    .run-delete-btn:hover { color: #e53935; }
+    .run-delete-btn .material-symbols-outlined { font-size: 0.95rem !important; padding: 0 !important; pointer-events: none; vertical-align: middle; }
+
     /* ── Run history table ── */
     .run-history-table {
         width: 100%;
@@ -182,10 +223,11 @@
         font-weight: 600;
     }
 
-    .run-status-badge.done    { background:#e6f9f0; color:#1a7a4a; }
-    .run-status-badge.error   { background:#fdecea; color:#b71c1c; }
-    .run-status-badge.running { background:#e8f8f9; color:#136b75; }
-    .run-status-badge.pending { background:#f4f4f4; color:#757575; }
+    .run-status-badge.done      { background:#e6f9f0; color:#1a7a4a; }
+    .run-status-badge.error     { background:#fdecea; color:#b71c1c; }
+    .run-status-badge.running   { background:#e8f8f9; color:#136b75; }
+    .run-status-badge.pending   { background:#f4f4f4; color:#757575; }
+    .run-status-badge.cancelled { background:#fff8e1; color:#e65100; border:1px solid #ffe082; }
 
     .run-status-badge .material-symbols-outlined {
         font-size: 0.85rem !important;
@@ -537,6 +579,19 @@
                     Simulate
                 </button>
             </form>
+
+            {% if latest_run %}
+            <button class="sim-stop-btn{% if latest_run.status == 'pending' or latest_run.status == 'running' %} visible{% endif %}"
+                    id="sim-stop-btn"
+                    data-cancel-url="{% url 'dashboard-cancel-simulation-run' sim_id=sim.id run_id=latest_run.id %}"
+                    data-run-id="{{ latest_run.id }}"
+                    data-csrf="{{ csrf_token }}">
+                <span class="material-symbols-outlined">stop_circle</span>
+                Stop
+            </button>
+            {% endif %}
+
+
         </div>
 
         <!-- Run history table -->
@@ -547,7 +602,8 @@
                 <col style="width:16%;">
                 <col style="width:20%;">
                 <col style="width:14%;">
-                <col style="width:44%;">
+                <col style="width:40%;">
+                <col style="width:4%;">
             </colgroup>
             <thead>
                 <tr>
@@ -556,6 +612,7 @@
                     <th style="text-align:center;">Started</th>
                     <th style="text-align:center;">Duration</th>
                     <th>Message</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="run-history-tbody">
@@ -568,6 +625,8 @@
                                 <span class="material-symbols-outlined">check_circle</span>done
                             {% elif run.status == 'error' %}
                                 <span class="material-symbols-outlined">error</span>error
+                            {% elif run.status == 'cancelled' %}
+                                <span class="material-symbols-outlined">cancel</span>cancelled
                             {% elif run.status == 'running' %}
                                 <span class="sim-spinner" style="width:0.7rem;height:0.7rem;"></span>running
                             {% else %}
@@ -592,6 +651,17 @@
                     <td id="run-msg-{{ run.id }}" style="color:#4a7a80; font-size:0.78rem;">
                         {{ run.message|default:"—" }}
                     </td>
+                    <td style="text-align:center;">
+                        {% if run.status != 'pending' and run.status != 'running' %}
+                        <button class="run-delete-btn"
+                                data-url="{% url 'dashboard-delete-simulation-run' sim_id=sim.id run_id=run.id %}"
+                                data-run-id="{{ run.id }}"
+                                data-csrf="{{ csrf_token }}"
+                                title="Delete this run">
+                            <span class="material-symbols-outlined">delete</span>
+                        </button>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -607,36 +677,104 @@
     {% if latest_run and latest_run.status == 'pending' or latest_run and latest_run.status == 'running' %}
     <script>
         (function() {
-            var pollUrl = "{% url 'dashboard-poll-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
-            var btn     = document.getElementById('sim-run-btn');
-            if (btn) btn.disabled = true;
+            var pollUrl  = "{% url 'dashboard-poll-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
+            var runBtn   = document.getElementById('sim-run-btn');
+            var stopBtn  = document.getElementById('sim-stop-btn');
+            if (runBtn)  runBtn.disabled = true;
+            if (stopBtn) stopBtn.classList.add('visible');
+
+            function markDone(data) {
+                var runId = '{{ latest_run.id }}';
+                var badge = document.getElementById('run-badge-' + runId);
+                var dur   = document.getElementById('run-dur-'   + runId);
+                var msg   = document.getElementById('run-msg-'   + runId);
+                if (badge) {
+                    var icon = data.status === 'done' ? 'check_circle'
+                             : data.status === 'cancelled' ? 'cancel'
+                             : 'error';
+                    badge.className = 'run-status-badge ' + data.status;
+                    badge.innerHTML = '<span class="material-symbols-outlined">' + icon + '</span>' + data.status;
+                }
+                if (dur) dur.textContent = data.duration || '';
+                if (msg) msg.textContent = data.message  || '—';
+                if (runBtn)  runBtn.disabled = false;
+                if (stopBtn) stopBtn.classList.remove('visible');
+                // Inject a delete button into the last cell of this run's row
+                var row = document.getElementById('run-row-' + runId);
+                if (row) {
+                    var lastCell = row.querySelector('td:last-child');
+                    if (lastCell && !lastCell.querySelector('.run-delete-btn')) {
+                        var deleteUrl = "{% url 'dashboard-delete-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
+                        var csrf      = '{{ csrf_token }}';
+                        var btn = document.createElement('button');
+                        btn.className = 'run-delete-btn';
+                        btn.dataset.runId = runId;
+                        btn.dataset.url   = deleteUrl;
+                        btn.dataset.csrf  = csrf;
+                        btn.title = 'Delete this run';
+                        btn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+                        btn.addEventListener('click', deleteRunHandler);
+                        lastCell.appendChild(btn);
+                    }
+                }
+            }
 
             function poll() {
                 fetch(pollUrl)
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
-                        if (data.done) {
-                            var badge = document.getElementById('run-badge-{{ latest_run.id }}');
-                            var dur   = document.getElementById('run-dur-{{ latest_run.id }}');
-                            var msg   = document.getElementById('run-msg-{{ latest_run.id }}');
-                            if (badge) {
-                                var icon = data.status === 'done' ? 'check_circle' : 'error';
-                                badge.className = 'run-status-badge ' + data.status;
-                                badge.innerHTML = '<span class="material-symbols-outlined">' + icon + '</span>' + data.status;
-                            }
-                            if (dur)   dur.textContent = data.duration !== undefined ? data.duration : '';
-                            if (msg)   msg.textContent = data.message  || '—';
-                            if (btn)   btn.disabled = false;
-                        } else {
-                            setTimeout(poll, 1500);
-                        }
+                        if (data.done) { markDone(data); }
+                        else           { setTimeout(poll, 1500); }
                     })
                     .catch(function() { setTimeout(poll, 3000); });
             }
             setTimeout(poll, 1500);
+
+            if (stopBtn) {
+                stopBtn.addEventListener('click', function() {
+                    stopBtn.disabled = true;
+                    stopBtn.classList.remove('visible');
+                    fetch(stopBtn.dataset.cancelUrl, {
+                        method: 'POST',
+                        headers: {'X-CSRFToken': stopBtn.dataset.csrf},
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) { markDone(data); })
+                    .catch(function() { stopBtn.disabled = false; stopBtn.classList.add('visible'); });
+                });
+            }
         })();
     </script>
     {% endif %}
+
+    <!-- Delete run JS -->
+    <script>
+        function deleteRunHandler() {
+            var btn   = this;
+            var runId = btn.dataset.runId;
+            if (!confirm('Delete run #' + runId + '? This cannot be undone.')) { return; }
+            btn.disabled = true;
+            fetch(btn.dataset.url, {
+                method: 'POST',
+                headers: {'X-CSRFToken': btn.dataset.csrf},
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.deleted !== undefined) {
+                    var row = document.getElementById('run-row-' + data.deleted);
+                    if (row) { row.remove(); }
+                } else {
+                    btn.disabled = false;
+                    alert(data.error || 'Could not delete run.');
+                }
+            })
+            .catch(function() { btn.disabled = false; });
+        }
+
+        document.querySelectorAll('.run-delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', deleteRunHandler);
+        });
+    </script>
 
     <!-- Simulation settings panel -->
     <div class="sim-settings-panel">

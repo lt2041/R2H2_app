@@ -2,6 +2,7 @@
 from django.shortcuts import render
 from django.utils.safestring import mark_safe
 from django.apps import apps
+from django.views.decorators.http import require_POST
 import json
 
 # Django REST framework
@@ -271,8 +272,39 @@ def poll_simulation_run(request, sim_id, run_id):
         'status':   run.status,
         'message':  run.message,
         'duration': duration_str,
-        'done':     run.status in (SimulationRun.DONE, SimulationRun.ERROR),
+        'done':     run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
     })
+
+
+@require_POST
+def cancel_simulation_run(request, sim_id, run_id):
+    """POST: mark a pending/running SimulationRun as cancelled (error status)."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    from django.utils import timezone
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    if run.status in (SimulationRun.PENDING, SimulationRun.RUNNING):
+        run.status = SimulationRun.CANCELLED
+        run.message = 'Cancelled by user.'
+        run.finished_at = timezone.now()
+        run.save(update_fields=['status', 'message', 'finished_at'])
+    return JsonResponse({'status': run.status, 'message': run.message})
+
+
+@require_POST
+def delete_simulation_run(request, sim_id, run_id):
+    """POST: delete a single finished SimulationRun."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    # Refuse to delete an active run — cancel it first
+    if run.status in (SimulationRun.PENDING, SimulationRun.RUNNING):
+        return JsonResponse({'error': 'Cannot delete an active run. Cancel it first.'}, status=400)
+    run.delete()
+    return JsonResponse({'deleted': run_id})
+
+
+
 
 
 def home(request):
@@ -491,7 +523,6 @@ def browse(request, table_name=None):
 
 import os as _os
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
 from r2h2.config import get_wind_data_dir, load_config, get_config_path
 import yaml as _yaml
 import pandas as _pd

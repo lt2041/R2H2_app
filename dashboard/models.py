@@ -259,6 +259,18 @@ class WindInput(models.Model):
     arPowerInput = models.JSONField(default=None, blank=True, null=True)
     arTime = models.JSONField(default=None, blank=True, null=True)
 
+    # HDF5 introspection metadata (populated on upload)
+    h5_datasets     = models.TextField(blank=True, default='',
+                          help_text='Comma-separated list of dataset paths found in the HDF5 file.')
+    ts_start        = models.FloatField(null=True, blank=True,
+                          help_text='First time value in the per-hour time axis [s].')
+    ts_end          = models.FloatField(null=True, blank=True,
+                          help_text='Last time value in the per-hour time axis [s].')
+    ts_resolution   = models.FloatField(null=True, blank=True,
+                          help_text='Time step size [s].')
+    ts_n_hours      = models.IntegerField(null=True, blank=True,
+                          help_text='Number of hours (columns) in the wind dataset.')
+
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}, File: {self.wind_file or '—'}"
 

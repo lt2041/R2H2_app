@@ -91,13 +91,17 @@
         </span>
 
         {% if files %}
-        <table class="striped" style="font-size:0.9rem;">
+        <table class="striped" style="font-size:0.85rem;">
           <thead>
             <tr>
               <th>File name</th>
-              <th style="text-align:right; width:90px;">Size (MB)</th>
-              <th style="width:160px;">Last modified</th>
-              <th style="width:130px;">WindInput</th>
+              <th style="text-align:right; width:80px;">Size (MB)</th>
+              <th style="width:150px;">Last modified</th>
+              <th style="width:110px;">WindInput</th>
+              <th style="width:80px; text-align:right;">Hours</th>
+              <th style="width:80px; text-align:right;">Step (s)</th>
+              <th style="width:100px; text-align:right;">Time range (s)</th>
+              <th>Datasets</th>
             </tr>
           </thead>
           <tbody id="file-table-body">
@@ -111,15 +115,29 @@
               <td style="text-align:right;">{{ f.size_mb }}</td>
               <td class="grey-text">{{ f.modified }}</td>
               <td>
-                {% if f.wind_input_id %}
-                <a href="{% url 'dashboard-browse' 'WindInput' %}?id={{ f.wind_input_id }}"
+                {% if f.wind_input %}
+                <a href="{% url 'dashboard-browse' 'WindInput' %}?id={{ f.wind_input.id }}"
                    class="chip teal lighten-4" style="font-size:0.78rem; cursor:pointer;">
                   <span class="material-symbols-outlined" style="font-size:0.9rem; vertical-align:middle;">link</span>
-                  #{{ f.wind_input_id }}
+                  #{{ f.wind_input.id }}
                 </a>
                 {% else %}
                 <span class="grey-text" style="font-size:0.8rem;">—</span>
                 {% endif %}
+              </td>
+              <td style="text-align:right; font-family:monospace;">
+                {{ f.wind_input.ts_n_hours|default:"—" }}
+              </td>
+              <td style="text-align:right; font-family:monospace;">
+                {{ f.wind_input.ts_resolution|default:"—" }}
+              </td>
+              <td style="text-align:right; font-family:monospace; white-space:nowrap;">
+                {% if f.wind_input.ts_start is not None and f.wind_input.ts_end is not None %}
+                  {{ f.wind_input.ts_start|floatformat:0 }}–{{ f.wind_input.ts_end|floatformat:0 }}
+                {% else %}—{% endif %}
+              </td>
+              <td style="font-size:0.75rem; color:#607d8b; word-break:break-all;">
+                {{ f.wind_input.h5_datasets|default:"—" }}
               </td>
             </tr>
             {% endfor %}
@@ -254,16 +272,19 @@
   function appendRow(name, size_mb, wind_input_id) {
     let tbody = document.getElementById('file-table-body');
     if (!tbody) {
-      // Table doesn't exist yet — build it
       const card = document.querySelector('.card-content:last-of-type');
       const tbl = document.createElement('table');
       tbl.className = 'striped';
-      tbl.style.fontSize = '0.9rem';
+      tbl.style.fontSize = '0.85rem';
       tbl.innerHTML = `<thead><tr>
         <th>File name</th>
-        <th style="text-align:right;width:90px;">Size (MB)</th>
-        <th style="width:160px;">Last modified</th>
-        <th style="width:130px;">WindInput</th>
+        <th style="text-align:right;width:80px;">Size (MB)</th>
+        <th style="width:150px;">Last modified</th>
+        <th style="width:110px;">WindInput</th>
+        <th style="width:80px;text-align:right;">Hours</th>
+        <th style="width:80px;text-align:right;">Step (s)</th>
+        <th style="width:100px;text-align:right;">Time range (s)</th>
+        <th>Datasets</th>
       </tr></thead><tbody id="file-table-body"></tbody>`;
       card.appendChild(tbl);
       tbody = document.getElementById('file-table-body');
@@ -281,7 +302,11 @@
       ${escHtml(name)}</td>
       <td style="text-align:right;">${size_mb}</td>
       <td class="grey-text">${now}</td>
-      <td>${wiCell}</td>`;
+      <td>${wiCell}</td>
+      <td style="text-align:right;font-family:monospace;">—</td>
+      <td style="text-align:right;font-family:monospace;">—</td>
+      <td style="text-align:right;font-family:monospace;">—</td>
+      <td style="font-size:0.75rem;color:#607d8b;">—</td>`;
     tbody.appendChild(tr);
   }
 

@@ -570,19 +570,36 @@ from pathlib import Path as _Path
 
 def wind_data(request):
     """Page listing uploaded wind HDF5 files with a drag-and-drop uploader."""
+    from django.conf import settings as django_settings
     wind_dir = get_wind_data_dir()
-    # Build a lookup: filename -> WindInput id (using wind_file field)
-    linked = {
-        _Path(wi.wind_file.name).name: wi.id
-        for wi in WindInput.objects.exclude(wind_file='').exclude(wind_file__isnull=True)
-    }
+    media_root = _Path(django_settings.MEDIA_ROOT)
+
+    # Fetch all linked WindInput records keyed by filename
+    wi_qs = WindInput.objects.exclude(wind_file='').exclude(wind_file__isnull=True)
+    wi_by_name = {_Path(wi.wind_file.name).name: wi for wi in wi_qs}
+
+    # Backfill metadata for records that were uploaded before the new fields existed
+    needs_save = []
+    for wi in wi_by_name.values():
+        if wi.h5_datasets == '' and wi.ts_start is None:
+            full_path = media_root / wi.wind_file.name
+            if full_path.exists():
+                meta = _introspect_wind_h5(full_path)
+                for k, v in meta.items():
+                    setattr(wi, k, v)
+                needs_save.append(wi)
+    if needs_save:
+        fields = ['h5_datasets', 'ts_start', 'ts_end', 'ts_resolution', 'ts_n_hours']
+        for wi in needs_save:
+            wi.save(update_fields=fields)
+
     files = sorted(
         [
             {
                 'name': f.name,
                 'size_mb': round(f.stat().st_size / 1e6, 2),
                 'modified': _pd.Timestamp(f.stat().st_mtime, unit='s').strftime('%Y-%m-%d %H:%M'),
-                'wind_input_id': linked.get(f.name),
+                'wind_input': wi_by_name.get(f.name),
             }
             for f in wind_dir.iterdir()
             if f.suffix.lower() in ('.h5', '.hdf5', '.hdf')
@@ -595,6 +612,39 @@ def wind_data(request):
         'files': files,
         'wind_dir': wind_dir_str,
     })
+
+
+def _introspect_wind_h5(path):
+    """Return a dict of HDF5 metadata for a wind file.
+
+    Keys: h5_datasets, ts_start, ts_end, ts_resolution, ts_n_hours.
+    All values default to safe empty/None on any error.
+    """
+    meta = {'h5_datasets': '', 'ts_start': None, 'ts_end': None,
+            'ts_resolution': None, 'ts_n_hours': None}
+    try:
+        import h5py, numpy as np
+        datasets = []
+        with h5py.File(path, 'r') as f:
+            def _collect(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    datasets.append(f'/{name} {list(obj.shape)} {obj.dtype}')
+            f.visititems(_collect)
+            meta['h5_datasets'] = ', '.join(datasets)
+            # Time axis
+            if '/Time' in f:
+                t = f['/Time'][:].ravel()
+                if len(t) > 1:
+                    meta['ts_start']      = float(t[0])
+                    meta['ts_end']        = float(t[-1])
+                    meta['ts_resolution'] = float(round(t[1] - t[0], 6))
+            # Hour count from WindSpeed
+            if '/WindSpeed' in f:
+                ws = f['/WindSpeed'][:].ravel()
+                meta['ts_n_hours'] = int(len(ws))
+    except Exception:
+        pass
+    return meta
 
 
 @require_POST
@@ -617,12 +667,18 @@ def wind_data_upload(request):
             with open(dest, 'wb') as fh:
                 for chunk in uploaded_file.chunks():
                     fh.write(chunk)
-            # Create or retrieve the linked WindInput record
+            # Introspect HDF5 metadata
+            meta = _introspect_wind_h5(dest)
+            # Create or retrieve the linked WindInput record and update metadata
             rel_path = 'wind_data/' + name
-            wind_input, _ = WindInput.objects.get_or_create(
+            wind_input, created = WindInput.objects.get_or_create(
                 wind_file=rel_path,
-                defaults={'name': _Path(name).stem},
+                defaults={'name': _Path(name).stem, **meta},
             )
+            if not created:
+                for k, v in meta.items():
+                    setattr(wind_input, k, v)
+                wind_input.save(update_fields=list(meta.keys()))
             saved.append({
                 'name': name,
                 'size_mb': round(dest.stat().st_size / 1e6, 2),

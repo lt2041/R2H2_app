@@ -21,6 +21,18 @@ from .models import SimulationRun
 
 
 
+def landing(request):
+    """Landing page: overview of app with workflow guide and quick stats."""
+    from .models import Simulation, SimulationRun, WindInput
+    context = {
+        'sim_count': Simulation.objects.count(),
+        'run_count': SimulationRun.objects.count(),
+        'wind_count': WindInput.objects.exclude(wind_file='').count(),
+        'recent_runs': SimulationRun.objects.select_related('simulation').order_by('-started_at')[:5],
+    }
+    return render(request, 'dashboard/landing.html', context)
+
+
 def simulations(request):
     """Hierarchical view of Simulation models with M2M component relations."""
     sims = Simulation.objects.prefetch_related(

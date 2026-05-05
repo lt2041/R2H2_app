@@ -43,7 +43,7 @@
     <!-- Top Navbar -->
     <nav class="teal lighten-2">
         <div class="nav-wrapper">
-            <a href="#" class="brand-logo" style="margin-left:20px;">My Dashboard</a>
+            <a href="{% url 'dashboard-landing' %}" class="brand-logo" style="margin-left:20px;">R2H2</a>
             <a href="#" data-target="slide-out" class="sidenav-trigger right" style="margin-right:20px;"><span class="material-symbols-outlined">menu</span></a>
         </div>
     </nav>
@@ -56,6 +56,10 @@
             <span style="font-family:'Michroma',sans-serif; font-size:1.55rem;
                     color:#ffffff; letter-spacing:0.08em;">R2H2</span>
         </div>
+        <li><a href="{% url 'dashboard-landing' %}" class="black-text">
+            <span class="material-symbols-outlined">home</span>
+            Home
+        </a></li>
         <li><a href="{% url 'dashboard-simulations' %}" class="black-text">
             <span class="material-symbols-outlined">flowchart</span>
             Models & Simulations

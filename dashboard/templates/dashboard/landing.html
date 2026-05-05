@@ -1,0 +1,297 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}R2H2 — Welcome{% endblock %}
+
+{% block content %}
+<style>
+    .landing-hero {
+        background: linear-gradient(135deg, #00897b 0%, #26a69a 60%, #80cbc4 100%);
+        border-radius: 8px;
+        padding: 3rem 2.5rem 2.5rem;
+        margin-bottom: 2rem;
+        color: #fff;
+    }
+    .landing-hero h1 {
+        font-family: 'Michroma', sans-serif;
+        font-size: 3rem;
+        letter-spacing: 0.1em;
+        margin: 0 0 0.5rem;
+    }
+    .landing-hero p {
+        font-size: 1.2rem;
+        opacity: 0.92;
+        max-width: 620px;
+        margin-bottom: 1.8rem;
+    }
+    .stat-card {
+        text-align: center;
+        padding: 1.5rem 1rem;
+        border-radius: 6px;
+    }
+    .stat-card .stat-num {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #00897b;
+        line-height: 1;
+    }
+    .stat-card .stat-label {
+        font-size: 0.95rem;
+        color: #555;
+        margin-top: 0.4rem;
+    }
+    .step-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 1.2rem;
+        padding: 1.4rem 1.5rem;
+        border-radius: 8px;
+        height: 100%;
+        box-sizing: border-box;
+    }
+    .step-num {
+        flex-shrink: 0;
+        width: 2.2rem;
+        height: 2.2rem;
+        border-radius: 50%;
+        background: #00897b;
+        color: #fff;
+        font-weight: 700;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .step-icon {
+        color: #00897b;
+        font-size: 2rem !important;
+        padding: 0 !important;
+        transform: none !important;
+    }
+    .step-body h6 {
+        margin: 0 0 0.3rem;
+        font-weight: 600;
+        font-size: 1rem;
+    }
+    .step-body p {
+        margin: 0;
+        font-size: 0.88rem;
+        color: #555;
+        line-height: 1.5;
+    }
+    .section-heading {
+        font-weight: 600;
+        font-size: 1.1rem;
+        color: #004d40;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 1rem;
+        border-left: 4px solid #00897b;
+        padding-left: 0.7rem;
+    }
+    .run-status-badge {
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .badge-done     { background:#e8f5e9; color:#2e7d32; }
+    .badge-running  { background:#e3f2fd; color:#1565c0; }
+    .badge-error    { background:#fce4ec; color:#c62828; }
+    .badge-pending  { background:#fff8e1; color:#f57f17; }
+    .badge-cancelled{ background:#f3e5f5; color:#6a1b9a; }
+    .empty-msg {
+        color: #aaa;
+        font-style: italic;
+    }
+</style>
+
+<!-- ── Hero ─────────────────────────────────────────────────────── -->
+<div class="landing-hero">
+    <h1>R2H2</h1>
+    <p>Simulate green hydrogen production from wind energy — configure components,
+       upload wind data, and run multi-year transient simulations.</p>
+    <a href="{% url 'dashboard-simulations' %}" class="btn white teal-text text-darken-2 waves-effect waves-teal"
+       style="font-weight:600; margin-right:1rem;">
+        <span class="material-symbols-outlined" style="font-size:1.1rem;padding:0 6px 0 0;transform:none;vertical-align:middle;">rocket_launch</span>
+        Get Started
+    </a>
+    <a href="{% url 'dashboard-wind-data' %}" class="btn-flat white-text waves-effect waves-light"
+       style="border:1px solid rgba(255,255,255,0.5); border-radius:4px;">
+        Upload Wind Data
+    </a>
+</div>
+
+<!-- ── Quick stats ────────────────────────────────────────────── -->
+<div class="row" style="margin-bottom:0.5rem;">
+    <div class="col s12">
+        <p class="section-heading">At a Glance</p>
+    </div>
+    <div class="col s12 m4">
+        <div class="card stat-card z-depth-1">
+            <div class="stat-num">{{ sim_count }}</div>
+            <div class="stat-label">
+                <span class="material-symbols-outlined" style="font-size:1rem;padding:0 4px 0 0;transform:none;vertical-align:middle;">flowchart</span>
+                Simulation{{ sim_count|pluralize }}
+            </div>
+        </div>
+    </div>
+    <div class="col s12 m4">
+        <div class="card stat-card z-depth-1">
+            <div class="stat-num">{{ run_count }}</div>
+            <div class="stat-label">
+                <span class="material-symbols-outlined" style="font-size:1rem;padding:0 4px 0 0;transform:none;vertical-align:middle;">history</span>
+                Simulation Run{{ run_count|pluralize }}
+            </div>
+        </div>
+    </div>
+    <div class="col s12 m4">
+        <div class="card stat-card z-depth-1">
+            <div class="stat-num">{{ wind_count }}</div>
+            <div class="stat-label">
+                <span class="material-symbols-outlined" style="font-size:1rem;padding:0 4px 0 0;transform:none;vertical-align:middle;">air</span>
+                Wind Dataset{{ wind_count|pluralize }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Workflow guide ─────────────────────────────────────────── -->
+<div class="row" style="margin-top:1.5rem;">
+    <div class="col s12">
+        <p class="section-heading">How It Works</p>
+    </div>
+
+    <div class="col s12 m6 l3" style="margin-bottom:1rem;">
+        <div class="card z-depth-1" style="height:100%;margin:0;">
+            <div class="step-card">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                    <span class="material-symbols-outlined step-icon">air</span>
+                    <h6>Upload Wind Data</h6>
+                    <p>Import an HDF5 file containing turbine power time-series. Time step and duration are auto-detected.</p>
+                    <br>
+                    <a href="{% url 'dashboard-wind-data-upload' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                        Go to Wind Data →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col s12 m6 l3" style="margin-bottom:1rem;">
+        <div class="card z-depth-1" style="height:100%;margin:0;">
+            <div class="step-card">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                    <span class="material-symbols-outlined step-icon">deployed_code</span>
+                    <h6>Configure Components</h6>
+                    <p>Set up batteries, electrolysers, PEM cells, and thermal properties that describe your system.</p>
+                    <br>
+                    <a href="{% url 'dashboard-home' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                        Go to Components →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col s12 m6 l3" style="margin-bottom:1rem;">
+        <div class="card z-depth-1" style="height:100%;margin:0;">
+            <div class="step-card">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                    <span class="material-symbols-outlined step-icon">flowchart</span>
+                    <h6>Build a Simulation</h6>
+                    <p>Create a simulation model that links your components and wind input together into a run configuration.</p>
+                    <br>
+                    <a href="{% url 'dashboard-simulations' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                        Go to Simulations →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col s12 m6 l3" style="margin-bottom:1rem;">
+        <div class="card z-depth-1" style="height:100%;margin:0;">
+            <div class="step-card">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                    <span class="material-symbols-outlined step-icon">monitoring</span>
+                    <h6>Run & Analyse</h6>
+                    <p>Execute multi-year transient simulations and track live progress. Results are saved for later review.</p>
+                    <br>
+                    <a href="{% url 'dashboard-simulations' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                        View Results →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Recent runs ────────────────────────────────────────────── -->
+<div class="row" style="margin-top:1.5rem;">
+    <div class="col s12">
+        <p class="section-heading">Recent Simulation Runs</p>
+    </div>
+    <div class="col s12">
+        <div class="card z-depth-1">
+            <div class="card-content" style="padding:0;">
+                {% if recent_runs %}
+                <table class="striped" style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th>Simulation</th>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th>Duration</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in recent_runs %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'dashboard-simulation-detail' run.simulation.id %}" class="teal-text text-darken-2">
+                                    {{ run.simulation.name }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if run.status == 'DONE' %}
+                                    <span class="run-status-badge badge-done">Done</span>
+                                {% elif run.status == 'RUNNING' %}
+                                    <span class="run-status-badge badge-running">Running</span>
+                                {% elif run.status == 'ERROR' %}
+                                    <span class="run-status-badge badge-error">Error</span>
+                                {% elif run.status == 'CANCELLED' %}
+                                    <span class="run-status-badge badge-cancelled">Cancelled</span>
+                                {% else %}
+                                    <span class="run-status-badge badge-pending">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td style="white-space:nowrap;">
+                                {% if run.started_at %}{{ run.started_at|date:"d M Y H:i" }}{% else %}—{% endif %}
+                            </td>
+                            <td style="font-family:'Ubuntu Mono',monospace;">
+                                {% if run.duration_hms %}{{ run.duration_hms }}{% else %}—{% endif %}
+                            </td>
+                            <td style="font-size:0.85rem;color:#555;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                {{ run.message|default:"—" }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="empty-msg" style="padding:1.5rem;">No simulation runs yet. <a href="{% url 'dashboard-simulations' %}" class="teal-text text-darken-2">Create one now.</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -637,6 +637,39 @@
         }
     }
 
+    // ── Linked x-axis zoom ────────────────────────────────────────────────
+    var CHART_PREFIXES = ['chart-soc-', 'chart-h2-', 'chart-elec-', 'chart-rcd-', 'chart-wind-'];
+    var _syncPending = 0;  // counts in-flight programmatic relayouts
+
+    function linkXaxes(idx) {
+        var divs = CHART_PREFIXES.map(function(p) {
+            return document.getElementById(p + idx);
+        }).filter(function(el) { return el && el._fullLayout; });
+        if (divs.length < 2) return;
+
+        divs.forEach(function(source) {
+            source.on('plotly_relayout', function(ed) {
+                if (_syncPending > 0) return;  // ignore events we triggered
+                var x0 = ed['xaxis.range[0]'];
+                var x1 = ed['xaxis.range[1]'];
+                var autorange = ed['xaxis.autorange'];
+                if (x0 === undefined && x1 === undefined && !autorange) return;
+
+                var update = autorange
+                    ? { 'xaxis.autorange': true }
+                    : { 'xaxis.range': [x0, x1] };
+
+                var targets = divs.filter(function(t) { return t !== source; });
+                _syncPending += targets.length;
+                targets.forEach(function(t) {
+                    Plotly.relayout(t, update).then(function() {
+                        _syncPending = Math.max(0, _syncPending - 1);
+                    });
+                });
+            });
+        });
+    }
+
     // Clear and re-render all previously rendered year panels
     function reRenderAll() {
         var chartIds = ['chart-soc-', 'chart-h2-', 'chart-elec-', 'chart-rcd-', 'chart-wind-'];
@@ -651,6 +684,7 @@
 
     // Initial render
     renderYear(0);
+    setTimeout(function() { linkXaxes(0); }, 0);
 
     window.selectYear = function(idx) {
         document.querySelectorAll('.year-tab').forEach(function(t) {
@@ -662,7 +696,10 @@
         var panel = document.getElementById('year-panel-' + idx);
         if (panel) {
             panel.style.display = '';
-            if (!renderedYears[idx]) { renderYear(idx); }
+            if (!renderedYears[idx]) {
+                renderYear(idx);
+                setTimeout(function() { linkXaxes(idx); }, 0);
+            }
         }
     };
 

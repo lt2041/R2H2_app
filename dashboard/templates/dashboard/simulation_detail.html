@@ -636,12 +636,8 @@
                     </td>
                     <td class="run-mono" style="text-align:center;">{{ run.started_at|date:"d M Y, H:i:s" }}</td>
                     <td class="run-mono" id="run-dur-{{ run.id }}" style="text-align:center;">
-                        {% if run.duration_seconds is not None %}
-                            {% if run.duration_seconds < 60 %}
-                                {{ run.duration_seconds|floatformat:1 }} s
-                            {% else %}
-                                {{ run.duration_seconds|floatformat:0 }} s
-                            {% endif %}
+                        {% if run.duration_hms %}
+                            {{ run.duration_hms }}
                         {% elif run.status == 'running' or run.status == 'pending' %}
                             <span class="sim-spinner" style="width:0.65rem;height:0.65rem;"></span>
                         {% else %}
@@ -723,6 +719,11 @@
                 fetch(pollUrl)
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
+                        // Update live progress message even while still running
+                        var msg = document.getElementById('run-msg-' + '{{ latest_run.id }}');
+                        if (msg && data.message) { msg.textContent = data.message; }
+                        var dur = document.getElementById('run-dur-' + '{{ latest_run.id }}');
+                        if (dur && data.duration) { dur.textContent = data.duration; }
                         if (data.done) { markDone(data); }
                         else           { setTimeout(poll, 1500); }
                     })

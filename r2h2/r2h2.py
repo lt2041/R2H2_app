@@ -1176,7 +1176,8 @@ class R2H2():
             kind: Optional[str] = None,
             use_cooling_feedback: Optional[bool] = None,
             insulated: Optional[bool] = None,
-            run_id: Optional[int] = None):
+            run_id: Optional[int] = None,
+            progress_callback=None):
         """Run the full multi-year simulation.
 
         Parameters override the values set in ``__init__`` if provided.
@@ -1328,6 +1329,13 @@ class R2H2():
                 # Check for user cancellation every hour
                 if h % 10 == 0 and _is_cancelled():
                     raise InterruptedError('Simulation cancelled by user.')
+
+                # Emit progress
+                if progress_callback is not None:
+                    try:
+                        progress_callback(y, int(settings.iNumYears), h, num_hours)
+                    except Exception:
+                        pass
 
                 P_hour = wind.arPowerInput[:, h]
 

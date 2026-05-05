@@ -297,3 +297,14 @@ class SimulationRun(models.Model):
         if self.finished_at and self.started_at:
             return (self.finished_at - self.started_at).total_seconds()
         return None
+
+    @property
+    def duration_hms(self):
+        """Return elapsed time as hh:mm:ss string, or None if not finished."""
+        s = self.duration_seconds
+        if s is None:
+            return None
+        total = int(s)
+        h, rem = divmod(total, 3600)
+        m, sec = divmod(rem, 60)
+        return f'{h:02d}:{m:02d}:{sec:02d}'

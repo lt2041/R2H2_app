@@ -223,12 +223,31 @@ def _run_simulation_thread(run_id):
     try:
         run = SimulationRun.objects.select_related('simulation').get(pk=run_id)
         run.status = SimulationRun.RUNNING
-        run.save(update_fields=['status'])
+        run.started_at = timezone.now()
+        run.save(update_fields=['status', 'started_at'])
 
         from r2h2.r2h2 import R2H2
         wind_path = _resolve_wind_h5_path(run.simulation)
         sim_engine = R2H2(run.simulation, wind_h5_path=str(wind_path))
-        sim_engine.run(run_id=run.pk)
+
+        _progress_interval = 50  # update DB message every N hours
+        _progress_start = timezone.now()
+
+        def _on_progress(year, total_years, hour, total_hours):
+            if hour % _progress_interval == 0:
+                total_steps  = total_years * total_hours
+                done_steps   = year * total_hours + hour
+                pct = int(done_steps / total_steps * 100) if total_steps else 0
+                elapsed = (timezone.now() - _progress_start).total_seconds()
+                if done_steps > 0 and elapsed > 0:
+                    eta_s = elapsed / done_steps * (total_steps - done_steps)
+                    eta_str = f' [ETA {_fmt_duration(eta_s)}]'
+                else:
+                    eta_str = ''
+                msg = (f'Year {year+1}/{total_years} \u2014 hour {hour+1}/{total_hours} ({pct}\u00a0%){eta_str}')
+                SimulationRun.objects.filter(pk=run.pk).update(message=msg)
+
+        sim_engine.run(run_id=run.pk, progress_callback=_on_progress)
 
         # Only mark DONE if user hasn't cancelled in the meantime
         run.refresh_from_db(fields=['status'])
@@ -266,19 +285,31 @@ def run_simulation(request, sim_id):
     return redirect('dashboard-simulation-detail', sim_id=sim_id)
 
 
+def _fmt_duration(seconds):
+    """Format a duration in seconds as hh:mm:ss."""
+    s = int(seconds)
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f'{h:02d}:{m:02d}:{sec:02d}'
+
+
 def poll_simulation_run(request, sim_id, run_id):
     """GET: return JSON status of a SimulationRun for client-side polling."""
     from django.http import JsonResponse
     from django.shortcuts import get_object_or_404
+    from django.utils import timezone
     run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
     dur = run.duration_seconds
     if dur is not None:
-        duration_str = f'{dur:.1f} s' if dur < 60 else f'{dur:.0f} s'
+        duration_str = _fmt_duration(dur)
+    elif run.started_at is not None:
+        elapsed = (timezone.now() - run.started_at).total_seconds()
+        duration_str = _fmt_duration(elapsed)
     else:
         duration_str = ''
     return JsonResponse({
         'status':   run.status,
-        'message':  run.message,
+        'message':  run.message or '',
         'duration': duration_str,
         'done':     run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
     })

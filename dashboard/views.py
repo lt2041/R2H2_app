@@ -95,7 +95,9 @@ def _model_to_sections(obj):
     """Convert a model instance into ordered display sections.
     Returns a list of {title, icon, fields: [{name, value}]}.
     Skips JSON array fields (shown separately) and private fields.
+    Uses MetaInfo.ui_display_fields for human-readable labels when available.
     """
+    ui_map = getattr(getattr(obj.__class__, 'MetaInfo', None), 'ui_display_fields', {})
     scalar_fields, array_fields = [], []
     for field in obj._meta.get_fields():
         if not hasattr(field, 'column'):          # skip reverse relations
@@ -103,11 +105,12 @@ def _model_to_sections(obj):
         name = field.name
         if name in ('id',):
             continue
+        label = ui_map.get(name, name)
         value = getattr(obj, name, None)
         if isinstance(value, list):               # JSON array
-            array_fields.append({'name': name, 'value': value})
+            array_fields.append({'name': label, 'value': value})
         else:
-            scalar_fields.append({'name': name, 'value': value})
+            scalar_fields.append({'name': label, 'value': value})
     return scalar_fields, array_fields
 
 

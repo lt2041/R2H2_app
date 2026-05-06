@@ -78,8 +78,40 @@ class Battery(models.Model):
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name} (MWh: {self.rBatteryMWh})"
-    
 
+    class MetaInfo:
+        ui_display_fields = {
+            'name':                      'Name',
+            'rKt_lc':                    'Kt lc',
+            'rKs':                       'Ks',
+            'rKT_uc':                    'KT uc',
+            'rAlphaSei':                 'Alpha SEI',
+            'rKd1':                      'Kd1',
+            'rKd2':                      'Kd2',
+            'rKd3':                      'Kd3',
+            'rBetaSei':                  'Beta SEI',
+            'rTcRef':                    'Tc Ref (°C)',
+            'rSoCRef':                   'SoC Ref',
+            'arInitialSoC':              'Initial SoC',
+            'rFt':                       'Ft',
+            'rFc':                       'Fc',
+            'rBatteryMWh':               'Capacity (MWh)',
+            'rInitialBatteryRating':     'Initial Rating (MW)',
+            'rBatteryRating':            'Rating (MW)',
+            'rRCD':                      'RCD',
+            'rControlMinSoC':            'Min SoC',
+            'rBatteryProportionalGain':  'Prop. Gain',
+            'iNumReplacements':          'Replacements',
+            'aiReplacementHour':         'Replacement Hours',
+            'rSocAv':                    'SoC Avg',
+            'rSocMax':                   'SoC Max',
+            'rSocMin':                   'SoC Min',
+            'rDodAv':                    'DoD Avg',
+            'arBatteryPower':            'Battery Power',
+            'arSoC':                     'SoC',
+            'arDoD':                     'DoD',
+            'arBatteryDemand':           'Battery Demand',
+        }
 
 
 #### -------------------- ELECTROCELL MODEL -------------------- ####
@@ -130,6 +162,32 @@ class ElectroCellPEM(models.Model):
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"
 
+    class MetaInfo:
+        ui_display_fields = {
+            'name':             'Name',
+            'rR':               'Gas Const R (J/mol·K)',
+            'rF':               'Faraday Const F (C/mol)',
+            'arCurrentDensity': 'Current Density Curve',
+            'arE_min':          'E_min Curve',
+            'arR_cell':         'R_cell Curve',
+            'arV_cell':         'V_cell Curve',
+            'iNumCurrent':      'Current Steps',
+            'rA_cell':          'Cell Area (cm²)',
+            'rI_rated':         'Rated Current Density (A/cm²)',
+            'rT_0':             'Nominal Temp (°C)',
+            'rT':               'Initial Temp (°C)',
+            'rE_min0':          'E_min0 (V)',
+            'rR_0':             'R0 (Ω·cm²)',
+            'rD_rt':            'dR/dT',
+            'rV_cellNom':       'Nominal V_cell (V)',
+            'rV_bank':          'Bank Voltage (V)',
+            'rI_bank':          'Bank Current (A)',
+            'rF1':              'Faraday Eff F1',
+            'rF2':              'Faraday Eff F2',
+            'arFaradayTemp_C':  'Faraday Temp Points (°C)',
+            'arFaradayF1':      'Faraday F1 Points',
+            'arFaradayF2':      'Faraday F2 Points',
+        }
 
 
 ### -------------------- ELECTROLYSER UNIT MODEL -------------------- ####
@@ -180,7 +238,45 @@ class ElectrolyserUnit(models.Model):
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}, Units: {self.iNumUnits}"
-    
+
+    class MetaInfo:
+        ui_display_fields = {
+            'name':                      'Name',
+            'iN_stacks':                 'Stacks / Bank',
+            'iN_banks':                  'Banks / Unit',
+            'iNumElectro':               'Num Electrolyser Units',
+            'iN_cell':                   'Cells / Stack',
+            'iControlLevel':             'Control Level',
+            'rTimeConst':                'Time Constant (s)',
+            'rDegradation':              'Degradation',
+            'rTurnDownRatio':            'Turn-Down Ratio',
+            'r_s':                       'r_s',
+            'r_f':                       'r_f',
+            'r_o':                       'r_o',
+            'rAncilliaryPowerFrac':      'Ancillary Power Frac',
+            'rDeadBandRatio':            'Dead-Band Ratio',
+            'rRampUp_W_s':               'Ramp Up (W/s)',
+            'rRampDown_W_s':             'Ramp Down (W/s)',
+            'iNumUnits':                 'Total Units',
+            'rTotalTurnOns':             'Total Turn-Ons',
+            'rSummedDegradation':        'Summed Degradation',
+            'arDegradationTotal':        'Degradation Total',
+            'arV_s':                     'V_s Curve',
+            'arV_sd':                    'V_sd Curve',
+            'arI_s':                     'I_s Curve',
+            'arH2Dot_s':                 'H2 Rate Curve',
+            'arP_Total_s':               'Power Curve',
+            'arEfficiency_s':            'Efficiency Curve',
+            'rRatedPower_s':             'Rated Power (W)',
+            'rMinPower_s':               'Min Power (W)',
+            'rAncilliaryPower_s':        'Ancillary Power (W)',
+            'arDegradationSteady':       'Degradation Steady',
+            'arDegradationFatigue':      'Degradation Fatigue',
+            'arDegradationOnOff':        'Degradation On/Off',
+            'rDegradationOnOffTotal':    'Deg On/Off Total',
+            'rDegradationSteadyTotal':   'Deg Steady Total',
+            'rDegradationFatigueTotal':  'Deg Fatigue Total',
+        }
 
 ### -------------------- THERMAL PROPERTIES MODEL -------------------- ####
 
@@ -194,7 +290,16 @@ class ThermalProperties(models.Model):
  
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}, Target Temp: {self.rTargetTemp}°C"
-    
+
+    class MetaInfo:
+        ui_display_fields = {
+            'name':          'Name',
+            'rAmbientTemp':  'Ambient Temp (°C)',
+            'rTauHeating':   'Heating Time Const (s)',
+            'rTauCooling':   'Cooling Time Const (s)',
+            'rTargetTemp':   'Target Temp (°C)',
+            'rMinTemp':      'Min Temp (°C)',
+        }
 
 ### --------------------- TIME OUTPUT MODEL -------------------- ####
 
@@ -280,6 +385,19 @@ class WindInput(models.Model):
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}, File: {self.wind_file or '—'}"
 
+    class MetaInfo:
+        verbose_name = "Wind Input"
+        verbose_name_plural = "Wind Inputs"
+        ui_display_fields = {
+            'id': 'ID',
+            'name': 'Name',
+            'wind_file': 'Wind File',
+            'ts_start': 'Start Time (s)',
+            'ts_end': 'End Time (s)',
+            'ts_resolution': 'Time Step (s)',
+            'ts_n_hours': 'Number of Hours',
+            'h5_datasets': 'HDF5 Fields',
+        }
 
 #### ---------------------- SIMULATION RUN (JOB TRACKING) ---------------------- ####
 

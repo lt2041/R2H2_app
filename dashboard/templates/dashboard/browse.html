@@ -320,9 +320,10 @@
 <!-- Edit modal -->
 <div id="edit-modal-overlay" style="display:none; position:fixed; inset:0; z-index:2000;
      background:rgba(0,0,0,0.45); align-items:center; justify-content:center;">
-    <div style="background:#fff; border-radius:10px; width:min(600px,92vw); max-height:85vh;
+    <div style="background:#fff; border-radius:10px; width:min(620px,94vw); max-height:90vh;
                 display:flex; flex-direction:column; overflow:hidden;
                 box-shadow:0 8px 40px rgba(0,0,0,0.22);">
+        <!-- Header -->
         <div style="display:flex; align-items:center; justify-content:space-between;
                     padding:0.9rem 1.25rem; border-bottom:1.5px solid #e0f4f6;
                     background:linear-gradient(135deg,#136b75,#22a6b3); border-radius:10px 10px 0 0;">
@@ -335,20 +336,67 @@
                 <span class="material-symbols-outlined" style="font-size:1.3rem;">close</span>
             </button>
         </div>
+        <!-- Linked simulations banner -->
+        <div id="edit-linked-sims-bar" style="display:none; padding:0.55rem 1.25rem;
+             background:#f0fafb; border-bottom:1px solid #d4eef1; font-size:0.8rem; color:#2d7a83;">
+            <span class="material-symbols-outlined"
+                  style="font-size:0.95rem; vertical-align:-0.2rem; margin-right:0.3rem;">link</span>
+            <span id="edit-linked-sims-text"></span>
+        </div>
+        <!-- Copy-vs-direct choice panel (shown when >1 sim linked) -->
+        <div id="edit-copy-choice" style="display:none; padding:0.7rem 1.25rem;
+             background:#fffbf0; border-bottom:1px solid #f0e4b4; font-size:0.83rem;">
+            <p style="margin:0 0 0.5rem; color:#7a5c10; font-weight:500;">
+                <span class="material-symbols-outlined"
+                      style="font-size:0.95rem; vertical-align:-0.2rem; margin-right:0.3rem;">warning</span>
+                This component is shared across multiple simulations. How do you want to proceed?
+            </p>
+            <label style="display:flex; align-items:flex-start; gap:0.5rem; cursor:pointer; margin-bottom:0.3rem;">
+                <input type="radio" name="edit_mode" value="direct" id="edit-mode-direct"
+                       style="margin-top:0.2rem; accent-color:#22a6b3;">
+                <span style="color:#1a2e30;">
+                    <strong>Edit directly</strong> — changes apply to&emsp;<em><b><u>all</u></b></em>&emsp;&ensp;linked simulations.
+                </span>
+            </label>
+            <label style="display:flex; align-items:flex-start; gap:0.5rem; cursor:pointer;">
+                <input type="radio" name="edit_mode" value="copy" id="edit-mode-copy"
+                       style="margin-top:0.2rem; accent-color:#22a6b3;">
+                <span style="color:#1a2e30;">
+                    <strong>Create a copy</strong> — link the edited copy to the selected simulations:
+                </span>
+            </label>
+            <!-- Sim multi-select (only visible when copy is chosen) -->
+            <div id="edit-copy-sim-select" style="display:none; margin-top:0.45rem; padding-left:1.6rem;">
+                <p style="margin:0 0 0.3rem; font-size:0.77rem; color:#7a5c10;">Select which simulations should use the new copy:</p>
+                <div id="edit-copy-sim-checkboxes"
+                     style="max-height:8rem; overflow-y:auto; border:1px solid #f0e4b4;
+                            border-radius:5px; padding:0.4rem 0.6rem; background:#fff;
+                            display:flex; flex-direction:column; gap:0.3rem;">
+                </div>
+            </div>
+        </div>
+        <!-- Field form -->
         <div id="edit-modal-body"
              style="overflow-y:auto; padding:1rem 1.25rem; flex:1; min-height:0;">
             <p style="color:#4a7a80; font-size:0.85rem;">Loading&#x2026;</p>
         </div>
-        <div style="padding:0.75rem 1.25rem; border-top:1.5px solid #e0f4f6;
-                    display:flex; justify-content:flex-end; gap:0.6rem;">
+        <!-- Footer -->
+        <div style="padding:0.4rem 1.25rem; border-top:1.5px solid #e0f4f6;
+                    display:flex; justify-content:flex-end; gap:0.5rem; align-items:center;">
             <button type="button" id="cancel-edit-modal"
-                    style="border:1.5px solid #b2e0e4; border-radius:6px; background:transparent;
-                           color:#4a7a80; font-family:'Ubuntu',sans-serif; font-size:0.82rem;
-                           padding:0.35rem 1rem; cursor:pointer;">Cancel</button>
+                    style="border:1.5px solid #b2e0e4; border-radius:5px; background:transparent;
+                           color:#4a7a80; font-family:'Ubuntu',sans-serif; font-size:0.78rem;
+                           padding:0.18rem 0.75rem; cursor:pointer; line-height:1.4;">Cancel</button>
+            <button type="button" id="save-copy-edit-modal"
+                    style="border:1.5px solid #22a6b3; border-radius:5px; background:transparent;
+                           color:#22a6b3; font-family:'Ubuntu',sans-serif; font-size:0.78rem;
+                           padding:0.18rem 0.75rem; cursor:pointer; line-height:1.4;">
+                Save as Copy
+            </button>
             <button type="button" id="save-edit-modal"
-                    style="border:none; border-radius:6px; background:#22a6b3;
-                           color:#fff; font-family:'Ubuntu',sans-serif; font-size:0.82rem;
-                           padding:0.35rem 1.1rem; cursor:pointer;">Save</button>
+                    style="border:none; border-radius:5px; background:#22a6b3;
+                           color:#fff; font-family:'Ubuntu',sans-serif; font-size:0.78rem;
+                           padding:0.18rem 0.85rem; cursor:pointer; line-height:1.4;">Save</button>
         </div>
     </div>
 </div>
@@ -423,17 +471,40 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
 
     // ── Edit modal ────────────────────────────────────────────────────────
-    const editOverlay   = document.getElementById('edit-modal-overlay');
-    const editBody      = document.getElementById('edit-modal-body');
-    const editTitle     = document.getElementById('edit-modal-title');
-    const saveEditBtn   = document.getElementById('save-edit-modal');
-    const cancelEditBtn = document.getElementById('cancel-edit-modal');
-    const closeEditBtn  = document.getElementById('close-edit-modal');
+    const editOverlay        = document.getElementById('edit-modal-overlay');
+    const editBody           = document.getElementById('edit-modal-body');
+    const editTitle          = document.getElementById('edit-modal-title');
+    const saveEditBtn        = document.getElementById('save-edit-modal');
+    const saveCopyBtn        = document.getElementById('save-copy-edit-modal');
+    const cancelEditBtn      = document.getElementById('cancel-edit-modal');
+    const closeEditBtn       = document.getElementById('close-edit-modal');
+    const linkedSimsBar      = document.getElementById('edit-linked-sims-bar');
+    const linkedSimsText     = document.getElementById('edit-linked-sims-text');
+    const copyChoicePanel    = document.getElementById('edit-copy-choice');
+    const modeDirectRadio    = document.getElementById('edit-mode-direct');
+    const modeCopyRadio      = document.getElementById('edit-mode-copy');
+    const copySimSelect      = document.getElementById('edit-copy-sim-select');
+    const copySimCheckboxes  = document.getElementById('edit-copy-sim-checkboxes');
     let _editPk = null;
+    let _linkedSims = [];
 
     const MODAL_FIELDS = {{ modal_fields_json|safe }};
     const TABLE_NAME   = '{{ table_name }}';
     const CSRF_TOKEN   = '{{ csrf_token }}';
+
+    // Show/hide the copy sim selector based on radio choice
+    [modeDirectRadio, modeCopyRadio].forEach(function(r) {
+        r.addEventListener('change', function() {
+            const isCopy = modeCopyRadio.checked;
+            copySimSelect.style.display = isCopy ? 'block' : 'none';
+            saveEditBtn.disabled = isCopy;
+            saveEditBtn.style.opacity = isCopy ? '0.4' : '1';
+            saveEditBtn.style.cursor  = isCopy ? 'not-allowed' : 'pointer';
+            // Fill 'Save as Copy' when copy radio active, outline otherwise
+            saveCopyBtn.style.background = isCopy ? '#22a6b3' : 'transparent';
+            saveCopyBtn.style.color      = isCopy ? '#fff' : '#22a6b3';
+        });
+    });
 
     function buildEditForm(values) {
         let html = '<table style="width:100%;border-collapse:collapse;font-size:0.84rem;"><tbody>';
@@ -477,28 +548,92 @@ document.addEventListener('DOMContentLoaded', function() {
         editBody.innerHTML = html;
     }
 
+    function buildLinkedSimsUI(sims) {
+        _linkedSims = sims;
+        if (!sims || sims.length === 0) {
+            linkedSimsBar.style.display = 'none';
+            copyChoicePanel.style.display = 'none';
+            return;
+        }
+        // Build sim names list
+        const names = sims.map(function(s) { return '\u201c' + s.name + '\u201d'; }).join(', ');
+        linkedSimsText.textContent = 'Linked to ' + sims.length + ' simulation' +
+            (sims.length > 1 ? 's' : '') + ': ' + names;
+        linkedSimsBar.style.display = 'block';
+        if (sims.length > 1) {
+            // Build checkbox list for copy target selection
+            copySimCheckboxes.innerHTML = '';
+            sims.forEach(function(s) {
+                const label = document.createElement('label');
+                label.style.cssText = 'display:flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.82rem;color:#1a2e30;';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = String(s.id);
+                cb.name = 'copy_sim_ids';
+                cb.checked = true;
+                cb.style.accentColor = '#22a6b3';
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(s.name));
+                copySimCheckboxes.appendChild(label);
+            });
+            // Default: direct edit
+            modeDirectRadio.checked = true;
+            copySimSelect.style.display = 'none';
+            copyChoicePanel.style.display = 'block';
+        } else {
+            copyChoicePanel.style.display = 'none';
+        }
+    }
+
     function openEditModal(pk) {
         _editPk = pk;
+        _linkedSims = [];
         editTitle.textContent = 'Edit {{ ui_nice_name }} #' + pk;
         editBody.innerHTML = '<p style="color:#4a7a80;font-size:0.85rem;">Loading\u2026</p>';
+        linkedSimsBar.style.display = 'none';
+        copyChoicePanel.style.display = 'none';
         editOverlay.style.display = 'flex';
         fetch('/browse/' + TABLE_NAME + '/' + pk + '/get')
             .then(function(r) { return r.json(); })
-            .then(function(data) { buildEditForm(data); })
+            .then(function(data) {
+                buildLinkedSimsUI(data._linked_sims || []);
+                buildEditForm(data);
+            })
             .catch(function() { editBody.innerHTML = '<p style="color:#c07379;">Failed to load record.</p>'; });
     }
 
-    function closeEditModal() { editOverlay.style.display = 'none'; _editPk = null; }
+    function closeEditModal() { editOverlay.style.display = 'none'; _editPk = null; _linkedSims = []; }
 
     closeEditBtn.addEventListener('click', closeEditModal);
     cancelEditBtn.addEventListener('click', closeEditModal);
     editOverlay.addEventListener('click', function(e) { if (e.target === editOverlay) closeEditModal(); });
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeEditModal(); });
 
-    saveEditBtn.addEventListener('click', function() {
+    function submitEdit(forcedMode) {
         if (!_editPk) return;
         const fd = new FormData();
         fd.append('csrfmiddlewaretoken', CSRF_TOKEN);
+
+        // Determine mode: forcedMode overrides the radio panel
+        let mode = forcedMode || 'direct';
+        if (!forcedMode) {
+            if (_linkedSims.length > 1 && modeCopyRadio.checked) {
+                mode = 'copy';
+                copySimCheckboxes.querySelectorAll('input[type=checkbox]:checked').forEach(function(cb) {
+                    fd.append('copy_sim_ids', cb.value);
+                });
+                if (!fd.getAll('copy_sim_ids').length) {
+                    alert('Please select at least one simulation for the copy to be linked to.');
+                    return;
+                }
+            }
+        }
+        if (mode === 'copy' && !fd.getAll('copy_sim_ids').length) {
+            // Save as Copy from footer: link to all linked sims
+            _linkedSims.forEach(function(s) { fd.append('copy_sim_ids', String(s.id)); });
+        }
+        fd.append('_mode', mode);
+
         const seen = new Set();
         editBody.querySelectorAll('input,select,textarea').forEach(function(el) {
             if (el.type === 'checkbox') {
@@ -510,15 +645,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         saveEditBtn.disabled = true;
+        saveCopyBtn.disabled = true;
         fetch('/browse/' + TABLE_NAME + '/' + _editPk + '/edit', { method: 'POST', body: fd })
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 saveEditBtn.disabled = false;
+                saveCopyBtn.disabled = false;
                 if (data.ok) { closeEditModal(); window.location.reload(); }
                 else { alert('Save failed: ' + (data.error || 'unknown error')); }
             })
-            .catch(function() { saveEditBtn.disabled = false; alert('Network error — changes not saved.'); });
-    });
+            .catch(function() {
+                saveEditBtn.disabled = false;
+                saveCopyBtn.disabled = false;
+                alert('Network error \u2014 changes not saved.');
+            });
+    }
+
+    saveEditBtn.addEventListener('click', function() { submitEdit(null); });
+    saveCopyBtn.addEventListener('click', function() { submitEdit('copy'); });
 
     document.querySelectorAll('.browse-edit-btn').forEach(function(btn) {
         btn.addEventListener('click', function(e) {

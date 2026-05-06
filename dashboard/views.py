@@ -914,7 +914,8 @@ def add_component(request, table_name):
 
 
 def get_component(request, table_name, pk):
-    """GET: return JSON of all editable field values for a single component record."""
+    """GET: return JSON of all editable field values for a single component record,
+    plus metadata about linked simulations."""
     from django.http import JsonResponse
     from django.db import models as dm
     model_class = apps.get_model('dashboard', table_name)
@@ -932,47 +933,91 @@ def get_component(request, table_name, pk):
             continue
         val = getattr(obj, f.name, None)
         data[f.name] = val if val is not None else ''
+    # Attach linked simulation info via reverse M2M accessor
+    linked_sims = []
+    if hasattr(obj, 'simulation_set'):
+        for sim in obj.simulation_set.all().order_by('name'):
+            linked_sims.append({'id': sim.pk, 'name': sim.name})
+    data['_linked_sims'] = linked_sims
     return JsonResponse(data)
 
 
 @require_POST
 def edit_component(request, table_name, pk):
-    """POST: update an existing component record from submitted form data."""
+    """POST: update an existing component record from submitted form data.
+    Supports mode=direct (default) and mode=copy.
+    In copy mode: clones the object, links the copy to the selected sims
+    (copy_sim_ids), and removes original from those sims.
+    """
     from django.http import JsonResponse
     from django.db import models as dm
+    from dashboard.models import Simulation
     model_class = apps.get_model('dashboard', table_name)
     try:
         obj = model_class.objects.get(pk=pk)
     except model_class.DoesNotExist:
         return JsonResponse({'error': 'Not found'}, status=404)
-    for f in model_class._meta.get_fields():
-        if not hasattr(f, 'column'):
-            continue
-        if f.name == 'id':
-            continue
-        if getattr(f, 'auto_now_add', False) or getattr(f, 'auto_now', False):
-            continue
-        if isinstance(f, dm.JSONField):
-            continue
-        raw = request.POST.get(f.name)
-        if raw is None:
-            continue
-        if isinstance(f, dm.BooleanField):
-            setattr(obj, f.name, raw.lower() in ('on', 'true', '1', 'yes'))
-        elif isinstance(f, (dm.FloatField, dm.DecimalField)):
-            try:
-                setattr(obj, f.name, float(raw))
-            except ValueError:
-                pass
-        elif isinstance(f, (dm.IntegerField, dm.PositiveIntegerField)):
-            try:
-                setattr(obj, f.name, int(raw))
-            except ValueError:
-                pass
-        else:
-            setattr(obj, f.name, raw)
-    obj.save()
-    return JsonResponse({'ok': True, 'pk': pk})
+
+    mode = request.POST.get('_mode', 'direct')
+
+    def _apply_fields(target):
+        for f in model_class._meta.get_fields():
+            if not hasattr(f, 'column'):
+                continue
+            if f.name == 'id':
+                continue
+            if getattr(f, 'auto_now_add', False) or getattr(f, 'auto_now', False):
+                continue
+            if isinstance(f, dm.JSONField):
+                continue
+            raw = request.POST.get(f.name)
+            if raw is None:
+                continue
+            if isinstance(f, dm.BooleanField):
+                setattr(target, f.name, raw.lower() in ('on', 'true', '1', 'yes'))
+            elif isinstance(f, (dm.FloatField, dm.DecimalField)):
+                try:
+                    setattr(target, f.name, float(raw))
+                except ValueError:
+                    pass
+            elif isinstance(f, (dm.IntegerField, dm.PositiveIntegerField)):
+                try:
+                    setattr(target, f.name, int(raw))
+                except ValueError:
+                    pass
+            else:
+                setattr(target, f.name, raw)
+
+    if mode == 'copy':
+        # Determine which sim IDs should get the copy
+        raw_ids = request.POST.getlist('copy_sim_ids')
+        try:
+            copy_sim_ids = [int(i) for i in raw_ids]
+        except (ValueError, TypeError):
+            return JsonResponse({'error': 'Invalid sim IDs'}, status=400)
+        # Find the M2M field name on Simulation that points to this model
+        m2m_field_name = None
+        for rel in model_class._meta.get_fields():
+            if rel.many_to_many and not rel.concrete:
+                m2m_field_name = rel.field.name  # e.g. 'batteries'
+                break
+        if m2m_field_name is None:
+            return JsonResponse({'error': 'No M2M relation found'}, status=400)
+        # Clone the object
+        copy_obj = model_class.objects.get(pk=pk)
+        copy_obj.pk = None
+        _apply_fields(copy_obj)
+        copy_obj.save()
+        # Re-link: for each selected sim, swap original → copy
+        for sim in Simulation.objects.filter(pk__in=copy_sim_ids):
+            m2m_mgr = getattr(sim, m2m_field_name)
+            m2m_mgr.remove(obj)
+            m2m_mgr.add(copy_obj)
+        return JsonResponse({'ok': True, 'pk': copy_obj.pk, 'mode': 'copy'})
+    else:
+        _apply_fields(obj)
+        obj.save()
+        return JsonResponse({'ok': True, 'pk': pk, 'mode': 'direct'})
 
 
 def browse(request, table_name=None):

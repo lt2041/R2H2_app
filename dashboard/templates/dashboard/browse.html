@@ -370,9 +370,25 @@
                 <p style="margin:0 0 0.3rem; font-size:0.77rem; color:#7a5c10;">Select which simulations should use the new copy:</p>
                 <div id="edit-copy-sim-checkboxes"
                      style="max-height:8rem; overflow-y:auto; border:1px solid #f0e4b4;
-                            border-radius:5px; padding:0.4rem 0.6rem; background:#fff;
-                            display:flex; flex-direction:column; gap:0.3rem;">
+                            border-radius:5px; padding:0.4rem 0.6rem; background:#fff;">
                 </div>
+                <style>
+                    #edit-copy-sim-checkboxes [type="checkbox"].filled-in + span::before,
+                    #edit-copy-sim-checkboxes [type="checkbox"].filled-in + span::after {
+                        width: 16px; height: 16px; top: 0px;
+                    }
+                    #edit-copy-sim-checkboxes [type="checkbox"].filled-in:checked + span::after {
+                        width: 16px; height: 16px; top: 0px;
+                        border-color: #22a6b3; background-color: #22a6b3;
+                    }
+                    #edit-copy-sim-checkboxes [type="checkbox"].filled-in:checked + span::before {
+                        top: 1px; left: 2px;
+                        width: 6px; height: 11px;
+                        border-top: none; border-left: none;
+                        border-right: 2px solid #fff;
+                        border-bottom: 2px solid #fff;
+                    }
+                </style>
             </div>
         </div>
         <!-- Field form -->
@@ -492,17 +508,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const TABLE_NAME   = '{{ table_name }}';
     const CSRF_TOKEN   = '{{ csrf_token }}';
 
-    // Show/hide the copy sim selector based on radio choice
+    // Build and show/hide the copy sim checkboxes on radio change
     [modeDirectRadio, modeCopyRadio].forEach(function(r) {
         r.addEventListener('change', function() {
             const isCopy = modeCopyRadio.checked;
-            copySimSelect.style.display = isCopy ? 'block' : 'none';
             saveEditBtn.disabled = isCopy;
             saveEditBtn.style.opacity = isCopy ? '0.4' : '1';
             saveEditBtn.style.cursor  = isCopy ? 'not-allowed' : 'pointer';
-            // Fill 'Save as Copy' when copy radio active, outline otherwise
             saveCopyBtn.style.background = isCopy ? '#22a6b3' : 'transparent';
             saveCopyBtn.style.color      = isCopy ? '#fff' : '#22a6b3';
+            if (isCopy) {
+                // Build checkbox list fresh from _linkedSims
+                copySimCheckboxes.innerHTML = '';
+                _linkedSims.forEach(function(s) {
+                    const lbl = document.createElement('label');
+                    lbl.style.cssText = 'display:block;padding:0.1rem 0;font-size:0.78rem;color:#1a2e30;cursor:pointer;user-select:none;line-height:1.4;';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.className = 'filled-in';
+                    cb.value = String(s.id);
+                    cb.checked = false;
+                    const span = document.createElement('span');
+                    span.textContent = s.name;
+                    // Scale down the Materialize filled-in checkbox via the span's before/after pseudo-elements
+                    span.style.cssText = 'font-size:0.78rem;padding-left:1.6rem;line-height:1.4;';
+                    lbl.appendChild(cb);
+                    lbl.appendChild(span);
+                    copySimCheckboxes.appendChild(lbl);
+                });
+                copySimSelect.style.display = 'block';
+            } else {
+                copySimSelect.style.display = 'none';
+                copySimCheckboxes.innerHTML = '';
+            }
         });
     });
 
@@ -549,40 +587,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function buildLinkedSimsUI(sims) {
-        _linkedSims = sims;
-        if (!sims || sims.length === 0) {
+        _linkedSims = sims || [];
+        // Reset panel to clean state
+        copySimCheckboxes.innerHTML = '';
+        copySimSelect.style.display = 'none';
+        modeDirectRadio.checked = true;
+        saveEditBtn.disabled = false;
+        saveEditBtn.style.opacity = '1';
+        saveEditBtn.style.cursor = 'pointer';
+        saveCopyBtn.style.background = 'transparent';
+        saveCopyBtn.style.color = '#22a6b3';
+        if (!_linkedSims.length) {
             linkedSimsBar.style.display = 'none';
             copyChoicePanel.style.display = 'none';
             return;
         }
-        // Build sim names list
-        const names = sims.map(function(s) { return '\u201c' + s.name + '\u201d'; }).join(', ');
-        linkedSimsText.textContent = 'Linked to ' + sims.length + ' simulation' +
-            (sims.length > 1 ? 's' : '') + ': ' + names;
+        // Banner
+        const names = _linkedSims.map(function(s) { return '\u201c' + s.name + '\u201d'; }).join(', ');
+        linkedSimsText.textContent = 'Linked to ' + _linkedSims.length + ' simulation' +
+            (_linkedSims.length > 1 ? 's' : '') + ': ' + names;
         linkedSimsBar.style.display = 'block';
-        if (sims.length > 1) {
-            // Build checkbox list for copy target selection
-            copySimCheckboxes.innerHTML = '';
-            sims.forEach(function(s) {
-                const label = document.createElement('label');
-                label.style.cssText = 'display:flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.82rem;color:#1a2e30;';
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.value = String(s.id);
-                cb.name = 'copy_sim_ids';
-                cb.checked = true;
-                cb.style.accentColor = '#22a6b3';
-                label.appendChild(cb);
-                label.appendChild(document.createTextNode(s.name));
-                copySimCheckboxes.appendChild(label);
-            });
-            // Default: direct edit
-            modeDirectRadio.checked = true;
-            copySimSelect.style.display = 'none';
-            copyChoicePanel.style.display = 'block';
-        } else {
-            copyChoicePanel.style.display = 'none';
-        }
+        // Show direct/copy radio choice only when >1 linked sims
+        copyChoicePanel.style.display = _linkedSims.length > 1 ? 'block' : 'none';
     }
 
     function openEditModal(pk) {
@@ -609,28 +635,46 @@ document.addEventListener('DOMContentLoaded', function() {
     editOverlay.addEventListener('click', function(e) { if (e.target === editOverlay) closeEditModal(); });
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeEditModal(); });
 
+    function getCheckedSimIds() {
+        const ids = [];
+        copySimCheckboxes.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+            if (cb.checked) ids.push(cb.value);
+        });
+        return ids;
+    }
+
     function submitEdit(forcedMode) {
         if (!_editPk) return;
         const fd = new FormData();
         fd.append('csrfmiddlewaretoken', CSRF_TOKEN);
 
-        // Determine mode: forcedMode overrides the radio panel
-        let mode = forcedMode || 'direct';
-        if (!forcedMode) {
-            if (_linkedSims.length > 1 && modeCopyRadio.checked) {
+        const panelVisible  = copyChoicePanel.style.display !== 'none';
+        const copyRadioOn   = panelVisible && modeCopyRadio.checked;
+        const simSelectOpen = copySimSelect.style.display !== 'none';
+
+        let mode;
+        if (forcedMode === 'copy') {
+            mode = 'copy';
+            // Use the checkbox selection if the sim-select panel is open; else all linked sims
+            const checkedIds = simSelectOpen ? getCheckedSimIds()
+                             : _linkedSims.map(function(s) { return String(s.id); });
+            if (!checkedIds.length) {
+                alert('No simulations available to link the copy to.');
+                return;
+            }
+            checkedIds.forEach(function(id) { fd.append('copy_sim_ids', id); });
+        } else {
+            if (copyRadioOn) {
                 mode = 'copy';
-                copySimCheckboxes.querySelectorAll('input[type=checkbox]:checked').forEach(function(cb) {
-                    fd.append('copy_sim_ids', cb.value);
-                });
-                if (!fd.getAll('copy_sim_ids').length) {
+                const checkedIds = getCheckedSimIds();
+                if (!checkedIds.length) {
                     alert('Please select at least one simulation for the copy to be linked to.');
                     return;
                 }
+                checkedIds.forEach(function(id) { fd.append('copy_sim_ids', id); });
+            } else {
+                mode = 'direct';
             }
-        }
-        if (mode === 'copy' && !fd.getAll('copy_sim_ids').length) {
-            // Save as Copy from footer: link to all linked sims
-            _linkedSims.forEach(function(s) { fd.append('copy_sim_ids', String(s.id)); });
         }
         fd.append('_mode', mode);
 

@@ -260,6 +260,13 @@ def _save_run_outputs(run, results: dict) -> str:
         runtime_s       float
         use_cooling_feedback  bool
         insulated       bool
+    /inputs/            (snapshot of all component and simulation settings at run time)
+        simulation/     (scalar attrs from Simulation model)
+        battery_<N>/    (one sub-group per linked Battery)
+        electrocellpem_<N>/
+        electrolyserunit_<N>/
+        thermalproperties_<N>/
+        windinput_<N>/
     /year_<N>/          (one group per simulated year)
         battery/
             arSoc, arSocMax, arSocMin, arSocAv, arRCD, arBatteryRating  (1-D float64)
@@ -287,15 +294,62 @@ def _save_run_outputs(run, results: dict) -> str:
 
     year_results = results.get('YearResults', [])
 
+    def _write_obj_attrs(grp, obj):
+        """Write all concrete scalar fields of a Django model instance as HDF5 attrs."""
+        for field in obj._meta.get_fields():
+            if not hasattr(field, 'column'):
+                continue
+            name = field.name
+            val = getattr(obj, name, None)
+            if val is None:
+                grp.attrs[name] = 'None'
+            elif isinstance(val, bool):
+                grp.attrs[name] = int(val)
+            elif isinstance(val, (int, float, str)):
+                grp.attrs[name] = val
+            elif hasattr(val, 'isoformat'):      # date / datetime
+                grp.attrs[name] = val.isoformat()
+            elif isinstance(val, list):
+                try:
+                    arr = np.asarray(val)
+                    if arr.dtype.kind in ('i', 'u', 'f'):
+                        grp.create_dataset(name, data=arr.astype(np.float64),
+                                           compression='gzip', compression_opts=4)
+                    else:
+                        grp.attrs[name] = str(val)
+                except Exception:
+                    grp.attrs[name] = str(val)
+            else:
+                grp.attrs[name] = str(val)
+
+    sim_obj = run.simulation
+
     with h5py.File(abs_path, 'w') as f:
         # ── /meta ────────────────────────────────────────────────────────────
         meta = f.create_group('meta')
-        meta.attrs['sim_name']             = run.simulation.name
+        meta.attrs['sim_name']             = sim_obj.name
         meta.attrs['run_id']               = run.pk
         meta.attrs['kind']                 = str(results.get('Kind', ''))
         meta.attrs['runtime_s']            = float(results.get('Runtime_s', 0.0))
         meta.attrs['use_cooling_feedback'] = bool(results.get('UseCoolingFeedback', False))
         meta.attrs['insulated']            = bool(results.get('Insulated', False))
+
+        # ── /inputs ──────────────────────────────────────────────────────────
+        inp = f.create_group('inputs')
+
+        sim_grp = inp.create_group('simulation')
+        _write_obj_attrs(sim_grp, sim_obj)
+
+        for i, obj in enumerate(sim_obj.batteries.all()):
+            _write_obj_attrs(inp.create_group(f'battery_{i}'), obj)
+        for i, obj in enumerate(sim_obj.electro_cells.all()):
+            _write_obj_attrs(inp.create_group(f'electrocellpem_{i}'), obj)
+        for i, obj in enumerate(sim_obj.electrolyser_units.all()):
+            _write_obj_attrs(inp.create_group(f'electrolyserunit_{i}'), obj)
+        for i, obj in enumerate(sim_obj.thermal_properties.all()):
+            _write_obj_attrs(inp.create_group(f'thermalproperties_{i}'), obj)
+        for i, obj in enumerate(sim_obj.wind_inputs.all()):
+            _write_obj_attrs(inp.create_group(f'windinput_{i}'), obj)
 
         # ── /year_N ──────────────────────────────────────────────────────────
         for yr_idx, yr in enumerate(year_results):

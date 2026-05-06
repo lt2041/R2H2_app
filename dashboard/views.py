@@ -913,6 +913,68 @@ def add_component(request, table_name):
     return redirect('dashboard-browse', table_name=table_name)
 
 
+def get_component(request, table_name, pk):
+    """GET: return JSON of all editable field values for a single component record."""
+    from django.http import JsonResponse
+    from django.db import models as dm
+    model_class = apps.get_model('dashboard', table_name)
+    try:
+        obj = model_class.objects.get(pk=pk)
+    except model_class.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    data = {}
+    for f in model_class._meta.get_fields():
+        if not hasattr(f, 'column'):
+            continue
+        if getattr(f, 'auto_now_add', False) or getattr(f, 'auto_now', False):
+            continue
+        if isinstance(f, dm.JSONField):
+            continue
+        val = getattr(obj, f.name, None)
+        data[f.name] = val if val is not None else ''
+    return JsonResponse(data)
+
+
+@require_POST
+def edit_component(request, table_name, pk):
+    """POST: update an existing component record from submitted form data."""
+    from django.http import JsonResponse
+    from django.db import models as dm
+    model_class = apps.get_model('dashboard', table_name)
+    try:
+        obj = model_class.objects.get(pk=pk)
+    except model_class.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    for f in model_class._meta.get_fields():
+        if not hasattr(f, 'column'):
+            continue
+        if f.name == 'id':
+            continue
+        if getattr(f, 'auto_now_add', False) or getattr(f, 'auto_now', False):
+            continue
+        if isinstance(f, dm.JSONField):
+            continue
+        raw = request.POST.get(f.name)
+        if raw is None:
+            continue
+        if isinstance(f, dm.BooleanField):
+            setattr(obj, f.name, raw.lower() in ('on', 'true', '1', 'yes'))
+        elif isinstance(f, (dm.FloatField, dm.DecimalField)):
+            try:
+                setattr(obj, f.name, float(raw))
+            except ValueError:
+                pass
+        elif isinstance(f, (dm.IntegerField, dm.PositiveIntegerField)):
+            try:
+                setattr(obj, f.name, int(raw))
+            except ValueError:
+                pass
+        else:
+            setattr(obj, f.name, raw)
+    obj.save()
+    return JsonResponse({'ok': True, 'pk': pk})
+
+
 def browse(request, table_name=None):
 
     model_class = apps.get_model('dashboard', table_name)
@@ -963,6 +1025,7 @@ def browse(request, table_name=None):
         'ui_nice_name': ui_nice_name,
         'table_name': table_name,
         'modal_fields': _modal_fields_for(model_class),
+        'modal_fields_json': json.dumps(_modal_fields_for(model_class)),
     }
 
     return render(request, "dashboard/browse.html", context)

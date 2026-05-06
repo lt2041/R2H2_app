@@ -317,6 +317,42 @@
 
 <div id="array-tooltip"></div>
 
+<!-- Edit modal -->
+<div id="edit-modal-overlay" style="display:none; position:fixed; inset:0; z-index:2000;
+     background:rgba(0,0,0,0.45); align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:10px; width:min(600px,92vw); max-height:85vh;
+                display:flex; flex-direction:column; overflow:hidden;
+                box-shadow:0 8px 40px rgba(0,0,0,0.22);">
+        <div style="display:flex; align-items:center; justify-content:space-between;
+                    padding:0.9rem 1.25rem; border-bottom:1.5px solid #e0f4f6;
+                    background:linear-gradient(135deg,#136b75,#22a6b3); border-radius:10px 10px 0 0;">
+            <span id="edit-modal-title"
+                  style="font-family:'Ubuntu',sans-serif; font-size:1rem; font-weight:500; color:#fff;">
+                Edit {{ ui_nice_name }}
+            </span>
+            <button id="close-edit-modal"
+                    style="background:none; border:none; cursor:pointer; color:#d0f0f3; line-height:1;">
+                <span class="material-symbols-outlined" style="font-size:1.3rem;">close</span>
+            </button>
+        </div>
+        <div id="edit-modal-body"
+             style="overflow-y:auto; padding:1rem 1.25rem; flex:1; min-height:0;">
+            <p style="color:#4a7a80; font-size:0.85rem;">Loading&#x2026;</p>
+        </div>
+        <div style="padding:0.75rem 1.25rem; border-top:1.5px solid #e0f4f6;
+                    display:flex; justify-content:flex-end; gap:0.6rem;">
+            <button type="button" id="cancel-edit-modal"
+                    style="border:1.5px solid #b2e0e4; border-radius:6px; background:transparent;
+                           color:#4a7a80; font-family:'Ubuntu',sans-serif; font-size:0.82rem;
+                           padding:0.35rem 1rem; cursor:pointer;">Cancel</button>
+            <button type="button" id="save-edit-modal"
+                    style="border:none; border-radius:6px; background:#22a6b3;
+                           color:#fff; font-family:'Ubuntu',sans-serif; font-size:0.82rem;
+                           padding:0.35rem 1.1rem; cursor:pointer;">Save</button>
+        </div>
+    </div>
+</div>
+
 <!-- JavaScript -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -385,6 +421,111 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('cancel-add-modal').addEventListener('click', closeModal);
     overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+
+    // ── Edit modal ────────────────────────────────────────────────────────
+    const editOverlay   = document.getElementById('edit-modal-overlay');
+    const editBody      = document.getElementById('edit-modal-body');
+    const editTitle     = document.getElementById('edit-modal-title');
+    const saveEditBtn   = document.getElementById('save-edit-modal');
+    const cancelEditBtn = document.getElementById('cancel-edit-modal');
+    const closeEditBtn  = document.getElementById('close-edit-modal');
+    let _editPk = null;
+
+    const MODAL_FIELDS = {{ modal_fields_json|safe }};
+    const TABLE_NAME   = '{{ table_name }}';
+    const CSRF_TOKEN   = '{{ csrf_token }}';
+
+    function buildEditForm(values) {
+        let html = '<table style="width:100%;border-collapse:collapse;font-size:0.84rem;"><tbody>';
+        MODAL_FIELDS.forEach(function(f) {
+            const val = (values[f.name] !== undefined && values[f.name] !== null) ? values[f.name] : '';
+            let input = '';
+            if (f.ftype === 'checkbox') {
+                const chk = (String(val).toLowerCase() === 'true' || val === true) ? 'checked' : '';
+                input = '<input type="hidden" name="' + f.name + '" value="false">'
+                      + '<input type="checkbox" name="' + f.name + '" value="true" ' + chk
+                      + ' style="accent-color:#22a6b3;width:1rem;height:1rem;">';
+            } else if (f.ftype === 'select') {
+                input = '<select name="' + f.name + '" style="width:100%;border:1px solid #b2e0e4;border-radius:4px;'
+                      + 'padding:0.3rem 0.5rem;font-family:\'Ubuntu Mono\',monospace;font-size:0.82rem;'
+                      + 'color:#1a2e30;background:#f4fafb;box-shadow:none;height:auto;">';
+                f.choices.forEach(function(c) {
+                    const sel = (String(c[0]) === String(val)) ? ' selected' : '';
+                    input += '<option value="' + c[0] + '"' + sel + '>' + c[1] + '</option>';
+                });
+                input += '</select>';
+            } else if (f.ftype === 'textarea') {
+                input = '<textarea name="' + f.name + '" rows="2" style="width:100%;border:1px solid #b2e0e4;'
+                      + 'border-radius:4px;padding:0.3rem 0.5rem;font-family:\'Ubuntu Mono\',monospace;'
+                      + 'font-size:0.82rem;color:#1a2e30;resize:vertical;box-sizing:border-box;">'
+                      + val + '</textarea>';
+            } else {
+                input = '<input type="' + f.ftype + '" name="' + f.name + '" value="' + val + '" step="any"'
+                      + ' style="width:100%;border:1px solid #b2e0e4;border-radius:4px;'
+                      + 'padding:0.3rem 0.5rem;font-family:\'Ubuntu Mono\',monospace;'
+                      + 'font-size:0.82rem;color:#1a2e30;background:#f4fafb;'
+                      + 'box-shadow:none;height:auto;box-sizing:border-box;">';
+            }
+            const help = f.help_text
+                ? '<div style="font-size:0.7rem;color:#b2e0e4;font-weight:400;">' + f.help_text + '</div>' : '';
+            html += '<tr style="border-bottom:1px solid #f0f8f9;">'
+                  + '<td style="padding:0.45rem 0.5rem 0.45rem 0;width:44%;color:#4a7a80;'
+                  + 'font-weight:500;vertical-align:middle;">' + f.label + help + '</td>'
+                  + '<td style="padding:0.45rem 0;">' + input + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        editBody.innerHTML = html;
+    }
+
+    function openEditModal(pk) {
+        _editPk = pk;
+        editTitle.textContent = 'Edit {{ ui_nice_name }} #' + pk;
+        editBody.innerHTML = '<p style="color:#4a7a80;font-size:0.85rem;">Loading\u2026</p>';
+        editOverlay.style.display = 'flex';
+        fetch('/browse/' + TABLE_NAME + '/' + pk + '/get')
+            .then(function(r) { return r.json(); })
+            .then(function(data) { buildEditForm(data); })
+            .catch(function() { editBody.innerHTML = '<p style="color:#c07379;">Failed to load record.</p>'; });
+    }
+
+    function closeEditModal() { editOverlay.style.display = 'none'; _editPk = null; }
+
+    closeEditBtn.addEventListener('click', closeEditModal);
+    cancelEditBtn.addEventListener('click', closeEditModal);
+    editOverlay.addEventListener('click', function(e) { if (e.target === editOverlay) closeEditModal(); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeEditModal(); });
+
+    saveEditBtn.addEventListener('click', function() {
+        if (!_editPk) return;
+        const fd = new FormData();
+        fd.append('csrfmiddlewaretoken', CSRF_TOKEN);
+        const seen = new Set();
+        editBody.querySelectorAll('input,select,textarea').forEach(function(el) {
+            if (el.type === 'checkbox') {
+                seen.add(el.name);
+                fd.set(el.name, el.checked ? 'true' : 'false');
+            } else if (!seen.has(el.name)) {
+                fd.append(el.name, el.value);
+                seen.add(el.name);
+            }
+        });
+        saveEditBtn.disabled = true;
+        fetch('/browse/' + TABLE_NAME + '/' + _editPk + '/edit', { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                saveEditBtn.disabled = false;
+                if (data.ok) { closeEditModal(); window.location.reload(); }
+                else { alert('Save failed: ' + (data.error || 'unknown error')); }
+            })
+            .catch(function() { saveEditBtn.disabled = false; alert('Network error — changes not saved.'); });
+    });
+
+    document.querySelectorAll('.browse-edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openEditModal(btn.dataset.pk);
+        });
+    });
 });
 </script>
 

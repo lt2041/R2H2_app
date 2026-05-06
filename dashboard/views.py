@@ -98,16 +98,19 @@ def _model_to_sections(obj):
     Uses MetaInfo.ui_display_fields for human-readable labels when available.
     """
     ui_map = getattr(getattr(obj.__class__, 'MetaInfo', None), 'ui_display_fields', {})
+    # Build a lookup of all concrete fields by name
+    all_fields = {f.name: f for f in obj._meta.get_fields() if hasattr(f, 'column')}
     scalar_fields, array_fields = [], []
-    for field in obj._meta.get_fields():
-        if not hasattr(field, 'column'):          # skip reverse relations
-            continue
-        name = field.name
-        if name in ('id',):
+
+    # Iterate in ui_display_fields order when available, then append remaining fields
+    ordered_names = list(ui_map.keys()) if ui_map else []
+    remaining = [n for n in all_fields if n not in ui_map and n != 'id']
+    for name in ordered_names + remaining:
+        if name == 'id' or name not in all_fields:
             continue
         label = ui_map.get(name, name)
         value = getattr(obj, name, None)
-        if isinstance(value, list):               # JSON array
+        if isinstance(value, list):
             array_fields.append({'name': label, 'value': value})
         else:
             scalar_fields.append({'name': label, 'value': value})

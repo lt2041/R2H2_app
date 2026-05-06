@@ -396,6 +396,8 @@ class WindInput(models.Model):
             'ts_end': 'End Time (s)',
             'ts_resolution': 'Time Step (s)',
             'ts_n_hours': 'Number of Hours',
+            'arPowerInput': 'Power Input Curve',
+            'arTime': 'Time Axis',
             'h5_datasets': 'HDF5 Fields',
         }
 

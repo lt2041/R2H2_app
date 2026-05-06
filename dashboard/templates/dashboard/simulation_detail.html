@@ -326,27 +326,38 @@
     .sim-settings-table tr:hover { background: #f4fafb; }
 
     .sim-settings-table td {
-        padding: 0.35rem 1.25rem;
+        padding: 0.35rem 1rem;
         vertical-align: middle;
     }
 
-    .sim-settings-table td:first-child {
-        width: 42%;
+    .sim-settings-table td.ss-name {
+        width: 14%;
         color: #4a7a80;
         font-weight: 500;
+        white-space: nowrap;
     }
 
-    .sim-settings-table td:nth-child(2) {
+    .sim-settings-table td.ss-val {
+        width: 19%;
+        color: #1a2e30;
+        font-family: 'Ubuntu Mono', monospace;
+        font-size: 0.82rem;
+        border-right: 1px solid #e8f8f9;
+    }
+
+    .sim-settings-table td.ss-val-mid {
+        width: 19%;
         color: #1a2e30;
         font-family: 'Ubuntu Mono', monospace;
         font-size: 0.82rem;
     }
 
-    .sim-settings-table td:last-child {
-        width: 4rem;
-        color: #b2e0e4;
-        font-size: 0.75rem;
-        text-align: right;
+    .sim-settings-table td.ss-name-r {
+        width: 14%;
+        color: #4a7a80;
+        font-weight: 500;
+        white-space: nowrap;
+        padding-left: 1.5rem;
     }
 
     /* ── Settings inline edit ── */
@@ -480,18 +491,36 @@
     .settings-table tr:hover { background: #f4fafb; }
 
     .settings-table td {
-        padding: 0.35rem 1.25rem;
-        vertical-align: top;
+        padding: 0.35rem 1rem;
+        vertical-align: middle;
     }
 
-    .settings-table td:first-child {
-        width: 42%;
+    .settings-table td.st-name {
+        width: 14%;
         color: #4a7a80;
         font-weight: 500;
         white-space: nowrap;
     }
 
-    .settings-table td:last-child {
+    .settings-table td.st-name-r {
+        width: 14%;
+        color: #4a7a80;
+        font-weight: 500;
+        white-space: nowrap;
+        padding-left: 1.5rem;
+    }
+
+    .settings-table td.st-val {
+        width: 19%;
+        color: #1a2e30;
+        font-family: 'Ubuntu Mono', monospace;
+        font-size: 0.82rem;
+        border-right: 1px solid #e8f8f9;
+        word-break: break-word;
+    }
+
+    .settings-table td.st-val-last {
+        width: 19%;
         color: #1a2e30;
         font-family: 'Ubuntu Mono', monospace;
         font-size: 0.82rem;
@@ -1002,52 +1031,54 @@
         <div class="sim-settings-body">
             <table class="sim-settings-table">
                 <tbody>
-                {% for s in sim_settings %}
+                {% for pair in sim_settings_pairs %}
                 <tr>
-                    <td>{{ s.name }}</td>
-                    <td>
-                        {% if s.editable == 'duration_days' %}
-                        <span class="ss-val" id="ss-duration-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">tbc</em>{% endif %}</span>
-                        <input type="number" class="ss-edit-input" id="ss-duration-input"
-                               value="{% if s.value %}{{ s.value }}{% endif %}"
-                               min="1" placeholder="—"
-                               style="display:none;width:70px;">
-                        <button class="ss-edit-btn" id="ss-duration-btn" title="Edit duration"
-                                onclick="startEditDuration()">
-                            <span class="material-symbols-outlined">edit</span>
-                        </button>
-                        <button class="ss-save-btn" id="ss-duration-save" style="display:none;"
-                                onclick="saveDuration()">
-                            <span class="material-symbols-outlined">check</span>
-                        </button>
-                        <button class="ss-save-btn" id="ss-duration-cancel" style="display:none;color:#aaa;"
-                                onclick="cancelEditDuration()">
-                            <span class="material-symbols-outlined">close</span>
-                        </button>
-                        {% elif s.editable == 'datum_date' %}
-                        <span class="ss-val" id="ss-datum-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">today</em>{% endif %}</span>
-                        <input type="date" class="ss-edit-input" id="ss-datum-input"
-                               value="{{ s.raw }}"
-                               style="display:none;width:130px;">
-                        <button class="ss-edit-btn" id="ss-datum-btn" title="Edit datum date"
-                                onclick="startEditDatum()">
-                            <span class="material-symbols-outlined">edit</span>
-                        </button>
-                        <button class="ss-save-btn" id="ss-datum-save" style="display:none;"
-                                onclick="saveDatum()">
-                            <span class="material-symbols-outlined">check</span>
-                        </button>
-                        <button class="ss-save-btn" id="ss-datum-cancel" style="display:none;color:#aaa;"
-                                onclick="cancelEditDatum()">
-                            <span class="material-symbols-outlined">close</span>
-                        </button>
-                        {% elif s.value is None %}
-                            <span style="color:#b2e0e4;">—</span>
-                        {% else %}
-                            {{ s.value }}
-                        {% endif %}
-                    </td>
-                    <td>{{ s.unit }}</td>
+                {% for s in pair %}
+                <td class="{% if forloop.first %}ss-name{% else %}ss-name-r{% endif %}">{{ s.name }}</td>
+                <td class="ss-val{% if not forloop.last %}-mid{% endif %}">
+                    {% if s.editable == 'duration_days' %}
+                    <span class="ss-val" id="ss-duration-val">{% if s.value %}{{ s.value }} days{% else %}<em style="color:#aaa;">tbc</em>{% endif %}</span>
+                    <input type="number" class="ss-edit-input" id="ss-duration-input"
+                           value="{% if s.value %}{{ s.value }}{% endif %}"
+                           min="1" placeholder="—"
+                           style="display:none;width:70px;">
+                    <button class="ss-edit-btn" id="ss-duration-btn" title="Edit duration"
+                            onclick="startEditDuration()">
+                        <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button class="ss-save-btn" id="ss-duration-save" style="display:none;"
+                            onclick="saveDuration()">
+                        <span class="material-symbols-outlined">check</span>
+                    </button>
+                    <button class="ss-save-btn" id="ss-duration-cancel" style="display:none;color:#aaa;"
+                            onclick="cancelEditDuration()">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                    {% elif s.editable == 'datum_date' %}
+                    <span class="ss-val" id="ss-datum-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">today</em>{% endif %}</span>
+                    <input type="date" class="ss-edit-input" id="ss-datum-input"
+                           value="{{ s.raw }}"
+                           style="display:none;width:130px;">
+                    <button class="ss-edit-btn" id="ss-datum-btn" title="Edit datum date"
+                            onclick="startEditDatum()">
+                        <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button class="ss-save-btn" id="ss-datum-save" style="display:none;"
+                            onclick="saveDatum()">
+                        <span class="material-symbols-outlined">check</span>
+                    </button>
+                    <button class="ss-save-btn" id="ss-datum-cancel" style="display:none;color:#aaa;"
+                            onclick="cancelEditDatum()">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                    {% elif s.value is None %}
+                        <span style="color:#b2e0e4;">—</span>
+                    {% else %}
+                        {{ s.value }}{% if s.unit %} <span style="color:#b2e0e4;font-size:0.75rem;">{{ s.unit }}</span>{% endif %}
+                    {% endif %}
+                </td>
+                {% endfor %}
+                {% if pair|length == 1 %}<td></td><td></td>{% endif %}
                 </tr>
                 {% endfor %}
                 </tbody>
@@ -1086,10 +1117,13 @@
                     <!-- Scalar fields -->
                     <table class="settings-table">
                         <tbody>
-                        {% for field in detail.scalar %}
+                        {% for row in detail.scalar_rows %}
                         <tr>
-                            <td>{{ field.name }}</td>
-                            <td>{% if field.value is None %}<span style="color:#b2e0e4;">—</span>{% else %}{{ field.value }}{% endif %}</td>
+                            {% for field in row %}
+                            <td class="{% if forloop.first %}st-name{% else %}st-name-r{% endif %}">{{ field.name }}</td>
+                            <td class="{% if forloop.last %}st-val-last{% else %}st-val{% endif %}">{% if field.value is None %}<span style="color:#b2e0e4;">—</span>{% else %}{{ field.value }}{% endif %}</td>
+                            {% endfor %}
+                            {% if row|length == 1 %}<td></td><td></td>{% endif %}
                         </tr>
                         {% endfor %}
                         </tbody>

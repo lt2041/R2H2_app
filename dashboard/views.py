@@ -124,7 +124,8 @@ def simulation_detail(request, sim_id):
 
     def component_detail(obj):
         scalar, arrays = _model_to_sections(obj)
-        return {'obj': obj, 'scalar': scalar, 'arrays': arrays}
+        scalar_rows = [scalar[i:i+2] for i in range(0, len(scalar), 2)]
+        return {'obj': obj, 'scalar': scalar, 'scalar_rows': scalar_rows, 'arrays': arrays}
 
     groups = [
         {'label': 'Battery',           'icon': 'battery_charging_full', 'items': [component_detail(o) for o in sim.batteries.all()]},
@@ -182,6 +183,8 @@ def simulation_detail(request, sim_id):
         {'name': 'Lateral distances',    'value': sim.arLateralDistances,   'unit': 'm'},
         {'name': 'Power divisor',        'value': sim.rDivisor,             'unit': 'W'},
     ]
+    # Group into rows of 3 for 6-column layout
+    sim_settings_pairs = [sim_settings[i:i+2] for i in range(0, len(sim_settings), 2)]
 
     latest_run = sim.runs.first()   # newest first via Meta ordering
     sim_runs   = list(sim.runs.all())
@@ -189,6 +192,7 @@ def simulation_detail(request, sim_id):
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
         'sim_settings': sim_settings,
+        'sim_settings_pairs': sim_settings_pairs,
         'groups': groups_with_items,
         'groups_empty': groups_empty,
         'latest_run': latest_run,

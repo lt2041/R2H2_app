@@ -758,26 +758,24 @@ def update_sim_duration(request, sim_id):
 
 
 def home(request):
-
-    # Get counts for each model
-    Battery_count = Battery.objects.count()
-    ElectroCellPEM_count = ElectroCellPEM.objects.count()
-    ElectrolyserUnit_count = ElectrolyserUnit.objects.count()
-    ThermalProperties_count = ThermalProperties.objects.count()
-    TimeOutput_count = TimeOutput.objects.count()
-    WindInput_count = WindInput.objects.count()
-
-    # Pass data to HTML template
-    context = {
-        'Battery_count': Battery_count,
-        'ElectroCellPEM_count': ElectroCellPEM_count,
-        'ElectrolyserUnit_count': ElectrolyserUnit_count,
-        'ThermalProperties_count': ThermalProperties_count,
-        'TimeOutput_count': TimeOutput_count,
-        'WindInput_count': WindInput_count,
-    }
-
-    return render(request, 'dashboard/home.html', context)
+    _component_models = [
+        ('Battery',           Battery),
+        ('ElectroCellPEM',    ElectroCellPEM),
+        ('ElectrolyserUnit',  ElectrolyserUnit),
+        ('ThermalProperties', ThermalProperties),
+        ('WindInput',         WindInput),
+    ]
+    components = []
+    for table_name, model_cls in _component_models:
+        mi = getattr(model_cls, 'MetaInfo', None)
+        label = getattr(mi, 'verbose_name_plural',
+                getattr(mi, 'verbose_name', table_name.replace('_', ' ')))
+        components.append({
+            'table': table_name,
+            'label': label,
+            'count': model_cls.objects.count(),
+        })
+    return render(request, 'dashboard/home.html', {'components': components})
 
 
 
@@ -922,7 +920,8 @@ def browse(request, table_name=None):
     # Use ui_column_names from MetaInfo if available, else fall back to all model fields
     metainfo = getattr(model_class, 'MetaInfo', None)
     ui_column_names = getattr(metainfo, 'ui_column_names', None)
-    ui_nice_name = getattr(metainfo, 'ui_nice_name', table_name.replace('_', ' '))
+    ui_nice_name = getattr(metainfo, 'verbose_name_plural',
+                   getattr(metainfo, 'ui_nice_name', table_name.replace('_', ' ')))
 
     if ui_column_names:
         columns = list(ui_column_names.keys())    # field names for data lookup
@@ -946,7 +945,7 @@ def browse(request, table_name=None):
 
     rows = []
     for obj in qs:
-        row = {}
+        row = {'row_pk': obj.pk}
         for col in columns:
             val = getattr(obj, col, '')
             if col in fk_fields:

@@ -80,6 +80,8 @@ class Battery(models.Model):
         return f"ID: {self.id}, Name: {self.name} (MWh: {self.rBatteryMWh})"
 
     class MetaInfo:
+        verbose_name = 'Battery'
+        verbose_name_plural = 'Batteries'
         ui_display_fields = {
             'name':                      'Name',
             'rKt_lc':                    'Kt lc',
@@ -163,6 +165,8 @@ class ElectroCellPEM(models.Model):
         return f"ID: {self.id}, Name: {self.name}"
 
     class MetaInfo:
+        verbose_name = 'Electro Cell (PEM)'
+        verbose_name_plural = 'Electro Cells (PEM)'
         ui_display_fields = {
             'name':             'Name',
             'rR':               'Gas Const R (J/mol·K)',
@@ -240,6 +244,8 @@ class ElectrolyserUnit(models.Model):
         return f"ID: {self.id}, Name: {self.name}, Units: {self.iNumUnits}"
 
     class MetaInfo:
+        verbose_name = 'Electrolyser Unit'
+        verbose_name_plural = 'Electrolyser Units'
         ui_display_fields = {
             'name':                      'Name',
             'iN_stacks':                 'Stacks / Bank',
@@ -292,6 +298,8 @@ class ThermalProperties(models.Model):
         return f"ID: {self.id}, Name: {self.name}, Target Temp: {self.rTargetTemp}°C"
 
     class MetaInfo:
+        verbose_name = 'Thermal Properties'
+        verbose_name_plural = 'Thermal Properties'
         ui_display_fields = {
             'name':          'Name',
             'rAmbientTemp':  'Ambient Temp (°C)',

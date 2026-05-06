@@ -1,6 +1,7 @@
 {% extends "dashboard/base.html" %}
 {% load humanize %}
 {% load static %}
+{% load browse_extras %}
 {% block title %}R2H2: {{ ui_nice_name }}{% endblock %}
 
 {% block content %}
@@ -103,6 +104,22 @@
 #record-table td:last-child { border-right: none; }
 #record-table th:not(:first-child),
 #record-table td:not(:first-child) { text-align: center; }
+/* Edit icon column + first data column stay narrow */
+#record-table th:nth-child(1),
+#record-table td:nth-child(1) {
+    width: 2.2rem;
+    min-width: unset;
+    max-width: unset;
+}
+#record-table th:nth-child(2),
+#record-table td:nth-child(2) {
+    min-width: unset;
+    max-width: 12rem;
+    width: 8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .array-badge {
     display: inline-block;
     font-size: 0.68em;
@@ -171,6 +188,7 @@
         <table id="record-table">
             <thead>
                 <tr>
+                    <th style="width:2.2rem; padding:0.7rem 0.5rem; text-align:center;"></th>
                     {% for header in headers %}
                     <th>{{ header|safe }}</th>
                     {% endfor %}
@@ -179,13 +197,20 @@
             <tbody id="record-table-body">
                 {% for row in rows %}
                 <tr class="record-row">
-                    {% for value in row.values %}
-                    <td>{{ value|safe }}</td>
+                    <td style="width:2.2rem; padding:0.4rem 0.5rem; text-align:center; border-right:1px solid #eef1f4;">
+                        <button class="browse-edit-btn" data-pk="{{ row.row_pk }}"
+                                title="Edit record"
+                                style="background:none; border:none; cursor:pointer; padding:0; color:#4a7a80; display:inline-flex; align-items:center;">
+                            <span class="material-symbols-outlined" style="font-size:1rem; font-variation-settings:'wght' 300;">edit</span>
+                        </button>
+                    </td>
+                    {% for col in columns %}
+                    <td>{{ row|dict_get:col|safe }}</td>
                     {% endfor %}
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="{{ columns|length }}" class="center-align grey-text">No records found</td>
+                    <td colspan="{{ columns|length|add:1 }}" class="center-align grey-text">No records found</td>
                 </tr>
                 {% endfor %}
             </tbody>

@@ -21,6 +21,7 @@ urlpatterns = [
     path('browse/<str:table_name>/add', views.add_component, name='dashboard-add-component'),
     path('browse/<str:table_name>/<int:pk>/get', views.get_component, name='dashboard-get-component'),
     path('browse/<str:table_name>/<int:pk>/edit', views.edit_component, name='dashboard-edit-component'),
+    path('browse/<str:table_name>/<int:pk>/delete', views.delete_component, name='dashboard-delete-component'),
     path('wind-data/', views.wind_data, name='dashboard-wind-data'),
     path('wind-data/upload/', views.wind_data_upload, name='dashboard-wind-data-upload'),
     path('wind-data/set-dir/', views.wind_data_set_dir, name='dashboard-wind-data-set-dir'),

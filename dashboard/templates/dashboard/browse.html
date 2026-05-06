@@ -197,11 +197,16 @@
             <tbody id="record-table-body">
                 {% for row in rows %}
                 <tr class="record-row">
-                    <td style="width:2.2rem; padding:0.4rem 0.5rem; text-align:center; border-right:1px solid #eef1f4;">
+                    <td style="width:4.2rem; padding:0.4rem 0.35rem; text-align:center; border-right:1px solid #eef1f4; white-space:nowrap;">
                         <button class="browse-edit-btn" data-pk="{{ row.row_pk }}"
                                 title="Edit record"
-                                style="background:none; border:none; cursor:pointer; padding:0; color:#4a7a80; display:inline-flex; align-items:center;">
+                                style="background:none; border:none; cursor:pointer; padding:0 0.15rem; color:#4a7a80; display:inline-flex; align-items:center;">
                             <span class="material-symbols-outlined" style="font-size:1rem; font-variation-settings:'wght' 300;">edit</span>
+                        </button>
+                        <button class="browse-delete-btn" data-pk="{{ row.row_pk }}" data-name="{{ row|dict_get:'name' }}"
+                                title="Delete record"
+                                style="background:none; border:none; cursor:pointer; padding:0 0.15rem; color:#c07379; display:inline-flex; align-items:center;">
+                            <span class="material-symbols-outlined" style="font-size:1rem; font-variation-settings:'wght' 300;">delete</span>
                         </button>
                     </td>
                     {% for col in columns %}
@@ -345,7 +350,8 @@
         </div>
         <!-- Copy-vs-direct choice panel (shown when >1 sim linked) -->
         <div id="edit-copy-choice" style="display:none; padding:0.7rem 1.25rem;
-             background:#fffbf0; border-bottom:1px solid #f0e4b4; font-size:0.83rem;">
+             background:#fffbf0; border-bottom:1px solid #f0e4b4; font-size:0.83rem;
+             overflow-y:auto; max-height:16rem; flex-shrink:0;">
             <p style="margin:0 0 0.5rem; color:#7a5c10; font-weight:500;">
                 <span class="material-symbols-outlined"
                       style="font-size:0.95rem; vertical-align:-0.2rem; margin-right:0.3rem;">warning</span>
@@ -369,7 +375,7 @@
             <div id="edit-copy-sim-select" style="display:none; margin-top:0.45rem; padding-left:1.6rem;">
                 <p style="margin:0 0 0.3rem; font-size:0.77rem; color:#7a5c10;">Select which simulations should use the new copy:</p>
                 <div id="edit-copy-sim-checkboxes"
-                     style="max-height:8rem; overflow-y:auto; border:1px solid #f0e4b4;
+                     style="max-height:5.5rem; overflow-y:auto; border:1px solid #f0e4b4;
                             border-radius:5px; padding:0.4rem 0.6rem; background:#fff;">
                 </div>
                 <style>
@@ -712,6 +718,24 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             openEditModal(btn.dataset.pk);
+        });
+    });
+
+    document.querySelectorAll('.browse-delete-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const pk   = btn.dataset.pk;
+            const name = btn.dataset.name || ('#' + pk);
+            if (!confirm('Delete \u201c' + name + '\u201d?\n\nThis cannot be undone.')) return;
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', CSRF_TOKEN);
+            fetch('/browse/' + TABLE_NAME + '/' + pk + '/delete', { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.ok) { window.location.reload(); }
+                    else { alert('Delete failed: ' + (data.error || 'unknown error')); }
+                })
+                .catch(function() { alert('Network error \u2014 record not deleted.'); });
         });
     });
 });

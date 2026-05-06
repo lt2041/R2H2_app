@@ -1007,6 +1007,15 @@ def edit_component(request, table_name, pk):
         copy_obj = model_class.objects.get(pk=pk)
         copy_obj.pk = None
         _apply_fields(copy_obj)
+        # Ensure the name is unique (exclude original pk)
+        if hasattr(copy_obj, 'name'):
+            base = copy_obj.name
+            candidate = base
+            counter = 2
+            while model_class.objects.filter(name=candidate).exists():
+                candidate = f"{base} ({counter})"
+                counter += 1
+            copy_obj.name = candidate
         copy_obj.save()
         # Re-link: for each selected sim, swap original → copy
         for sim in Simulation.objects.filter(pk__in=copy_sim_ids):
@@ -1016,8 +1025,30 @@ def edit_component(request, table_name, pk):
         return JsonResponse({'ok': True, 'pk': copy_obj.pk, 'mode': 'copy'})
     else:
         _apply_fields(obj)
+        # Ensure the name is unique (allow the object to keep its own current name)
+        if hasattr(obj, 'name'):
+            base = obj.name
+            candidate = base
+            counter = 2
+            while model_class.objects.filter(name=candidate).exclude(pk=pk).exists():
+                candidate = f"{base} ({counter})"
+                counter += 1
+            obj.name = candidate
         obj.save()
         return JsonResponse({'ok': True, 'pk': pk, 'mode': 'direct'})
+
+
+@require_POST
+def delete_component(request, table_name, pk):
+    """POST: delete a single component record."""
+    from django.http import JsonResponse
+    model_class = apps.get_model('dashboard', table_name)
+    try:
+        obj = model_class.objects.get(pk=pk)
+    except model_class.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    obj.delete()
+    return JsonResponse({'ok': True})
 
 
 def browse(request, table_name=None):

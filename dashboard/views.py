@@ -815,21 +815,51 @@ _SKIP_JSON = True   # hide JSONField arrays from the modal
 
 
 def _modal_fields_for(model_class):
-    """Return a list of form-field dicts for the Add New modal."""
+    """Return a list of form-field dicts for the Add New / Edit modals.
+
+    If MetaInfo.ui_display_fields is defined, only fields listed there are
+    included and their human-readable labels are used, in the defined order.
+    Fields named 'id' and auto-set fields are always excluded.
+    """
     from django.db import models as dm
-    skip_names = {'id'}
+
+    # Build a lookup of all concrete fields by name for fast access
+    field_map = {
+        f.name: f
+        for f in model_class._meta.get_fields()
+        if hasattr(f, 'column')
+    }
+
+    # Determine which fields to include and their labels
+    metainfo = getattr(model_class, 'MetaInfo', None)
+    ui_display_fields = getattr(metainfo, 'ui_display_fields', None)
+
+    if ui_display_fields:
+        # Use only the fields listed in ui_display_fields, in order, skipping 'id'
+        candidate_items = [
+            (fname, label)
+            for fname, label in ui_display_fields.items()
+            if fname != 'id' and fname in field_map
+        ]
+    else:
+        # Fall back: all concrete fields except 'id'
+        candidate_items = [
+            (f.name, f.name)
+            for f in model_class._meta.get_fields()
+            if hasattr(f, 'column') and f.name != 'id'
+        ]
+
     fields = []
-    for f in model_class._meta.get_fields():
-        if not hasattr(f, 'column'):
-            continue
-        if f.name in skip_names:
-            continue
+    for fname, label in candidate_items:
+        f = field_map[fname]
+
         # Skip auto-set fields
         if getattr(f, 'auto_now_add', False) or getattr(f, 'auto_now', False):
             continue
-        # Skip JSONField arrays (null default = output/runtime data)
+        # Skip JSONField arrays (runtime/output data)
         if isinstance(f, dm.JSONField):
             continue
+
         # Determine input type
         if isinstance(f, dm.BooleanField):
             ftype = 'checkbox'
@@ -849,8 +879,8 @@ def _modal_fields_for(model_class):
             default = f.default() if callable(f.default) else f.default
 
         fields.append({
-            'name': f.name,
-            'label': f.name,
+            'name': fname,
+            'label': label,
             'ftype': ftype,
             'default': default,
             'choices': list(f.choices) if (hasattr(f, 'choices') and f.choices) else [],
@@ -1055,9 +1085,13 @@ def browse(request, table_name=None):
 
     model_class = apps.get_model('dashboard', table_name)
 
-    # Use ui_column_names from MetaInfo if available, else fall back to all model fields
+    # Use ui_column_names or ui_display_fields from MetaInfo if available,
+    # else fall back to all model fields
     metainfo = getattr(model_class, 'MetaInfo', None)
-    ui_column_names = getattr(metainfo, 'ui_column_names', None)
+    ui_column_names = (
+        getattr(metainfo, 'ui_column_names', None)
+        or getattr(metainfo, 'ui_display_fields', None)
+    )
     ui_nice_name = getattr(metainfo, 'verbose_name_plural',
                    getattr(metainfo, 'ui_nice_name', table_name.replace('_', ' ')))
 
@@ -1091,6 +1125,12 @@ def browse(request, table_name=None):
                 row[col] = str(related) if related is not None else '—'
             else:
                 row[col] = format_cell_value(val)
+        # Linked simulations
+        linked_sims = []
+        if hasattr(obj, 'simulation_set'):
+            linked_sims = list(obj.simulation_set.values_list('name', flat=True).order_by('name'))
+        row['sim_count'] = len(linked_sims)
+        row['sim_names'] = ', '.join(linked_sims)
         rows.append(row)
 
     context = {

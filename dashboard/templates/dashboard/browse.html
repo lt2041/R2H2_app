@@ -189,6 +189,7 @@
             <thead>
                 <tr>
                     <th style="width:2.2rem; padding:0.7rem 0.5rem; text-align:center;"></th>
+                    <th style="width:3.5rem; padding:0.7rem 0.4rem; text-align:center; color:#4a7a80; font-size:0.78rem;">Linked<br>Models</th>
                     {% for header in headers %}
                     <th>{{ header|safe }}</th>
                     {% endfor %}
@@ -208,6 +209,16 @@
                                 style="background:none; border:none; cursor:pointer; padding:0 0.15rem; color:#c07379; display:inline-flex; align-items:center;">
                             <span class="material-symbols-outlined" style="font-size:1rem; font-variation-settings:'wght' 300;">delete</span>
                         </button>
+                    </td>
+                    <td style="width:3.5rem; padding:0.4rem 0.4rem; text-align:center;">
+                        {% if row.sim_count > 0 %}
+                        <span style="display:inline-block; min-width:1.4rem; padding:0.1rem 0.3rem;
+                                     border-radius:10px; font-size:0.72rem; font-weight:500; line-height:1.3;
+                                     background:#e0f4f6; color:#136b75; cursor:default;"
+                              title="{{ row.sim_names }}">{{ row.sim_count }}</span>
+                        {% else %}
+                        <span style="color:#ccc; font-size:0.72rem;">—</span>
+                        {% endif %}
                     </td>
                     {% for col in columns %}
                     <td>{{ row|dict_get:col|safe }}</td>
@@ -351,7 +362,7 @@
         <!-- Copy-vs-direct choice panel (shown when >1 sim linked) -->
         <div id="edit-copy-choice" style="display:none; padding:0.7rem 1.25rem;
              background:#fffbf0; border-bottom:1px solid #f0e4b4; font-size:0.83rem;
-             overflow-y:auto; max-height:16rem; flex-shrink:0;">
+             flex-shrink:0;">
             <p style="margin:0 0 0.5rem; color:#7a5c10; font-weight:500;">
                 <span class="material-symbols-outlined"
                       style="font-size:0.95rem; vertical-align:-0.2rem; margin-right:0.3rem;">warning</span>
@@ -375,7 +386,7 @@
             <div id="edit-copy-sim-select" style="display:none; margin-top:0.45rem; padding-left:1.6rem;">
                 <p style="margin:0 0 0.3rem; font-size:0.77rem; color:#7a5c10;">Select which simulations should use the new copy:</p>
                 <div id="edit-copy-sim-checkboxes"
-                     style="max-height:5.5rem; overflow-y:auto; border:1px solid #f0e4b4;
+                     style="border:1px solid #f0e4b4;
                             border-radius:5px; padding:0.4rem 0.6rem; background:#fff;">
                 </div>
                 <style>

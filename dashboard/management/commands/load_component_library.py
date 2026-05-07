@@ -1,8 +1,11 @@
 """Management command: load_component_library
 
-Reads every YAML file from the configured component_library directory
-(data/component_library/ by default) and upserts a matching Django DB
-record for each one.
+One-time import utility: reads YAML files from a legacy component_library
+directory and upserts matching Django DB records.
+
+This command is only needed when migrating from a YAML-based installation.
+All component and simulation parameters are now stored exclusively in the
+Django database; YAML files are no longer read at runtime.
 
 Usage
 -----

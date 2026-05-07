@@ -1,5 +1,5 @@
 # Django specific libraries
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.utils.safestring import mark_safe
 from django.apps import apps
 from django.views.decorators.http import require_POST
@@ -31,6 +31,36 @@ def landing(request):
         'recent_runs': SimulationRun.objects.select_related('simulation').order_by('-started_at')[:5],
     }
     return render(request, 'dashboard/landing.html', context)
+
+
+def create_simulation(request):
+    """POST: create a new Simulation with name, description and optional M2M components."""
+    from django.http import JsonResponse
+    from django.views.decorators.http import require_POST as _rp
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    name        = request.POST.get('name', '').strip() or 'Simulation'
+    description = request.POST.get('description', '').strip()
+
+    sim = Simulation.objects.create(name=name, description=description)
+
+    # M2M: each field sent as multiple values, e.g. batteries=1&batteries=3
+    m2m_map = {
+        'batteries':          (sim.batteries,          Battery),
+        'electro_cells':      (sim.electro_cells,      ElectroCellPEM),
+        'electrolyser_units': (sim.electrolyser_units, ElectrolyserUnit),
+        'thermal_properties': (sim.thermal_properties, ThermalProperties),
+        'time_outputs':       (sim.time_outputs,       TimeOutput),
+        'wind_inputs':        (sim.wind_inputs,        WindInput),
+    }
+    for field_name, (manager, model_cls) in m2m_map.items():
+        ids = request.POST.getlist(field_name)
+        if ids:
+            objs = model_cls.objects.filter(pk__in=ids)
+            manager.set(objs)
+
+    return JsonResponse({'id': sim.id, 'name': sim.name})
 
 
 def simulations(request):
@@ -88,7 +118,19 @@ def simulations(request):
             ],
         })
 
-    return render(request, 'dashboard/simulations.html', {'sim_data': sim_data})
+    nsm_sections = [
+        {'field': 'batteries',          'label': 'Battery',           'icon': 'battery_charging_full', 'table': 'Battery',           'items': list(Battery.objects.order_by('name'))},
+        {'field': 'electro_cells',      'label': 'ElectroCellPEM',    'icon': 'developer_board',       'table': 'ElectroCellPEM',    'items': list(ElectroCellPEM.objects.order_by('name'))},
+        {'field': 'electrolyser_units', 'label': 'ElectrolyserUnit',  'icon': 'water_do',              'table': 'ElectrolyserUnit',  'items': list(ElectrolyserUnit.objects.order_by('name'))},
+        {'field': 'thermal_properties', 'label': 'ThermalProperties', 'icon': 'thermostat',            'table': 'ThermalProperties', 'items': list(ThermalProperties.objects.order_by('name'))},
+        {'field': 'time_outputs',       'label': 'TimeOutput',        'icon': 'timeline',              'table': 'TimeOutput',        'items': list(TimeOutput.objects.order_by('name'))},
+        {'field': 'wind_inputs',        'label': 'WindInput',         'icon': 'air',                   'table': 'WindInput',         'items': list(WindInput.objects.order_by('name'))},
+    ]
+    return render(request, 'dashboard/simulations.html', {
+        'sim_data': sim_data,
+        'nsm_sections': nsm_sections,
+        'create_url': '/simulations/create/',
+    })
 
 
 def _model_to_sections(obj):

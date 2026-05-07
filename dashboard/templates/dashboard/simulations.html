@@ -1,13 +1,99 @@
 {% extends "dashboard/base.html" %}
-{% block title %}R2H2: Simulations{% endblock %}
+{% block title %}R2H2: Models{% endblock %}
 
 {% block content %}
 
-<div style="position: absolute; top: 0.9rem; left: 19rem; z-index: 1000;">
-    <h2 style="color: #ffffff; font-weight: 100;">Simulations</h2>
+<!-- ── Hero banner ──────────────────────────────────────────────────────── -->
+<div class="sim-hero">
+    <div class="sim-hero-left">
+        <span class="material-symbols-outlined sim-hero-icon">flowchart</span>
+        <div>
+            <div class="sim-hero-title">Models</div>
+            <div class="sim-hero-sub">Assemble component configurations into simulation models</div>
+        </div>
+    </div>
+    <div class="sim-hero-tips">
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">touch_app</span>
+            Click a model row to expand its components
+        </div>
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">explore</span>
+            Use <em>View</em> to open the detail &amp; run page
+        </div>
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">widgets</span>
+            Add components in the <a href="{% url 'dashboard-home' %}">Component Library</a> first
+        </div>
+    </div>
+    <div class="sim-hero-actions">
+        <button class="sim-hero-btn"
+                onclick="document.getElementById('new-sim-overlay').classList.add('open')">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;">add</span>
+            New Model
+        </button>
+    </div>
 </div>
 
 <style>
+    /* ── Hero banner ── */
+    .sim-hero {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        padding: 1.1rem 1.5rem;
+        margin-bottom: 1.5rem;
+        background: linear-gradient(100deg, #0e5560 0%, #136b75 55%, #1a8a96 100%);
+        border-radius: 12px;
+        box-shadow: 0 3px 14px rgba(19,107,117,0.18);
+        flex-wrap: wrap;
+    }
+    .sim-hero-left {
+        display: flex; align-items: center; gap: 0.9rem;
+        flex-shrink: 0;
+    }
+    .sim-hero-icon {
+        font-size: 2.4rem;
+        color: rgba(255,255,255,0.55);
+        font-variation-settings: 'wght' 100;
+    }
+    .sim-hero-title {
+        font-size: 1.25rem; font-weight: 600; color: #fff;
+        line-height: 1.2;
+    }
+    .sim-hero-sub {
+        font-size: 0.78rem; color: #a8e6ec; margin-top: 0.2rem;
+    }
+    .sim-hero-tips {
+        display: flex; flex-direction: column; gap: 0.35rem;
+        flex: 1; min-width: 200px;
+        border-left: 1px solid rgba(255,255,255,0.18);
+        padding-left: 1.4rem;
+    }
+    .sim-tip {
+        display: flex; align-items: center; gap: 0.45rem;
+        font-size: 0.78rem; color: #cdf0f4;
+    }
+    .sim-tip .material-symbols-outlined {
+        font-size: 0.95rem; color: #64d0db; flex-shrink: 0;
+    }
+    .sim-tip a { color: #a8e6ec; }
+    .sim-tip a:hover { color: #fff; }
+    .sim-hero-actions { flex-shrink: 0; margin-left: auto; }
+    .sim-hero-btn {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.4);
+        color: #fff;
+        border-radius: 8px;
+        padding: 0.5rem 1.1rem;
+        font-size: 0.88rem; font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+        white-space: nowrap;
+    }
+    .sim-hero-btn:hover { background: rgba(255,255,255,0.28); }
+
     /* ── Tree layout ── */
     .sim-tree { display: flex; flex-direction: column; gap: 1.25rem; }
 
@@ -270,6 +356,245 @@
 
     // All simulations start collapsed
     document.addEventListener('DOMContentLoaded', function () {});
+</script>
+
+<!-- ── New Simulation Modal ─────────────────────────────────────────────── -->
+<style>
+#new-sim-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(10,30,35,0.55);
+    align-items: center; justify-content: center;
+}
+#new-sim-overlay.open { display: flex; }
+#new-sim-modal {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(19,107,117,0.22);
+    width: min(680px, 95vw);
+    max-height: 90vh;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+}
+.nsm-header {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 1rem 1.25rem 0.85rem;
+    background: linear-gradient(90deg,#136b75,#22a6b3);
+    color: #fff;
+}
+.nsm-header h3 { margin:0; font-weight:500; font-size:1.05rem; flex:1; }
+.nsm-close {
+    background:none; border:none; cursor:pointer; color:#d0f0f3;
+    font-size:1.4rem; line-height:1; padding:0;
+}
+.nsm-close:hover { color:#fff; }
+.nsm-body {
+    padding: 1.1rem 1.25rem;
+    overflow-y: auto;
+    flex: 1;
+    display: flex; flex-direction: column; gap: 1rem;
+}
+.nsm-field { display:flex; flex-direction:column; gap:0.3rem; }
+.nsm-field label {
+    font-size:0.78rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.08em; color:#4a7a80;
+}
+.nsm-field input[type=text],
+.nsm-field textarea {
+    border: 1.5px solid #b2e0e4;
+    border-radius: 6px;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.9rem;
+    color: #1a2e30;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+    resize: vertical;
+}
+.nsm-field input[type=text]:focus,
+.nsm-field textarea:focus { border-color: #22a6b3; }
+
+/* Component multi-select grid */
+.nsm-comp-section {
+    border: 1.5px solid #b2e0e4;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.nsm-comp-section-header {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    background: #e8f8f9;
+    font-size: 0.85rem; font-weight:600; color:#136b75;
+    border-bottom: 1px solid #b2e0e4;
+    user-select:none; cursor:pointer;
+}
+.nsm-comp-section-header .material-symbols-outlined { font-size:1rem; color:#22a6b3; }
+.nsm-comp-section-header .nsm-sel-count {
+    margin-left:auto;
+    background:#22a6b3; color:#fff;
+    border-radius:999px; padding:0 7px;
+    font-size:0.72rem; font-weight:700; line-height:1.7;
+    display:none;
+}
+.nsm-comp-section-header .nsm-sel-count.visible { display:inline-block; }
+.nsm-check-list {
+    display: none;
+    flex-direction: column;
+    max-height: 160px;
+    overflow-y: auto;
+    background: #fff;
+}
+.nsm-check-list.open { display:flex; }
+.nsm-check-list label {
+    display: flex; align-items: center; gap: 0.55rem;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.86rem; color: #1a2e30;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f9fa;
+    transition: background 0.1s;
+}
+.nsm-check-list label:last-child { border-bottom: none; }
+.nsm-check-list label:hover { background: #f4fafb; }
+.nsm-check-list input[type=checkbox] { accent-color:#22a6b3; width:14px; height:14px; }
+.nsm-empty-opt {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.82rem; color:#4a7a80; font-style:italic;
+}
+.nsm-footer {
+    padding: 0.85rem 1.25rem;
+    display:flex; justify-content:flex-end; gap:0.65rem;
+    border-top: 1px solid #e0f4f6;
+    background: #f4fafb;
+}
+.nsm-btn {
+    display:inline-flex; align-items:center; gap:0.35rem;
+    border-radius:7px; padding:0.45rem 1.1rem;
+    font-size:0.88rem; font-weight:500; cursor:pointer;
+    border: none; transition: background 0.15s;
+}
+.nsm-btn-cancel { background:#e0f4f6; color:#136b75; }
+.nsm-btn-cancel:hover { background:#b2e0e4; }
+.nsm-btn-create { background:#136b75; color:#fff; }
+.nsm-btn-create:hover { background:#22a6b3; }
+.nsm-btn-create:disabled { opacity:0.5; cursor:not-allowed; }
+</style>
+
+<div id="new-sim-overlay">
+  <div id="new-sim-modal">
+    <div class="nsm-header">
+        <span class="material-symbols-outlined" style="font-size:1.3rem;">flowchart</span>
+        <h3>New Simulation</h3>
+        <button class="nsm-close" onclick="closeNewSim()" title="Close">&times;</button>
+    </div>
+    <div class="nsm-body">
+
+        <!-- Name & description -->
+        <div class="nsm-field">
+            <label for="nsm-name">Name</label>
+            <input type="text" id="nsm-name" placeholder="e.g. 1 Turbine — 10 MW" maxlength="100">
+        </div>
+        <div class="nsm-field">
+            <label for="nsm-desc">Description <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+            <textarea id="nsm-desc" rows="2" placeholder="Short note about this simulation..."></textarea>
+        </div>
+
+        <!-- Component multi-select sections -->
+        {% for section in nsm_sections %}
+        <div class="nsm-comp-section">
+            <div class="nsm-comp-section-header" onclick="toggleNsmSection(this)">
+                <span class="material-symbols-outlined">{{ section.icon }}</span>
+                {{ section.label }}
+                <span class="nsm-sel-count" id="nsm-count-{{ section.field }}">0</span>
+                <span class="material-symbols-outlined" style="font-size:1rem; color:#4a7a80; transition:transform 0.2s;">expand_more</span>
+            </div>
+            <div class="nsm-check-list" id="nsm-list-{{ section.field }}">
+                {% if section.items %}
+                    {% for item in section.items %}
+                    <label>
+                        <input type="checkbox"
+                               name="{{ section.field }}"
+                               value="{{ item.id }}"
+                               onchange="updateNsmCount('{{ section.field }}')">
+                        {{ item.name }}&ensp;<span style="font-size:0.78rem;color:#4a7a80;">#{{ item.id }}</span>
+                    </label>
+                    {% endfor %}
+                {% else %}
+                    <div class="nsm-empty-opt">No {{ section.label }} records &mdash; <a href="{% url 'dashboard-browse' section.table %}" style="color:#136b75;">add one first</a></div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+    </div>
+    <div class="nsm-footer">
+        <button class="nsm-btn nsm-btn-cancel" onclick="closeNewSim()">Cancel</button>
+        <button class="nsm-btn nsm-btn-create" id="nsm-save-btn" onclick="submitNewSim()">
+            <span class="material-symbols-outlined" style="font-size:1rem;">add</span>
+            Create
+        </button>
+    </div>
+  </div>
+</div>
+
+<script>
+var _nsmCsrf = '{{ csrf_token }}';
+var _nsmCreateUrl = '{{ create_url }}';
+
+function closeNewSim() {
+    document.getElementById('new-sim-overlay').classList.remove('open');
+}
+document.getElementById('new-sim-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeNewSim();
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeNewSim();
+});
+
+function toggleNsmSection(header) {
+    var list    = header.nextElementSibling;
+    var chevron = header.querySelector('.material-symbols-outlined:last-child');
+    var open    = list.classList.toggle('open');
+    chevron.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+function updateNsmCount(fieldName) {
+    var checked = document.querySelectorAll('input[name="' + fieldName + '"]:checked').length;
+    var badge   = document.getElementById('nsm-count-' + fieldName);
+    badge.textContent = checked;
+    badge.classList.toggle('visible', checked > 0);
+}
+
+function submitNewSim() {
+    var btn  = document.getElementById('nsm-save-btn');
+    var name = document.getElementById('nsm-name').value.trim();
+    if (!name) { document.getElementById('nsm-name').focus(); return; }
+
+    btn.disabled = true;
+
+    var fd = new FormData();
+    fd.append('csrfmiddlewaretoken', _nsmCsrf);
+    fd.append('name', name);
+    fd.append('description', document.getElementById('nsm-desc').value.trim());
+
+    var fields = ['batteries','electro_cells','electrolyser_units',
+                  'thermal_properties','time_outputs','wind_inputs'];
+    fields.forEach(function(f) {
+        document.querySelectorAll('input[name="' + f + '"]:checked')
+            .forEach(function(cb) { fd.append(f, cb.value); });
+    });
+
+    fetch(_nsmCreateUrl, { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.id) {
+                window.location.href = '/simulations/' + data.id + '/';
+            } else {
+                alert('Error: ' + (data.error || 'unknown'));
+                btn.disabled = false;
+            }
+        })
+        .catch(function() { btn.disabled = false; });
+}
 </script>
 
 {% endblock %}

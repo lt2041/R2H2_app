@@ -29,5 +29,5 @@ r2h2-setup = "setup_launcher:main"
 
 [tool.setuptools]
 packages       = ["r2h2"]
-py_modules     = ["launch_r2h2", "setup_launcher"]
+py-modules     = ["launch_r2h2", "setup_launcher"]
 include-package-data = true

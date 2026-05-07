@@ -67,7 +67,10 @@ def create_config_file(data_root: str = None):
         data_root = val or str(default_base)
 
     resolved = Path(data_root).expanduser().resolve()
+    already_existed = resolved.exists()
     resolved.mkdir(parents=True, exist_ok=True)   # ensure dir exists for SQLite
+    if not already_existed:
+        print(f"  Created directory: {resolved}")
 
     cfg = {
         "paths": {

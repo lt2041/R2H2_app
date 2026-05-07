@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "r2h2"
-version = "1.2.3"
+version = "1.2.4"
 description = "The Desktop App for R2H2."
 authors = [
     {name = "Adam Stock", email = "a.stock@hw.ac.uk"},
@@ -13,7 +13,7 @@ authors = [
 ]
 license = {text = "GNUv3"}
 readme = "README.md"
-requires-python = ">=3.10"      # End-of-life Oct 2027 (3.10 Oct 2026)
+requires-python = ">=3.10"      # End-of-life Oct 2026 (3.11 Oct 2027)
 dependencies = [
     "numpy>=2.2.1",             # Released 2024, recommended latest-stable (2.1.x <= "old") 
     "pandas>=2.2.3",            # Released 2024, recommended latest-stable (2.1.x <= "old") 

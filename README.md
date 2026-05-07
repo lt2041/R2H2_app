@@ -6,16 +6,18 @@ The Desktop App for R2H2.
 
 | Platform | Method | Command |
 |---|---|---|
-| **Any** (recommended) | `pipx` | `pipx install git+https://github.com/RenewableTools/R2H2_app.git` |
-| **Any** | plain `pip` | `pip install git+https://github.com/RenewableTools/R2H2_app.git` |
-| **Windows — Anaconda Prompt** | conda env | see [Windows (Conda)](#windows--anaconda--miniconda) below |
-| **Windows — PyCharm Terminal** | pip | see [Windows (PyCharm)](#windows--pycharm) below |
+| **Win/Linux/Mac** (recommended)<br>*assuming `pip` can be called from the terminal* | `pipx` | `pipx install git+https://github.com/RenewableTools/R2H2_app.git` |
+| **Win/Linux/Mac**<br/>*assuming `pip` can be called from the terminal* | plain `pip` | `pip install git+https://github.com/RenewableTools/R2H2_app.git` |
+| **Windows — Anaconda**<br>*open Anaconda Prompt* | conda env | see [Windows (Conda)](#windows--anaconda--miniconda) below |
+| **Windows — PyCharm**<br>*open terminal* | pip | see [Windows (PyCharm)](#windows--pycharm) below |
 
-After install, run `r2h2` to launch.  
-If `r2h2` is not found, run `python -m setup_launcher` once to fix PATH.  
-Windows: a **"Launch R2H2.bat"** shortcut is created on your Desktop automatically.
+After install, run `r2h2` from a fresh terminal to launch. 
 
-> First launch will prompt you for a data folder — it will be created if it doesn't exist.
+First launch will prompt you to identify a local folder on your system (your preference) to store the application database and associated files. If the location you suggest does not yet exist, it will be created for you.
+
+> **Troubleshooting**
+>
+> - If `r2h2` is not found, locate the folder of your new installation, then run `python -m setup_launcher` once-time-only, to fix PATH. 
 
 ---
 
@@ -25,7 +27,11 @@ Open **Anaconda Prompt** from the Start menu and paste these lines one at a time
 
 ```bat
 conda create -n r2h2 python=3.11 -y
+```
+```
 conda run -n r2h2 python -m pip install git+https://github.com/RenewableTools/R2H2_app.git
+```
+```
 conda run -n r2h2 python -m setup_launcher
 ```
 
@@ -36,6 +42,10 @@ To launch manually from Anaconda Prompt in future:
 conda activate r2h2
 r2h2
 ```
+
+> **Troubleshooting**
+>
+> - If you have only just installed Anaconda (or Miniconda), Anaconda Prompt may ask you to accept terms of service via the command line; follow the instructions given and then carry out the specific R2H2 instructions above.
 
 ---
 
@@ -63,12 +73,14 @@ A **"Launch R2H2.bat"** shortcut will appear on your Desktop.
 
 [`pipx`](https://pipx.pypa.io) installs the app into an isolated environment and puts the `r2h2` command on your PATH automatically — no extra setup step needed.
 
+Install pipx if you don't have it:
 ```bash
-# Install pipx if you don't have it
 pip install pipx
 pipx ensurepath          # adds ~/.local/bin to PATH (one-time)
+```
 
-# Install R2H2
+Then install R2H2:
+```
 pipx install git+https://github.com/RenewableTools/R2H2_app.git
 ```
 

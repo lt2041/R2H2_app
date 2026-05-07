@@ -77,46 +77,32 @@ def kill_process_on_port(port):
 
 
 # ── Project / venv resolution ───────────────────────────────────────────────
-def get_project_directory():
-    """Return the directory containing manage.py."""
-    # When installed as a package, manage.py lives next to launch_r2h2.py
-    here = Path(__file__).resolve().parent
-    if (here / 'manage.py').exists():
-        return here
-    # Fallback: cwd
+def get_python_executable():
+    """
+    Return the Python executable that has the r2h2 package installed.
+    Preference order:
+      1. A venv/env inside cwd (developer / editable install)
+      2. The currently running interpreter (pipx, pip install, etc.)
+    """
     cwd = Path.cwd()
-    if (cwd / 'manage.py').exists():
-        return cwd
-    print_colored("✗ Cannot locate manage.py", Colors.RED)
-    sys.exit(1)
-
-
-def get_python_executable(project_dir: Path):
-    """
-    Return the best Python executable to use:
-    1. The venv inside the project directory (venv / .venv)
-    2. The currently running interpreter (handles pipx / pip install)
-    """
     for venv_name in ('venv', '.venv', 'env', '.env'):
-        venv = project_dir / venv_name
-        if sys.platform == 'win32':
-            candidate = venv / 'Scripts' / 'python.exe'
-        else:
-            candidate = venv / 'bin' / 'python'
+        venv = cwd / venv_name
+        candidate = venv / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python')
         if candidate.exists():
             return candidate
-
-    # Already inside a venv (pipx, pip install --user, etc.)
     return Path(sys.executable)
 
 
-def get_manage_py(project_dir: Path):
-    """Return manage.py as a Path; exit if missing."""
-    manage = project_dir / 'manage.py'
-    if not manage.exists():
-        print_colored(f"✗ manage.py not found in {project_dir}", Colors.RED)
-        sys.exit(1)
-    return manage
+def _django_manage(*args):
+    """Run a Django management command in-process (no manage.py file needed)."""
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'r2h2_ui.settings')
+    from django.core.management import execute_from_command_line
+    execute_from_command_line(['manage'] + list(args))
+
+
+def run_migrate():
+    """Run migrations in-process."""
+    _django_manage('migrate', '--noinput')
 
 
 # ── Browser opener ──────────────────────────────────────────────────────────
@@ -128,9 +114,10 @@ def open_browser_delayed(url: str, delay: float = 2.5):
 
 
 # ── Django server ───────────────────────────────────────────────────────────
-def start_django_server(project_dir: Path, host='127.0.0.1', preferred_port=8030):
-    python_exe = get_python_executable(project_dir)
-    manage_py  = get_manage_py(project_dir)
+def start_django_server(host='127.0.0.1', preferred_port=8030):
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'r2h2_ui.settings')
+
+    python_exe = get_python_executable()
 
     # ── Choose port ────────────────────────────────────────────────────────
     if is_port_available(host, preferred_port):
@@ -149,10 +136,10 @@ def start_django_server(project_dir: Path, host='127.0.0.1', preferred_port=8030
 
     url = f"http://{host}:{port}"
 
-    # ── Build command ───────────────────────────────────────────────────────
+    # ── Build command — use -m django instead of manage.py ─────────────────
     cmd = [
         str(python_exe),
-        str(manage_py),
+        '-m', 'django',
         'runserver',
         f'{host}:{port}',
         '--noreload',
@@ -161,15 +148,11 @@ def start_django_server(project_dir: Path, host='127.0.0.1', preferred_port=8030
     print_colored(f"Starting R2H2 at {url}", Colors.CYAN)
     print_colored("Press Ctrl+C to stop.", Colors.YELLOW)
 
-    # ── Platform-specific Popen flags ──────────────────────────────────────
     popen_kwargs = dict(
-        cwd=str(project_dir),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
-
     if sys.platform == 'win32':
-        # Prevent a second console window from appearing
         popen_kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
 
     open_browser_delayed(url)
@@ -184,7 +167,6 @@ def start_django_server(project_dir: Path, host='127.0.0.1', preferred_port=8030
     for _ in range(10):
         time.sleep(0.5)
         if server.poll() is not None:
-            # Process already exited — grab stderr
             err = server.stderr.read().decode(errors='replace').strip()
             print_colored("✗ Django server failed to start.", Colors.RED)
             if err:
@@ -211,11 +193,16 @@ def main():
     print_colored("   R2H2 — Renewable to Hydrogen", Colors.GREEN)
     print_colored("=" * 48, Colors.CYAN)
 
-    project_dir = get_project_directory()
-    print_colored(f"  Project : {project_dir}", Colors.NC)
-    print_colored(f"  Python  : {get_python_executable(project_dir)}", Colors.NC)
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'r2h2_ui.settings')
+    print_colored(f"  Python  : {get_python_executable()}", Colors.NC)
 
-    start_django_server(project_dir)
+    # Run migrations in-process before starting the server
+    try:
+        run_migrate()
+    except SystemExit:
+        pass  # migrate --noinput exits 0; ignore
+
+    start_django_server()
 
 
 if __name__ == '__main__':

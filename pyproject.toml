@@ -28,6 +28,16 @@ r2h2       = "launch_r2h2:main"
 r2h2-setup = "setup_launcher:main"
 
 [tool.setuptools]
-packages       = ["r2h2"]
 py-modules     = ["launch_r2h2", "setup_launcher"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["r2h2*", "r2h2_ui*", "dashboard*"]
+
+[tool.setuptools.package-data]
+"dashboard" = [
+    "templates/**/*",
+    "static/**/*",
+    "migrations/*.py",
+]

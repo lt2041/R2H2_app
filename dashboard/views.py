@@ -698,6 +698,7 @@ def view_run_results(request, sim_id, run_id):
         'n_years_range': range(len(years_data)),
         'xaxis_datetime': run.xaxis_datetime,
         'update_xaxis_url': f'/simulations/{sim_id}/run/{run_id}/xaxis/',
+        'has_wind': sim.wind_inputs.exists(),
     }
     return render(request, 'dashboard/run_results.html', context)
 

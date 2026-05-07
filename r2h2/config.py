@@ -66,9 +66,12 @@ def create_config_file(data_root: str = None):
         val = input(f"Enter path to data root [{default_base}]: ").strip()
         data_root = val or str(default_base)
 
+    resolved = Path(data_root).expanduser().resolve()
+    resolved.mkdir(parents=True, exist_ok=True)   # ensure dir exists for SQLite
+
     cfg = {
         "paths": {
-            "data_root": str(Path(data_root).expanduser().resolve()),
+            "data_root": str(resolved),
         },
         "created": pd.Timestamp.now().isoformat(),
     }
@@ -80,10 +83,27 @@ def create_config_file(data_root: str = None):
 
 # Get or create config - intended use by initialisation of main r2h2 class
 def get_or_create_config():
-    """Return existing config or create it interactively if missing."""
+    """Return existing config or create it interactively if missing.
+
+    When stdin is not a tty (e.g. called from an installer script or
+    ``manage.py migrate --noinput``) the prompt is skipped and a
+    sensible default data root is used instead:
+        Windows : %USERPROFILE%\r2h2-data
+        Unix    : ~/r2h2-data
+    The user can change this later via ``r2h2.config.update_data_root()``.
+    """
+    import sys
     cfg = load_config()
     if cfg is not None:
         return cfg
+    # Env-var override (set by installer before running migrate)
+    env_root = os.environ.get('R2H2_DATA_ROOT')
+    if env_root:
+        return create_config_file(data_root=env_root)
+    # Non-interactive context: don't prompt, use a safe default
+    if not sys.stdin.isatty():
+        default_root = Path.home() / 'r2h2-data'
+        return create_config_file(data_root=str(default_root))
     return create_config_file()
 
 # Update data_root in config.yaml - functional tool for user 

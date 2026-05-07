@@ -89,11 +89,16 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Apply Django migrations
+# Apply Django migrations (data_root is pre-seeded via env var to avoid prompt)
 $managePy = Join-Path $RepoRoot "manage.py"
 if (Test-Path $managePy) {
+    $defaultDataRoot = Join-Path $env:USERPROFILE "r2h2-data"
     Write-Host "         Running database migrations ..." -ForegroundColor DarkGray
-    & $VenvPy $managePy migrate --noinput | Out-Null
+    Write-Host "         Data root: $defaultDataRoot" -ForegroundColor DarkGray
+    # Pre-seed config so settings.py can resolve data_root without prompting
+    $env:R2H2_DATA_ROOT = $defaultDataRoot
+    & $VenvPy $managePy migrate --noinput 2>&1 | ForEach-Object { Write-Host "         $_" -ForegroundColor DarkGray }
+    $env:R2H2_DATA_ROOT = $null
 }
 
 Write-Host "         Done." -ForegroundColor Green

@@ -379,7 +379,7 @@
             <div class="chart-card">
                 <div class="chart-card-header">
                     <span class="material-symbols-outlined">air</span>
-                    Wind Speed
+                    1hr Average Site Wind Speed
                 </div>
                 <div class="chart-body">
                     <div id="chart-wind-{{ i }}" style="height:280px;"></div>
@@ -390,6 +390,179 @@
     </div>
     {% endfor %}
     </div>
+
+    {% if has_wind %}
+    <!-- ── 1 Hz Wind Data card (outside year panels — same data for all years) ── -->
+    <div class="chart-card" id="wind-hz-card" style="margin-top: 0.5rem;">
+        <div class="chart-card-header" id="wind-hz-header"
+             style="cursor:pointer; user-select:none;"
+             onclick="toggleWindHz(this)">
+            <span class="material-symbols-outlined">air</span>
+            Wind Data &mdash; 1&thinsp;Hz per Turbine
+            <span id="wind-hz-badge"
+                  style="display:none; margin-left:0.6rem; font-size:0.72rem;
+                         background:#d0f0f3; color:#136b75; border-radius:8px;
+                         padding:0.1rem 0.55rem; font-weight:600;"></span>
+            <span class="material-symbols-outlined" id="wind-hz-chevron"
+                  style="margin-left:auto; font-size:1.1rem; color:#4a7a80;
+                         transition:transform 0.2s;">expand_more</span>
+        </div>
+        <div id="wind-hz-body" style="display:none;">
+            <div id="wind-hz-loading"
+                 style="padding:1rem 1.25rem; font-size:0.82rem; color:#4a7a80;
+                        display:flex; align-items:center; gap:0.5rem;">
+                <span class="material-symbols-outlined" style="font-size:1.1rem;">hourglass_top</span>
+                Loading wind data&hellip;
+            </div>
+            <div id="wind-hz-error"
+                 style="display:none; padding:1rem 1.25rem; font-size:0.82rem;
+                        color:#b71c1c; background:#fdecea;
+                        border-radius:0 0 10px 10px;"></div>
+            <div id="wind-hz-info"
+                 style="display:none; padding:0.3rem 1.25rem 0;
+                        font-size:0.75rem; color:#4a7a80;"></div>
+            <div id="wind-hz-plot"
+                 style="display:none; width:100%; min-height:340px;"></div>
+        </div>
+    </div>
+    <script>
+    (function(){
+        var _loaded = false;
+        var windHzUrl = "{% url 'dashboard-wind-preview' sim_id=sim.id %}";
+        console.log('[wind-hz] preview URL:', windHzUrl);
+
+        window.toggleWindHz = function(header) {
+            var body    = document.getElementById('wind-hz-body');
+            var chevron = document.getElementById('wind-hz-chevron');
+            var open    = body.style.display === 'none';
+            body.style.display = open ? 'block' : 'none';
+            chevron.style.transform = open ? 'rotate(180deg)' : '';
+            if (open && !_loaded) { _loaded = true; loadWindHz(); }
+        };
+
+        function loadWindHz() {
+            fetch(windHzUrl)
+                .then(function(r) {
+                    if (!r.ok) {
+                        return r.text().then(function(t) {
+                            throw new Error('HTTP ' + r.status + ' — ' + t.substring(0, 200));
+                        });
+                    }
+                    return r.json();
+                })
+                .then(function(data) {
+                    document.getElementById('wind-hz-loading').style.display = 'none';
+                    if (data.error) {
+                        var err = document.getElementById('wind-hz-error');
+                        err.textContent = data.error;
+                        err.style.display = 'block';
+                        return;
+                    }
+                    var badge = document.getElementById('wind-hz-badge');
+                    badge.textContent = data.n_turbines + (data.n_turbines === 1 ? ' turbine' : ' turbines');
+                    badge.style.display = 'inline-block';
+
+                    var info = document.getElementById('wind-hz-info');
+                    info.textContent = data.filename + '  \u00b7  ' + data.n_hours + ' hours';
+                    info.style.display = 'block';
+
+                    renderWindHz(data);
+                })
+                .catch(function(e) {
+                    document.getElementById('wind-hz-loading').style.display = 'none';
+                    var err = document.getElementById('wind-hz-error');
+                    err.textContent = 'Failed to load wind data: ' + e;
+                    err.style.display = 'block';
+                });
+        }
+
+        function renderWindHz(data) {
+            var plotDiv = document.getElementById('wind-hz-plot');
+            plotDiv.style.display = 'block';
+
+            var palette = [
+                '#22a6b3','#136b75','#48dbdb','#0a9396','#94d2bd',
+                '#e9c46a','#f4a261','#e76f51','#2a9d8f','#264653'
+            ];
+
+            var traces = [];
+            traces.push({
+                x: data.hours, y: data.wind_speed,
+                type: 'scatter', mode: 'lines', name: 'Wind Speed',
+                line: { color: '#22a6b3', width: 1.5 },
+                yaxis: 'y', xaxis: 'x',
+                hovertemplate: 'Hour %{x}<br>%{y:.2f} m/s<extra></extra>',
+            });
+
+            data.turbines.forEach(function(t, i) {
+                traces.push({
+                    x: data.hours, y: t.power,
+                    type: 'scatter', mode: 'lines', name: 'Turbine ' + t.turbine,
+                    line: { color: palette[i % palette.length], width: 1.2 },
+                    yaxis: 'y2', xaxis: 'x2',
+                    hovertemplate: 'Hour %{x}<br>%{y:.1f} W<extra>Turbine ' + t.turbine + '</extra>',
+                });
+            });
+
+            var nTurbs    = data.turbines.length;
+            var showPower = nTurbs > 0;
+            var wsDomain  = showPower ? [0.56, 1.0] : [0, 1.0];
+            var pwrDomain = [0, 0.40];
+
+            var layout = {
+                paper_bgcolor: '#fff',
+                plot_bgcolor:  '#f4fafb',
+                margin:        { t: 28, r: 28, b: 36, l: 62 },
+                font:          { family: 'Ubuntu, sans-serif', size: 11, color: '#1a2e30' },
+                showlegend:    nTurbs > 1,
+                legend:        { orientation: 'h', y: -0.08, font: { size: 10 } },
+                hovermode:     'x unified',
+                yaxis: {
+                    title: { text: 'Wind speed (m/s)', font: { size: 10 } },
+                    domain: wsDomain,
+                    gridcolor: '#e0f4f6', zeroline: false,
+                },
+                xaxis: {
+                    title: showPower ? '' : { text: 'Hour', font: { size: 10 } },
+                    domain: [0, 1], anchor: 'y',
+                    gridcolor: '#e0f4f6',
+                    showticklabels: !showPower,
+                },
+            };
+
+            if (showPower) {
+                layout.yaxis2 = {
+                    title: { text: 'Mean power (W)', font: { size: 10 } },
+                    domain: pwrDomain,
+                    gridcolor: '#e0f4f6', zeroline: false,
+                };
+                layout.xaxis2 = {
+                    title: { text: 'Hour', font: { size: 10 } },
+                    domain: [0, 1], anchor: 'y2',
+                    gridcolor: '#e0f4f6',
+                };
+                traces[0].xaxis = 'x'; traces[0].yaxis = 'y';
+                traces.slice(1).forEach(function(t) { t.xaxis = 'x2'; t.yaxis = 'y2'; });
+            }
+
+            function doPlot() {
+                Plotly.newPlot(plotDiv, traces, layout, {
+                    responsive: true, displaylogo: false,
+                    modeBarButtonsToRemove: ['select2d','lasso2d','toImage'],
+                });
+            }
+            if (typeof Plotly !== 'undefined') {
+                doPlot();
+            } else {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
+                s.onload = doPlot;
+                document.head.appendChild(s);
+            }
+        }
+    })();
+    </script>
+    {% endif %}
 
     {% endif %}
 

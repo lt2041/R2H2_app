@@ -21,6 +21,7 @@ dependencies = [
     "python-dotenv>=1.0.1",     # Released 2024, recommended latest-stable (1.0.0 <= "old") 
     "platformdirs>=4.3.0",      # Released 2024, recommended latest-stable (4.2.x <= "old")
     "django>=5.2.12,<6",        # LTS (to Apr 2028)
+    "scipy>=1.14.0",            # LTS-aligned; 1.14.x supports NumPy 2.x
 ]
 
 [project.scripts]

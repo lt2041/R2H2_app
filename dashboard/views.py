@@ -1157,6 +1157,66 @@ import pandas as _pd
 from pathlib import Path as _Path
 
 
+def wind_preview_data(request, sim_id):
+    """GET: return hourly wind speed and per-turbine mean power JSON
+    for the wind HDF5 file linked to this simulation.
+
+    Response shape:
+        { hours: [int, ...],
+          wind_speed: [float, ...],
+          turbines: [{turbine: int, power: [float, ...]}, ...],
+          n_turbines: int,
+          n_hours: int,
+          filename: str }
+    """
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    import h5py, numpy as np
+
+    MAX_PTS = 2000          # max points to return per series (downsample above this)
+
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    try:
+        wind_path = _resolve_wind_h5_path(sim)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=404)
+
+    try:
+        with h5py.File(wind_path, 'r') as f:
+            # ── Wind speed ──────────────────────────────────────────────────
+            if '/WindSpeed' not in f:
+                return JsonResponse({'error': 'No /WindSpeed dataset found in wind file.'}, status=404)
+            ws = f['/WindSpeed'][:].ravel()           # shape → (N_hours,)
+            n_hours = int(len(ws))
+            step = max(1, n_hours // MAX_PTS)
+            hours      = list(range(0, n_hours, step))
+            wind_speed = ws[::step].tolist()
+
+            # ── Per-turbine hourly mean power ────────────────────────────────
+            turbines = []
+            if '/TurbPowerInput' in f:
+                # shape: (N_hours, N_turbines, N_timesteps)
+                tp = f['/TurbPowerInput'][:]
+                mean_hourly = tp.mean(axis=2)          # → (N_hours, N_turbines)
+                n_turbs = mean_hourly.shape[1]
+                for t in range(n_turbs):
+                    turbines.append({
+                        'turbine': t + 1,
+                        'power':   mean_hourly[::step, t].tolist(),
+                    })
+
+        return JsonResponse({
+            'hours':      hours,
+            'wind_speed': wind_speed,
+            'turbines':   turbines,
+            'n_turbines': len(turbines),
+            'n_hours':    n_hours,
+            'filename':   wind_path.name,
+        })
+    except Exception as e:
+        return JsonResponse({'error': f'Could not read wind file: {e}'}, status=500)
+
+
 def wind_data(request):
     """Page listing uploaded wind HDF5 files with a drag-and-drop uploader."""
     from django.conf import settings as django_settings

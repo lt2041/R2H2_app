@@ -7,7 +7,7 @@
 
 <div style="position: absolute; top: 0.9rem; left: 19rem; z-index: 1000;">
     <h2 style="color: #ffffff; font-weight: 100;">
-        <a href="{% url 'dashboard-simulations' %}" style="color: #ffffff; text-decoration: none;">Simulation</a>&ensp;>&ensp; {{ sim.name }}
+        <a href="{% url 'dashboard-simulations' %}" style="color: #ffffff; text-decoration: none;">Models</a>&ensp;>&ensp; {{ sim.name }}
     </h2>
 </div>
 
@@ -644,7 +644,7 @@
         <!-- Header: icon + title + Simulate button -->
         <div class="sim-control-header">
             <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem; padding:0 !important;">play_circle</span>
-            <span class="sim-control-label">Runs</span>
+            <span class="sim-control-label">Simulation Runs</span>
 
             {% if messages %}
                 {% for message in messages %}
@@ -1085,6 +1085,186 @@
             </table>
         </div>
     </div>
+
+    <!-- Wind data preview card -->
+    {% if sim.wind_inputs.all %}
+    <div class="group-card" id="wind-preview-card">
+        <div class="group-card-header" id="wind-preview-header" onclick="toggleWindPreview(this)">
+            <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">air</span>
+            <span class="gc-title">Wind Data</span>
+            <span class="gc-count empty" id="wind-preview-turbine-badge" style="display:none;"></span>
+            <span class="material-symbols-outlined gc-toggle">expand_more</span>
+        </div>
+        <div class="group-card-body" id="wind-preview-body">
+            <!-- Loading state -->
+            <div id="wind-preview-loading" style="padding:1rem 1.25rem; font-size:0.82rem; color:#4a7a80; display:flex; align-items:center; gap:0.5rem;">
+                <span class="sim-spinner"></span> Loading wind data…
+            </div>
+            <!-- Error state -->
+            <div id="wind-preview-error" style="display:none; padding:1rem 1.25rem; font-size:0.82rem; color:#b71c1c; background:#fdecea; border-radius:0 0 10px 10px;"></div>
+            <!-- Plot container -->
+            <div id="wind-preview-info" style="display:none; padding:0.3rem 1.25rem 0; font-size:0.75rem; color:#4a7a80;"></div>
+            <div id="wind-preview-plot" style="display:none; width:100%; min-height:340px;"></div>
+        </div>
+    </div>
+    <script>
+    (function(){
+        var _windLoaded = false;
+        var previewUrl  = "{% url 'dashboard-wind-preview' sim_id=sim.id %}";
+
+        window.toggleWindPreview = function(header) {
+            header.classList.toggle('open');
+            var body = document.getElementById('wind-preview-body');
+            body.classList.toggle('open');
+            if (body.classList.contains('open') && !_windLoaded) {
+                _windLoaded = true;
+                loadWindPreview();
+            }
+        };
+
+        function loadWindPreview() {
+            fetch(previewUrl)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    document.getElementById('wind-preview-loading').style.display = 'none';
+                    if (data.error) {
+                        var err = document.getElementById('wind-preview-error');
+                        err.textContent = data.error;
+                        err.style.display = 'block';
+                        return;
+                    }
+                    // Update turbine count badge
+                    var badge = document.getElementById('wind-preview-turbine-badge');
+                    badge.textContent = data.n_turbines + (data.n_turbines === 1 ? ' turbine' : ' turbines');
+                    badge.style.display = 'inline-block';
+
+                    // Info line
+                    var info = document.getElementById('wind-preview-info');
+                    info.textContent = data.filename + '  ·  ' + data.n_hours + ' hours';
+                    info.style.display = 'block';
+
+                    renderWindPlot(data);
+                })
+                .catch(function(e) {
+                    document.getElementById('wind-preview-loading').style.display = 'none';
+                    var err = document.getElementById('wind-preview-error');
+                    err.textContent = 'Failed to load wind data: ' + e;
+                    err.style.display = 'block';
+                });
+        }
+
+        function renderWindPlot(data) {
+            var plotDiv = document.getElementById('wind-preview-plot');
+            plotDiv.style.display = 'block';
+
+            // Teal palette for turbines
+            var palette = [
+                '#22a6b3','#136b75','#48dbdb','#0a9396','#94d2bd',
+                '#e9c46a','#f4a261','#e76f51','#2a9d8f','#264653'
+            ];
+
+            var traces = [];
+
+            // ── Wind speed (top subplot) ────────────────────────────────────
+            traces.push({
+                x: data.hours,
+                y: data.wind_speed,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Wind Speed',
+                line: { color: '#22a6b3', width: 1.5 },
+                yaxis: 'y1',
+                xaxis: 'x1',
+                hovertemplate: 'Hour %{x}<br>%{y:.2f} m/s<extra></extra>',
+            });
+
+            // ── Per-turbine power (bottom subplot) ─────────────────────────
+            data.turbines.forEach(function(t, i) {
+                traces.push({
+                    x: data.hours,
+                    y: t.power,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Turbine ' + t.turbine,
+                    line: { color: palette[i % palette.length], width: 1.2 },
+                    yaxis: 'y2',
+                    xaxis: 'x2',
+                    hovertemplate: 'Hour %{x}<br>%{y:.1f} W<extra>Turbine ' + t.turbine + '</extra>',
+                });
+            });
+
+            var nTurbs      = data.turbines.length;
+            var showPower   = nTurbs > 0;
+            var wsHeight    = showPower ? 0.44 : 1.0;   // fraction of total plot height
+            var pwrDomain   = [0, 0.40];
+            var wsDomain    = showPower ? [0.56, 1.0] : [0, 1.0];
+
+            var layout = {
+                paper_bgcolor: '#fff',
+                plot_bgcolor:  '#f4fafb',
+                margin:        { t: 28, r: 28, b: 36, l: 62 },
+                font:          { family: 'Ubuntu, sans-serif', size: 11, color: '#1a2e30' },
+                showlegend:    nTurbs > 1,
+                legend:        { orientation: 'h', y: -0.08, font: { size: 10 } },
+                hovermode:     'x unified',
+                yaxis: {
+                    title: { text: 'Wind speed (m/s)', font: { size: 10 } },
+                    domain: wsDomain,
+                    gridcolor: '#e0f4f6',
+                    zeroline: false,
+                },
+                xaxis: {
+                    title: showPower ? '' : { text: 'Hour', font: { size: 10 } },
+                    domain: [0, 1],
+                    anchor: 'y',
+                    gridcolor: '#e0f4f6',
+                    showticklabels: !showPower,
+                },
+            };
+
+            if (showPower) {
+                layout.yaxis2 = {
+                    title: { text: 'Mean power (W)', font: { size: 10 } },
+                    domain: pwrDomain,
+                    gridcolor: '#e0f4f6',
+                    zeroline: false,
+                };
+                layout.xaxis2 = {
+                    title: { text: 'Hour', font: { size: 10 } },
+                    domain: [0, 1],
+                    anchor: 'y2',
+                    gridcolor: '#e0f4f6',
+                };
+                // Repoint traces to correct axes
+                traces[0].xaxis = 'x';
+                traces[0].yaxis = 'y';
+                traces.slice(1).forEach(function(t) {
+                    t.xaxis = 'x2';
+                    t.yaxis = 'y2';
+                });
+            }
+
+            // Load Plotly lazily if not already present
+            function doPlot() {
+                Plotly.newPlot(plotDiv, traces, layout, {
+                    responsive:    true,
+                    displaylogo:   false,
+                    modeBarButtonsToRemove: ['select2d','lasso2d','toImage'],
+                });
+            }
+
+            if (typeof Plotly !== 'undefined') {
+                doPlot();
+            } else {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
+                s.onload = doPlot;
+                document.head.appendChild(s);
+            }
+        }
+    })();
+    </script>
+    {% endif %}
 
     <!-- Populated component groups -->
     {% for group in groups %}

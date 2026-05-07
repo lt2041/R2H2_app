@@ -1,150 +1,127 @@
 #!/usr/bin/env python3
 
 """
-Setup script to install R2H2 desktop launcher
-Creates a command-line launcher for easy access
+R2H2 post-install setup: ensures the `r2h2` console-script installed by pip
+is reachable on the user's PATH.
+
+When pip installs this package it creates a `r2h2` script in the environment's
+scripts directory (e.g. ~/.local/bin or <venv>/bin).  This helper finds that
+directory and wires it into the user's shell config so it is available in every
+new terminal session.
+
+Run with:  r2h2-setup   (after pip install)
+       or:  python -m setup_launcher
 """
 
 import os
 import sys
-import subprocess
+import shutil
+import sysconfig
 from pathlib import Path
 
-def get_shell_config_file():
-    """Determine which shell config file to use"""
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _scripts_dir() -> Path:
+    """Return the directory where pip installs console-scripts for the active
+    Python environment (works for venvs, user installs and system installs)."""
+    return Path(sysconfig.get_path('scripts'))
+
+
+def _r2h2_script() -> Path | None:
+    """Return the absolute path of the installed `r2h2` script, or None."""
+    # sysconfig scripts dir is the canonical location
+    candidate = _scripts_dir() / ('r2h2.exe' if os.name == 'nt' else 'r2h2')
+    if candidate.exists():
+        return candidate
+    # Fall back to shutil.which (covers edge cases like conda envs)
+    found = shutil.which('r2h2')
+    return Path(found) if found else None
+
+
+def get_shell_config_file() -> Path:
     shell = os.environ.get('SHELL', '')
-    
     if 'zsh' in shell:
         return Path.home() / '.zshrc'
-    elif 'bash' in shell:
-        # Try .bash_profile first (macOS convention), then .bashrc
-        bash_profile = Path.home() / '.bash_profile'
-        bashrc = Path.home() / '.bashrc'
-        return bash_profile if bash_profile.exists() or sys.platform == 'darwin' else bashrc
-    else:
-        # Default fallback
-        return Path.home() / '.profile'
+    if 'bash' in shell:
+        bp = Path.home() / '.bash_profile'
+        return bp if bp.exists() or sys.platform == 'darwin' else Path.home() / '.bashrc'
+    return Path.home() / '.profile'
 
-def add_to_path():
-    """Add ~/.local/bin to PATH in shell config"""
-    config_file = get_shell_config_file()
-    local_bin = str(Path.home() / '.local' / 'bin')
-    
-    print(f"Adding {local_bin} to PATH in {config_file}")
-    
-    # Check if already in config
-    if config_file.exists():
-        content = config_file.read_text()
-        if local_bin in content and 'PATH' in content:
-            print("✓ PATH already configured")
-            return True
-    
-    # Add PATH export
-    path_line = f'export PATH="$HOME/.local/bin:$PATH"\n'
-    
-    with open(config_file, 'a') as f:
-        f.write(f'\n# Added by R2H2 setup\n')
-        f.write(path_line)
-    
-    print(f"✓ Added PATH to {config_file}")
+
+def _ensure_path(directory: Path) -> bool:
+    """Add *directory* to PATH in the user's shell config if not already there.
+    Returns True if a change was made."""
+    config = get_shell_config_file()
+    dir_str = str(directory)
+    if config.exists() and dir_str in config.read_text():
+        return False  # already present
+    with config.open('a') as fh:
+        fh.write(f'\n# Added by r2h2-setup\nexport PATH="{dir_str}:$PATH"\n')
     return True
 
-def create_launcher_script():
-    """Create a system-wide launcher script"""
-    
-    # Get the current script directory
-    current_dir = Path(__file__).parent
-    launch_script = current_dir / 'launch_r2h2.py'
-    
-    if not launch_script.exists():
-        print("Error: launch_r2h2.py not found")
-        return False
-    
-    # Create launcher content
-    launcher_content = f'''#!/usr/bin/env python3
-"""R2H2 Desktop App Launcher"""
-import subprocess
-import sys
 
-def main():
-    script_path = r"{launch_script}"
-    subprocess.run([sys.executable, script_path])
+# ---------------------------------------------------------------------------
+# Windows: create a small .bat shim in a user-writable location
+# ---------------------------------------------------------------------------
+
+def _setup_windows(script: Path) -> None:
+    bat_dir = Path.home() / 'AppData' / 'Local' / 'bin'
+    bat_dir.mkdir(parents=True, exist_ok=True)
+    bat = bat_dir / 'r2h2.bat'
+    bat.write_text(f'@echo off\n"{script}" %*\n')
+    print(f'✓ Shim written to: {bat}')
+    print(f'  Add to PATH: {bat_dir}')
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    print('=== R2H2 Launcher Setup ===')
+
+    script = _r2h2_script()
+    if script is None:
+        print(
+            '✗  Could not find the installed `r2h2` script.\n'
+            '   Make sure the package was installed correctly:\n'
+            '     pip install r2h2\n'
+            '   or, inside a venv:\n'
+            '     pip install -e /path/to/R2H2_app'
+        )
+        sys.exit(1)
+
+    print(f'  Found r2h2 at: {script}')
+    scripts_dir = script.parent
+
+    if os.name == 'nt':
+        _setup_windows(script)
+        return
+
+    # Unix / macOS ────────────────────────────────────────────────────────
+    # Check whether the scripts dir is already on PATH
+    path_dirs = [Path(p) for p in os.environ.get('PATH', '').split(':') if p]
+    already_on_path = scripts_dir in path_dirs or shutil.which('r2h2') == str(script)
+
+    if already_on_path:
+        print(f'✓  {scripts_dir} is already on PATH — nothing to do.')
+        print('   Run:  r2h2')
+        return
+
+    changed = _ensure_path(scripts_dir)
+    config = get_shell_config_file()
+
+    if changed:
+        print(f'✓  Added {scripts_dir} to PATH in {config}')
+    else:
+        print(f'  (PATH entry already present in {config})')
+
+    print(f'\nTo apply in this session:\n  source {config}')
+    print('Then run:  r2h2')
+
 
 if __name__ == '__main__':
     main()
-'''
-    
-    # Determine launcher location based on OS
-    if os.name == 'nt':  # Windows
-        launcher_path = Path.home() / 'AppData' / 'Local' / 'bin' / 'r2h2.py'
-        launcher_path.parent.mkdir(parents=True, exist_ok=True)
-    else:  # Unix/Linux/macOS
-        launcher_path = Path.home() / '.local' / 'bin' / 'r2h2'
-        launcher_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Write launcher script
-    with open(launcher_path, 'w') as f:
-        f.write(launcher_content)
-    
-    # Make executable on Unix systems
-    if os.name != 'nt':
-        os.chmod(launcher_path, 0o755)
-    
-    print(f"✓ Launcher installed to: {launcher_path}")
-    
-    if os.name != 'nt':
-        # Auto-configure PATH
-        add_to_path()
-        
-        config_file = get_shell_config_file()
-        print(f"\nTo use the launcher in this terminal session:")
-        print(f"source {config_file}")
-        print("\nOr open a new terminal and run: r2h2")
-        
-        # Try to source the config file for current session
-        try:
-            shell = os.environ.get('SHELL', '/bin/bash')
-            subprocess.run([shell, '-c', f'source {config_file}'], check=False)
-        except:
-            pass
-            
-    else:
-        print(f"\nTo run R2H2: python {launcher_path}")
-    
-    return True
-
-def create_alias_alternative():
-    """Create an alias as an alternative to PATH modification"""
-    config_file = get_shell_config_file()
-    current_dir = Path(__file__).parent
-    launch_script = current_dir / 'launch_r2h2.py'
-    
-    alias_line = f'alias r2h2="python3 {launch_script}"\n'
-    
-    print(f"Creating alias in {config_file}")
-    with open(config_file, 'a') as f:
-        f.write(f'\n# R2H2 Desktop alias\n')
-        f.write(alias_line)
-    
-    print("✓ Alias created. Run 'source ~/.zshrc' (or ~/.bash_profile) then 'r2h2'")
-
-if __name__ == '__main__':
-    print("=== R2H2 Desktop Launcher Setup ===")
-    print(f"Shell: {os.environ.get('SHELL', 'unknown')}")
-    print(f"Config file: {get_shell_config_file()}")
-    
-    choice = input("\nChoose setup method:\n1. Install to ~/.local/bin (recommended)\n2. Create shell alias\nChoice (1/2): ").strip()
-    
-    if choice == '2':
-        create_alias_alternative()
-        print("✓ Setup completed! Restart your terminal or run:")
-        print(f"source {get_shell_config_file()}")
-    else:
-        if create_launcher_script():
-            print("✓ Setup completed successfully!")
-            print("\nRestart your terminal or run:")
-            print(f"source {get_shell_config_file()}")
-            print("then: r2h2")
-        else:
-            print("✗ Setup failed")
-            sys.exit(1)

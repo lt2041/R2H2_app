@@ -4,24 +4,47 @@ The Desktop App for R2H2.
 
 ## Installation
 
-
 ### Prerequisites
 - Python 3.11+
 
-### Standard install:
+---
 
-Run the following in your terminal:
+### Recommended — install with `pipx` (handles PATH automatically)
+
+[`pipx`](https://pipx.pypa.io) installs the app into an isolated environment and puts the `r2h2` command on your PATH automatically — no extra setup step needed.
+
 ```bash
-pip install git+https://github.com/RenewableTools/R2H2_app.git
+# Install pipx if you don't have it
+pip install pipx
+pipx ensurepath          # adds ~/.local/bin to PATH (one-time)
+
+# Install R2H2
+pipx install git+https://github.com/RenewableTools/R2H2_app.git
 ```
 
-Close your terminal, then run the following:
+Open a new terminal, then run:
+
 ```bash
 r2h2
 ```
 
-You may be prompted to specify where you want to save data for the application on your local system. Once your app is configured, you shouldn't need to specify this again.
+---
 
+### Alternative — plain `pip`
+
+```bash
+pip install git+https://github.com/RenewableTools/R2H2_app.git
+```
+
+If opening a new terminal and typing `r2h2` gives "command not found", run the setup helper once to add the correct directory to your PATH:
+
+```bash
+python -m setup_launcher
+```
+
+Then follow the instructions it prints (usually `source ~/.zshrc` or open a new terminal).
+
+---
 
 ### Installing a specific version:
 

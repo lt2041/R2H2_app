@@ -64,16 +64,30 @@ def _ensure_path(directory: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Windows: create a small .bat shim in a user-writable location
+# Windows: write a .bat shim on the Desktop for double-click launching
 # ---------------------------------------------------------------------------
 
 def _setup_windows(script: Path) -> None:
+    # Scripts-dir shim (for users who run from Anaconda Prompt / CMD)
     bat_dir = Path.home() / 'AppData' / 'Local' / 'bin'
     bat_dir.mkdir(parents=True, exist_ok=True)
-    bat = bat_dir / 'r2h2.bat'
-    bat.write_text(f'@echo off\n"{script}" %*\n')
-    print(f'✓ Shim written to: {bat}')
-    print(f'  Add to PATH: {bat_dir}')
+    shim = bat_dir / 'r2h2.bat'
+    shim.write_text(f'@echo off\n"{script}" %*\n')
+    print(f'  Shim : {shim}')
+
+    # Desktop shortcut — most reliable way to launch without PATH setup
+    desktop = Path.home() / 'Desktop'
+    if not desktop.exists():
+        # OneDrive-redirected Desktop
+        desktop = Path.home() / 'OneDrive' / 'Desktop'
+    shortcut = desktop / 'Launch R2H2.bat'
+    shortcut.write_text(
+        f'@echo off\ntitle R2H2\n"{script}"\npause\n'
+    )
+    print(f'  Desktop shortcut: {shortcut}')
+    print()
+    print('  Double-click "Launch R2H2.bat" on your Desktop to start the app.')
+    print(f'  Or add {bat_dir} to your PATH to use the "r2h2" command.')
 
 
 # ---------------------------------------------------------------------------

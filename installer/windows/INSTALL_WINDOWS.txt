@@ -1,0 +1,86 @@
+R2H2 — Windows Installation Guide
+===================================
+
+You do NOT need to find or run any .bat file to install R2H2.
+The easiest routes use only commands you type directly into a terminal.
+
+Choose the route that matches your setup:
+
+  Route A — Anaconda / Miniconda  →  open "Anaconda Prompt" from Start menu
+  Route B — PyCharm               →  open Terminal panel inside PyCharm (Alt+F12)
+  Route C — Python on PATH        →  open CMD or any terminal
+  Route D — .bat files            →  only if you have the source folder available
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ROUTE A — Anaconda / Miniconda  (open "Anaconda Prompt" from Start menu)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Paste these three lines into Anaconda Prompt, pressing Enter after each:
+
+    conda create -n r2h2 python=3.11 -y
+    conda run -n r2h2 python -m pip install git+https://github.com/RenewableTools/R2H2_app.git
+    conda run -n r2h2 python -m setup_launcher
+
+A "Launch R2H2.bat" shortcut will appear on your Desktop.
+
+To launch in future from Anaconda Prompt:
+    conda activate r2h2
+    r2h2
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ROUTE B — PyCharm  (open Terminal panel: Alt+F12)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Paste these two lines into the PyCharm Terminal, pressing Enter after each:
+
+    python -m pip install git+https://github.com/RenewableTools/R2H2_app.git
+    python -m setup_launcher
+
+A "Launch R2H2.bat" shortcut will appear on your Desktop.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ROUTE C — Python already on PATH  (CMD, any terminal)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    python -m pip install git+https://github.com/RenewableTools/R2H2_app.git
+    python -m setup_launcher
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ROUTE D — .bat files  (only if you have the R2H2_app source folder)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  install_conda.bat  — run from Anaconda Prompt, creates a conda env
+  install.bat        — auto-detects Python, works from plain CMD
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"python is not recognized as an internal or external command"
+  → You are in a plain CMD window where Python is not on PATH.
+    Use Anaconda Prompt (Route A) or PyCharm Terminal (Route B).
+
+"pip install failed" / SSL errors
+  → Check your internet connection.
+  → If on a corporate network, ask IT to whitelist github.com and
+    pypi.org, or request an offline wheel bundle.
+
+"git is not recognized"
+  → Install Git for Windows from https://git-scm.com/download/win
+    and rerun the installer.
+  → Or ask your IT team for an offline .whl bundle.
+
+Double-clicking install.bat opens and immediately closes
+  → Right-click install.bat → "Run as Administrator"
+  → Or open it from an Anaconda Prompt / CMD window.
+
+The app opens but says "No config found"
+  → On first launch you will be prompted to enter a folder path
+    where R2H2 will store its data. Type a path and press Enter.
+    Example:  C:\Users\YourName\Documents\R2H2
+    The folder will be created automatically if it does not exist.

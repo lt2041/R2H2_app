@@ -2,6 +2,56 @@
 
 The Desktop App for R2H2.
 
+## Quick Install
+
+| Platform | Method | Command |
+|---|---|---|
+| **Any** (recommended) | `pipx` | `pipx install git+https://github.com/RenewableTools/R2H2_app.git` |
+| **Any** | plain `pip` | `pip install git+https://github.com/RenewableTools/R2H2_app.git` |
+| **Windows — Anaconda Prompt** | conda env | see [Windows (Conda)](#windows--anaconda--miniconda) below |
+| **Windows — PyCharm Terminal** | pip | see [Windows (PyCharm)](#windows--pycharm) below |
+
+After install, run `r2h2` to launch.  
+If `r2h2` is not found, run `python -m setup_launcher` once to fix PATH.  
+Windows: a **"Launch R2H2.bat"** shortcut is created on your Desktop automatically.
+
+> First launch will prompt you for a data folder — it will be created if it doesn't exist.
+
+---
+
+### Windows — Anaconda / Miniconda
+
+Open **Anaconda Prompt** from the Start menu and paste these lines one at a time:
+
+```bat
+conda create -n r2h2 python=3.11 -y
+conda run -n r2h2 python -m pip install git+https://github.com/RenewableTools/R2H2_app.git
+conda run -n r2h2 python -m setup_launcher
+```
+
+A **"Launch R2H2.bat"** shortcut will appear on your Desktop.  
+To launch manually from Anaconda Prompt in future:
+
+```bat
+conda activate r2h2
+r2h2
+```
+
+---
+
+### Windows — PyCharm
+
+Open PyCharm, then open the **Terminal** panel (`Alt+F12`) and paste:
+
+```bat
+python -m pip install git+https://github.com/RenewableTools/R2H2_app.git
+python -m setup_launcher
+```
+
+A **"Launch R2H2.bat"** shortcut will appear on your Desktop.
+
+---
+
 ## Installation
 
 ### Prerequisites

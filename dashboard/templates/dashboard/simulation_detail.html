@@ -6,7 +6,7 @@
 
 
 <div style="position: absolute; top: 0.9rem; left: 19rem; z-index: 1000;">
-    <h2 style="color: #ffffff; font-weight: 100;">
+    <h2 style="color: #ffffff; font-weight: 100; margin:0;">
         <a href="{% url 'dashboard-simulations' %}" style="color: #ffffff; text-decoration: none;">Models</a>&ensp;>&ensp; {{ sim.name }}
     </h2>
 </div>
@@ -635,6 +635,12 @@
         <div class="sim-info-item">
             <span class="sim-info-label">Created by</span>
             <span class="sim-info-value">{{ sim.created_by }}</span>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;">
+            <button onclick="openEditSim()" style="display:inline-flex;align-items:center;gap:0.35rem;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:7px;padding:0.45rem 1rem;font-size:0.85rem;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">
+                <span class="material-symbols-outlined" style="font-size:1rem;padding:0 !important;">edit</span>
+                Edit Model
+            </button>
         </div>
     </div>
 
@@ -1620,4 +1626,173 @@
     }
 </script>
 
+<!-- ── Edit Model Modal (reuses New Model modal pattern) ─────────────────── -->
+
+<div id="edit-sim-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(10,30,35,0.55);align-items:center;justify-content:center;">
+  <div id="edit-sim-modal" style="background:#fff;border-radius:12px;box-shadow:0 8px 40px rgba(19,107,117,0.22);width:min(680px,95vw);height:85vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:0.6rem;padding:1rem 1.25rem 0.85rem;background:linear-gradient(90deg,#136b75,#22a6b3);color:#fff;flex-shrink:0;border-radius:12px 12px 0 0;">
+        <span class="material-symbols-outlined" style="font-size:1.3rem;padding:0 !important;">edit</span>
+        <h3 style="margin:0;font-weight:500;font-size:1.05rem;flex:1;">Edit Simulation</h3>
+        <button onclick="closeEditSim()" style="background:none;border:none;cursor:pointer;color:#d0f0f3;font-size:1.4rem;line-height:1;padding:0;" title="Close">&times;</button>
+    </div>
+    <div id="edit-sim-body" style="padding:1.1rem 1.25rem;overflow-y:scroll;flex:1;min-height:0;display:flex;flex-direction:column;gap:1rem;">
+
+        <div style="display:flex;flex-direction:column;gap:0.3rem;">
+            <label for="esm-name" style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#4a7a80;">Name</label>
+            <input type="text" id="esm-name" maxlength="100"
+                   value="{{ sim.name }}"
+                   style="border:1.5px solid #b2e0e4;border-radius:6px;padding:0.45rem 0.65rem;font-size:0.9rem;color:#1a2e30;font-family:inherit;outline:none;height:2.8rem;box-sizing:border-box;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.3rem;">
+            <label for="esm-desc" style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#4a7a80;">Description <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+            <textarea id="esm-desc" rows="2"
+                      style="border:1.5px solid #b2e0e4;border-radius:6px;padding:0.45rem 0.65rem;font-size:0.9rem;color:#1a2e30;font-family:inherit;outline:none;resize:vertical;min-height:4rem;">{{ sim.description }}</textarea>
+        </div>
+
+        {% for section in nsm_sections %}
+        <div style="border:1.5px solid #b2e0e4;border-radius:8px;overflow:hidden;flex-shrink:0;" id="esm-sec-{{ section.field }}">
+            <div onclick="esmToggleSection('{{ section.field }}')"
+                 style="display:flex;align-items:center;gap:0.5rem;padding:0 0.75rem;height:40px;min-height:40px;max-height:40px;box-sizing:border-box;overflow:hidden;background:#e8f8f9;font-size:0.85rem;font-weight:600;color:#136b75;cursor:pointer;user-select:none;">
+                <span class="material-symbols-outlined" style="padding:0 !important;font-size:1rem;color:#22a6b3;flex-shrink:0;">{{ section.icon }}</span>
+                {{ section.label }}
+                <span id="esm-count-{{ section.field }}" style="background:#22a6b3;color:#fff;border-radius:999px;padding:0 7px;font-size:0.72rem;font-weight:700;line-height:1.7;display:none;"></span>
+                <span class="material-symbols-outlined" id="esm-chev-{{ section.field }}" style="padding:0 !important;margin-left:auto;font-size:1.1rem;color:#22a6b3;flex-shrink:0;transition:transform 0.2s;">expand_more</span>
+            </div>
+            <div id="esm-body-{{ section.field }}" style="display:none;border-top:1px solid #b2e0e4;overflow-x:auto;overflow-y:auto;max-height:220px;">
+            {% if section.items %}
+            <table style="border-collapse:collapse;width:100%;min-width:420px;font-size:0.81rem;">
+                <thead><tr style="background:#f4fafb;">
+                    <th style="width:32px;text-align:center;padding:0.38rem 0.65rem;border-bottom:1.5px solid #b2e0e4;font-size:0.71rem;font-weight:700;text-transform:uppercase;color:#4a7a80;">
+                        <input type="checkbox" title="Select all" onchange="esmToggleAll(this,'{{ section.field }}')">
+                    </th>
+                    <th style="padding:0.38rem 0.65rem;border-bottom:1.5px solid #b2e0e4;font-size:0.71rem;font-weight:700;text-transform:uppercase;color:#4a7a80;text-align:left;">ID</th>
+                    <th style="padding:0.38rem 0.65rem;border-bottom:1.5px solid #b2e0e4;font-size:0.71rem;font-weight:700;text-transform:uppercase;color:#4a7a80;text-align:left;">Name</th>
+                </tr></thead>
+                <tbody>
+                {% for item in section.items %}
+                <tr onclick="esmToggleRow(this,'{{ section.field }}')" style="border-bottom:1px solid #e8f8f9;cursor:pointer;">
+                    <td style="text-align:center;padding:0.35rem 0.65rem;">
+                        <input type="checkbox" class="esm-cb-{{ section.field }}" value="{{ item.id }}"
+                               onclick="event.stopPropagation()"
+                               onchange="esmRowCheck(this,'{{ section.field }}')">
+
+                    </td>
+                    <td style="padding:0.35rem 0.65rem;color:#1a2e30;">{{ item.id }}</td>
+                    <td style="padding:0.35rem 0.65rem;color:#1a2e30;">{{ item.name }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="padding:0.55rem 0.9rem;font-size:0.82rem;color:#4a7a80;font-style:italic;">No {{ section.label }} records &mdash; <a href="{% url 'dashboard-browse' section.table %}" style="color:#136b75;">add one first</a></div>
+            {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+    </div>
+    <div style="padding:0.85rem 1.25rem;display:flex;justify-content:flex-end;gap:0.65rem;border-top:1px solid #e0f4f6;background:#f4fafb;flex-shrink:0;border-radius:0 0 12px 12px;">
+        <button onclick="closeEditSim()" style="display:inline-flex;align-items:center;gap:0.35rem;border-radius:7px;padding:0.45rem 1.1rem;font-size:0.88rem;font-weight:500;cursor:pointer;border:none;background:#e0f4f6;color:#136b75;">Cancel</button>
+        <button id="esm-save-btn" onclick="submitEditSim()" style="display:inline-flex;align-items:center;gap:0.35rem;border-radius:7px;padding:0.45rem 1.1rem;font-size:0.88rem;font-weight:500;cursor:pointer;border:none;background:#136b75;color:#fff;">
+            <span class="material-symbols-outlined" style="font-size:1rem;padding:0 !important;">save</span>
+            Save
+        </button>
+    </div>
+  </div>
+</div>
+
+<script>
+var _esmCsrf = '{{ csrf_token }}';
+var _esmUpdateUrl = '{{ update_url }}';
+var _esmCurrentIds = {{ current_ids_json|safe }};
+
+function openEditSim() {
+    try {
+        Object.keys(_esmCurrentIds).forEach(function(field) {
+            var ids = _esmCurrentIds[field];
+            document.querySelectorAll('.esm-cb-' + field).forEach(function(cb) {
+                cb.checked = ids.indexOf(parseInt(cb.value)) !== -1;
+                cb.closest('tr').style.background = cb.checked ? '#d6f4f7' : '';
+            });
+            esmUpdateCount(field);
+        });
+    } catch(e) { console.warn('openEditSim pre-fill error:', e); }
+    var overlay = document.getElementById('edit-sim-overlay');
+    overlay.style.display = 'flex';
+}
+
+function closeEditSim() {
+    document.getElementById('edit-sim-overlay').style.display = 'none';
+}
+
+function esmToggleSection(field) {
+    var body = document.getElementById('esm-body-' + field);
+    var chev = document.getElementById('esm-chev-' + field);
+    var open = body.style.display === 'none';
+    body.style.display = open ? 'block' : 'none';
+    chev.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+function esmToggleAll(masterCb, field) {
+    document.querySelectorAll('.esm-cb-' + field).forEach(function(cb) {
+        cb.checked = masterCb.checked;
+        cb.closest('tr').style.background = masterCb.checked ? '#d6f4f7' : '';
+    });
+    esmUpdateCount(field);
+}
+
+function esmToggleRow(tr, field) {
+    var cb = tr.querySelector('input[type=checkbox]');
+    cb.checked = !cb.checked;
+    tr.style.background = cb.checked ? '#d6f4f7' : '';
+    esmUpdateCount(field);
+}
+
+function esmRowCheck(cb, field) {
+    cb.closest('tr').style.background = cb.checked ? '#d6f4f7' : '';
+    esmUpdateCount(field);
+}
+
+function esmUpdateCount(field) {
+    var n = document.querySelectorAll('.esm-cb-' + field + ':checked').length;
+    var badge = document.getElementById('esm-count-' + field);
+    badge.textContent = n;
+    badge.style.display = n > 0 ? 'inline-block' : 'none';
+}
+
+function submitEditSim() {
+    var btn = document.getElementById('esm-save-btn');
+    var name = document.getElementById('esm-name').value.trim();
+    if (!name) { document.getElementById('esm-name').focus(); return; }
+    btn.disabled = true;
+
+    var fd = new FormData();
+    fd.append('csrfmiddlewaretoken', _esmCsrf);
+    fd.append('name', name);
+    fd.append('description', document.getElementById('esm-desc').value.trim());
+
+    ['batteries','electro_cells','electrolyser_units','thermal_properties','time_outputs','wind_inputs'].forEach(function(f) {
+        document.querySelectorAll('.esm-cb-' + f + ':checked').forEach(function(cb) {
+            fd.append(f, cb.value);
+        });
+    });
+
+    fetch(_esmUpdateUrl, { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.id) { window.location.reload(); }
+            else { alert('Error: ' + (data.error || 'unknown')); btn.disabled = false; }
+        })
+        .catch(function() { btn.disabled = false; });
+}
+
+document.getElementById('edit-sim-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeEditSim();
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeEditSim();
+});
+</script>
+
 {% endblock %}
+

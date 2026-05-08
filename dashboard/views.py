@@ -63,6 +63,37 @@ def create_simulation(request):
     return JsonResponse({'id': sim.id, 'name': sim.name})
 
 
+def update_simulation(request, sim_id):
+    """POST: update name, description and M2M components of an existing Simulation."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    name        = request.POST.get('name', '').strip()
+    description = request.POST.get('description', '').strip()
+    if name:
+        sim.name = name
+    sim.description = description
+    sim.save(update_fields=['name', 'description'])
+
+    m2m_map = {
+        'batteries':          (sim.batteries,          Battery),
+        'electro_cells':      (sim.electro_cells,      ElectroCellPEM),
+        'electrolyser_units': (sim.electrolyser_units, ElectrolyserUnit),
+        'thermal_properties': (sim.thermal_properties, ThermalProperties),
+        'time_outputs':       (sim.time_outputs,       TimeOutput),
+        'wind_inputs':        (sim.wind_inputs,        WindInput),
+    }
+    for field_name, (manager, model_cls) in m2m_map.items():
+        ids = request.POST.getlist(field_name)
+        objs = model_cls.objects.filter(pk__in=ids) if ids else model_cls.objects.none()
+        manager.set(objs)
+
+    return JsonResponse({'id': sim.id, 'name': sim.name})
+
+
 def simulations(request):
     """Hierarchical view of Simulation models with M2M component relations."""
     sims = Simulation.objects.prefetch_related(
@@ -237,6 +268,24 @@ def simulation_detail(request, sim_id):
     latest_run = sim.runs.first()   # newest first via Meta ordering
     sim_runs   = list(sim.runs.all())
 
+    nsm_sections = [
+        {'field': 'batteries',          'label': 'Battery',           'icon': 'battery_charging_full', 'table': 'Battery',           'items': list(Battery.objects.order_by('name'))},
+        {'field': 'electro_cells',      'label': 'ElectroCellPEM',    'icon': 'developer_board',       'table': 'ElectroCellPEM',    'items': list(ElectroCellPEM.objects.order_by('name'))},
+        {'field': 'electrolyser_units', 'label': 'ElectrolyserUnit',  'icon': 'water_do',              'table': 'ElectrolyserUnit',  'items': list(ElectrolyserUnit.objects.order_by('name'))},
+        {'field': 'thermal_properties', 'label': 'ThermalProperties', 'icon': 'thermostat',            'table': 'ThermalProperties', 'items': list(ThermalProperties.objects.order_by('name'))},
+        {'field': 'time_outputs',       'label': 'TimeOutput',        'icon': 'timeline',              'table': 'TimeOutput',        'items': list(TimeOutput.objects.order_by('name'))},
+        {'field': 'wind_inputs',        'label': 'WindInput',         'icon': 'air',                   'table': 'WindInput',         'items': list(WindInput.objects.order_by('name'))},
+    ]
+    current_ids = {
+        'batteries':          list(sim.batteries.values_list('id', flat=True)),
+        'electro_cells':      list(sim.electro_cells.values_list('id', flat=True)),
+        'electrolyser_units': list(sim.electrolyser_units.values_list('id', flat=True)),
+        'thermal_properties': list(sim.thermal_properties.values_list('id', flat=True)),
+        'time_outputs':       list(sim.time_outputs.values_list('id', flat=True)),
+        'wind_inputs':        list(sim.wind_inputs.values_list('id', flat=True)),
+    }
+    current_ids_json = json.dumps(current_ids)
+
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
         'sim_settings': sim_settings,
@@ -245,6 +294,9 @@ def simulation_detail(request, sim_id):
         'groups_empty': groups_empty,
         'latest_run': latest_run,
         'sim_runs': sim_runs,
+        'nsm_sections': nsm_sections,
+        'current_ids_json': current_ids_json,
+        'update_url': f'/simulations/{sim_id}/update/',
     })
 
 

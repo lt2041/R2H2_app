@@ -1285,7 +1285,7 @@ def wind_preview_data(request, sim_id):
             n_hours = int(len(ws))
             step = max(1, n_hours // MAX_PTS)
             hours      = list(range(0, n_hours, step))
-            wind_speed = ws[::step].tolist()
+            wind_speed = [None if np.isnan(v) else float(v) for v in ws[::step]]
 
             # ── Per-turbine hourly mean power ────────────────────────────────
             turbines = []
@@ -1295,9 +1295,12 @@ def wind_preview_data(request, sim_id):
                 mean_hourly = tp.mean(axis=2)          # → (N_hours, N_turbines)
                 n_turbs = mean_hourly.shape[1]
                 for t in range(n_turbs):
+                    # Replace NaN with None so JSON serialises to null (NaN is invalid JSON)
+                    raw = mean_hourly[::step, t]
+                    power = [None if np.isnan(v) else float(v) for v in raw]
                     turbines.append({
                         'turbine': t + 1,
-                        'power':   mean_hourly[::step, t].tolist(),
+                        'power':   power,
                     })
 
         return JsonResponse({

@@ -1093,7 +1093,7 @@
     </div>
 
     <!-- Wind data preview card -->
-    {% if sim.wind_inputs.all %}
+    <!-- {% if sim.wind_inputs.all %}
     <div class="group-card" id="wind-preview-card">
         <div class="group-card-header" id="wind-preview-header" onclick="toggleWindPreview(this)">
             <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">air</span>
@@ -1102,13 +1102,10 @@
             <span class="material-symbols-outlined gc-toggle">expand_more</span>
         </div>
         <div class="group-card-body" id="wind-preview-body">
-            <!-- Loading state -->
             <div id="wind-preview-loading" style="padding:1rem 1.25rem; font-size:0.82rem; color:#4a7a80; display:flex; align-items:center; gap:0.5rem;">
                 <span class="sim-spinner"></span> Loading wind data…
             </div>
-            <!-- Error state -->
             <div id="wind-preview-error" style="display:none; padding:1rem 1.25rem; font-size:0.82rem; color:#b71c1c; background:#fdecea; border-radius:0 0 10px 10px;"></div>
-            <!-- Plot container -->
             <div id="wind-preview-info" style="display:none; padding:0.3rem 1.25rem 0; font-size:0.75rem; color:#4a7a80;"></div>
             <div id="wind-preview-plot" style="display:none; width:100%; min-height:340px;"></div>
         </div>
@@ -1270,7 +1267,7 @@
         }
     })();
     </script>
-    {% endif %}
+    {% endif %} -->
 
     <!-- Populated component groups -->
     {% for group in groups %}

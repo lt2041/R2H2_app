@@ -8,6 +8,77 @@
     <h2 style="color: #ffffff; font-weight: 100;">Component Library</h2>
 </div>
 
+<!-- ── Hero banner ──────────────────────────────────────────────────────── -->
+<div class="sim-hero">
+    <div class="sim-hero-left">
+        <span class="material-symbols-outlined sim-hero-icon">deployed_code</span>
+        <div>
+            <div class="sim-hero-title">Component Library</div>
+            <div class="sim-hero-sub">Browse and manage the building blocks of your simulations</div>
+        </div>
+    </div>
+    <div class="sim-hero-tips">
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">touch_app</span>
+            Click a component type to browse all saved entries
+        </div>
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">edit_note</span>
+            Edit or delete individual components from the browse view
+        </div>
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">flowchart</span>
+            Assemble components into models in <a href="{% url 'dashboard-simulations' %}">Models &amp; Simulations</a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .sim-hero {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        padding: 1.1rem 1.5rem;
+        margin-bottom: 1.5rem;
+        background: linear-gradient(100deg, #0e5560 0%, #136b75 55%, #1a8a96 100%);
+        border-radius: 12px;
+        box-shadow: 0 3px 14px rgba(19,107,117,0.18);
+        flex-wrap: wrap;
+    }
+    .sim-hero-left {
+        display: flex; align-items: center; gap: 0.9rem;
+        flex-shrink: 0;
+    }
+    .sim-hero-icon {
+        font-size: 2.4rem;
+        color: rgba(255,255,255,0.55);
+        font-variation-settings: 'wght' 100;
+        padding: 0 !important;
+    }
+    .sim-hero-title {
+        font-size: 1.25rem; font-weight: 600; color: #fff;
+        line-height: 1.2;
+    }
+    .sim-hero-sub {
+        font-size: 0.78rem; color: #a8e6ec; margin-top: 0.2rem;
+    }
+    .sim-hero-tips {
+        display: flex; flex-direction: column; gap: 0.35rem;
+        flex: 1; min-width: 200px;
+        border-left: 1px solid rgba(255,255,255,0.18);
+        padding-left: 1.4rem;
+    }
+    .sim-tip {
+        display: flex; align-items: center; gap: 0.45rem;
+        font-size: 0.78rem; color: #cdf0f4;
+    }
+    .sim-tip .material-symbols-outlined {
+        font-size: 0.95rem; color: #64d0db; flex-shrink: 0; padding: 0 !important;
+    }
+    .sim-tip a { color: #a8e6ec; }
+    .sim-tip a:hover { color: #fff; }
+</style>
+
 <div class="row">
 
     {% for comp in components %}

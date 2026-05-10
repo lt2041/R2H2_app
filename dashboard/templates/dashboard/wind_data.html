@@ -4,15 +4,80 @@
 {% block title %}Wind Data – R2H2{% endblock %}
 
 {% block content %}
-<div class="row" style="max-width:960px;">
-  <div class="col s12">
-    <h5 style="font-weight:500;">Wind Data</h5>
-    <p class="grey-text text-darken-1">
-      Upload turbine wind HDF5 files (<code>.h5</code> / <code>.hdf5</code>).
-      Files are saved to the directory configured below.
-    </p>
-  </div>
+
+<div style="position: absolute; top: 0.9rem; left: 19rem; z-index: 1000;">
+    <h2 style="color: #ffffff; font-weight: 100;">Wind Data</h2>
 </div>
+
+<!-- ── Hero banner ──────────────────────────────────────────────────────── -->
+<div class="sim-hero" style="margin-bottom:1.5rem;">
+    <div class="sim-hero-left">
+        <span class="material-symbols-outlined sim-hero-icon">air</span>
+        <div>
+            <div class="sim-hero-title">Wind Data</div>
+            <div class="sim-hero-sub">Upload and manage turbine wind HDF5 files for use in simulations</div>
+        </div>
+    </div>
+    <div class="sim-hero-tips">
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">upload_file</span>
+            Upload <code style="color:#a8e6ec; background:none;">.h5</code> / <code style="color:#a8e6ec; background:none;">.hdf5</code> files from the drag-and-drop area below
+        </div>
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">link</span>
+            Link a file to a simulation via a <a href="{% url 'dashboard-home' %}">WindInput</a> component
+        </div>
+        <div class="sim-tip">
+            <span class="material-symbols-outlined">folder_open</span>
+            Files are saved to the configurable storage directory
+        </div>
+    </div>
+</div>
+
+<style>
+    .sim-hero {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        padding: 1.1rem 1.5rem;
+        background: linear-gradient(100deg, #0e5560 0%, #136b75 55%, #1a8a96 100%);
+        border-radius: 12px;
+        box-shadow: 0 3px 14px rgba(19,107,117,0.18);
+        flex-wrap: wrap;
+    }
+    .sim-hero-left {
+        display: flex; align-items: center; gap: 0.9rem;
+        flex-shrink: 0;
+    }
+    .sim-hero-icon {
+        font-size: 2.4rem;
+        color: rgba(255,255,255,0.55);
+        font-variation-settings: 'wght' 100;
+        padding: 0 !important;
+    }
+    .sim-hero-title {
+        font-size: 1.25rem; font-weight: 600; color: #fff;
+        line-height: 1.2;
+    }
+    .sim-hero-sub {
+        font-size: 0.78rem; color: #a8e6ec; margin-top: 0.2rem;
+    }
+    .sim-hero-tips {
+        display: flex; flex-direction: column; gap: 0.35rem;
+        flex: 1; min-width: 200px;
+        border-left: 1px solid rgba(255,255,255,0.18);
+        padding-left: 1.4rem;
+    }
+    .sim-tip {
+        display: flex; align-items: center; gap: 0.45rem;
+        font-size: 0.78rem; color: #cdf0f4;
+    }
+    .sim-tip .material-symbols-outlined {
+        font-size: 0.95rem; color: #64d0db; flex-shrink: 0; padding: 0 !important;
+    }
+    .sim-tip a { color: #a8e6ec; }
+    .sim-tip a:hover { color: #fff; }
+</style>
 
 <!-- ── Storage directory card ───────────────────────────────────────────── -->
 <div class="row" style="max-width:960px;">

@@ -7,3 +7,11 @@ register = template.Library()
 def dict_get(d, key):
     """Return d[key], or '' if missing. Allows dynamic key lookup in templates."""
     return d.get(key, '')
+
+
+@register.filter
+def split_csv(value):
+    """Split a comma-separated string into a list of stripped tokens."""
+    if not value:
+        return []
+    return [v.strip() for v in value.split(',') if v.strip()]

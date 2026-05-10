@@ -1,5 +1,5 @@
 {% extends "dashboard/base.html" %}
-{% load static %}
+{% load static browse_extras %}
 
 {% block title %}Wind Data – R2H2{% endblock %}
 
@@ -80,9 +80,8 @@
 </style>
 
 <!-- ── Storage directory card ───────────────────────────────────────────── -->
-<div class="row" style="max-width:960px;">
-  <div class="col s12">
-    <div class="card z-depth-1">
+<div style="margin-bottom:1.1rem;">
+    <div class="card z-depth-1" style="margin:0;">
       <div class="card-content" style="padding-bottom:8px;">
         <span class="card-title" style="font-size:1rem; font-weight:500;">
           <span class="material-symbols-outlined" style="vertical-align:middle; font-size:1.2rem; margin-right:6px;">folder_open</span>
@@ -101,13 +100,11 @@
         </a>
       </div>
     </div>
-  </div>
 </div>
 
 <!-- ── Dropzone card ────────────────────────────────────────────────────── -->
-<div class="row" style="max-width:960px;">
-  <div class="col s12">
-    <div class="card z-depth-1">
+<div style="margin-bottom:1.1rem;">
+    <div class="card z-depth-1" style="margin:0;">
       <div class="card-content">
         <span class="card-title" style="font-size:1rem; font-weight:500;">
           <span class="material-symbols-outlined" style="vertical-align:middle; font-size:1.2rem; margin-right:6px;">upload_file</span>
@@ -139,13 +136,11 @@
         </div>
       </div>
     </div>
-  </div>
 </div>
 
 <!-- ── File list card ───────────────────────────────────────────────────── -->
-<div class="row" style="max-width:960px;">
-  <div class="col s12">
-    <div class="card z-depth-1">
+<div style="margin-bottom:1.1rem;">
+    <div class="card z-depth-1" style="margin:0;">
       <div class="card-content" style="padding-bottom:8px;">
         <span class="card-title" style="font-size:1rem; font-weight:500;">
           <span class="material-symbols-outlined" style="vertical-align:middle; font-size:1.2rem; margin-right:6px;">dataset</span>
@@ -156,16 +151,15 @@
         </span>
 
         {% if files %}
-        <table class="striped" style="font-size:0.85rem;">
+        <div style="overflow-x:auto;">
+        <table class="striped" style="font-size:0.85rem; min-width:600px;">
           <thead>
             <tr>
               <th>File name</th>
               <th style="text-align:right; width:80px;">Size (MB)</th>
               <th style="width:150px;">Last modified</th>
               <th style="width:110px;">WindInput</th>
-              <th style="width:80px; text-align:right;">Hours</th>
-              <th style="width:80px; text-align:right;">Step (s)</th>
-              <th style="width:100px; text-align:right;">Time range (s)</th>
+              <th style="width:160px;">Time info</th>
               <th>Datasets</th>
             </tr>
           </thead>
@@ -190,24 +184,40 @@
                 <span class="grey-text" style="font-size:0.8rem;">—</span>
                 {% endif %}
               </td>
-              <td style="text-align:right; font-family:monospace;">
-                {{ f.wind_input.ts_n_hours|default:"—" }}
+              <td>
+                {% if f.wind_input %}
+                <div style="display:flex; flex-direction:column; gap:3px;">
+                  <span style="display:inline-flex; align-items:center; gap:4px; background:#e0f4f6; color:#136b75; border-radius:4px; padding:1px 7px; font-size:0.74rem; font-family:monospace; white-space:nowrap;">
+                    <span style="font-family:sans-serif; font-size:0.68rem; color:#4a9aa5; font-weight:600;">hours</span>
+                    {{ f.wind_input.ts_n_hours|default:"—" }}
+                  </span>
+                  <span style="display:inline-flex; align-items:center; gap:4px; background:#e0f4f6; color:#136b75; border-radius:4px; padding:1px 7px; font-size:0.74rem; font-family:monospace; white-space:nowrap;">
+                    <span style="font-family:sans-serif; font-size:0.68rem; color:#4a9aa5; font-weight:600;">step</span>
+                    {{ f.wind_input.ts_resolution|default:"—" }}
+                  </span>
+                  <span style="display:inline-flex; align-items:center; gap:4px; background:#e0f4f6; color:#136b75; border-radius:4px; padding:1px 7px; font-size:0.74rem; font-family:monospace; white-space:nowrap;">
+                    <span style="font-family:sans-serif; font-size:0.68rem; color:#4a9aa5; font-weight:600;">range</span>
+                    {% if f.wind_input.ts_start is not None and f.wind_input.ts_end is not None %}{{ f.wind_input.ts_start|floatformat:0 }}–{{ f.wind_input.ts_end|floatformat:0 }}{% else %}—{% endif %}
+                  </span>
+                </div>
+                {% else %}<span class="grey-text">—</span>{% endif %}
               </td>
-              <td style="text-align:right; font-family:monospace;">
-                {{ f.wind_input.ts_resolution|default:"—" }}
-              </td>
-              <td style="text-align:right; font-family:monospace; white-space:nowrap;">
-                {% if f.wind_input.ts_start is not None and f.wind_input.ts_end is not None %}
-                  {{ f.wind_input.ts_start|floatformat:0 }}–{{ f.wind_input.ts_end|floatformat:0 }}
-                {% else %}—{% endif %}
-              </td>
-              <td style="font-size:0.75rem; color:#607d8b; word-break:break-all;">
-                {{ f.wind_input.h5_datasets|default:"—" }}
+              <td>
+                {% if f.wind_input and f.wind_input.h5_datasets %}
+                <div style="display:flex; flex-direction:column; gap:3px;">
+                  {% for ds in f.wind_input.h5_datasets|split_csv %}
+                  <span style="display:inline-flex; align-items:center; background:#f0f9fa; color:#2a7a84; border:1px solid #b2dde2; border-radius:4px; padding:1px 7px; font-size:0.72rem; font-family:monospace; white-space:nowrap;">
+                    {{ ds }}
+                  </span>
+                  {% endfor %}
+                </div>
+                {% else %}<span class="grey-text">—</span>{% endif %}
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
+        </div>
         {% else %}
         <p id="empty-msg" class="grey-text text-darken-1" style="margin-top:8px;">
           No HDF5 files found in the storage directory.
@@ -215,7 +225,7 @@
         {% endif %}
       </div>
     </div>
-  </div>
+    </div>
 </div>
 
 <!-- ── JavaScript ───────────────────────────────────────────────────────── -->

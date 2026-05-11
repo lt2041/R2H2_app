@@ -1167,36 +1167,54 @@
         </div>
         <div class="sim-settings-body" style="padding:1rem 1.2rem;">
             <!-- Controller selector row -->
-            <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.9rem;">
-                <label style="font-size:0.82rem;color:#b2e0e4;white-space:nowrap;">Active controller</label>
-                <select id="ctrl-select" style="flex:1;min-width:180px;max-width:320px;
-                        background:#1a2a3a;color:#e0f7fa;border:1px solid #2e4a6a;
-                        border-radius:4px;padding:4px 8px;font-size:0.83rem;">
+            <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+                <select id="ctrl-select" class="browser-default"
+                        style="flex:1;min-width:180px;max-width:320px;
+                               background:#1a2a3a;color:#e0f7fa;border:1px solid #2e4a6a;
+                               border-radius:4px;padding:4px 8px;font-size:0.85rem;">
                     <option value="">— built-in default —</option>
                     {% for fname in controller_files %}
                     <option value="{{ fname }}"{% if sim.controller_file == fname %} selected{% endif %}>{{ fname }}</option>
                     {% endfor %}
                 </select>
-                <button class="ss-save-btn" id="ctrl-select-save" onclick="saveControllerSelection()" title="Apply selection">
-                    <span class="material-symbols-outlined">check</span>
+                <button class="waves-effect waves-light btn-small" onclick="saveControllerSelection()"
+                        title="Load this controller into the editor and set as active"
+                        style="background:#22a6b3;height:28px;line-height:28px;padding:0 10px;font-size:0.78rem;">
+                    <span class="material-symbols-outlined" style="font-size:0.9rem;vertical-align:middle;">check</span>
+                    Select
                 </button>
-                <span id="ctrl-select-msg" style="font-size:0.78rem;color:#b2e0e4;display:none;"></span>
+                <button id="ctrl-rename-btn" class="waves-effect waves-light btn-small"
+                        onclick="openRenameCtrl()"
+                        title="Rename the selected controller file"
+                        style="background:#1a3a5a;height:28px;line-height:28px;padding:0 10px;font-size:0.78rem;">
+                    <span class="material-symbols-outlined" style="font-size:0.9rem;vertical-align:middle;">drive_file_rename_outline</span>
+                    Rename
+                </button>
+                <button class="waves-effect waves-light btn-small" onclick="openNewCtrlModal()"
+                        title="Create a new controller file"
+                        style="background:#136b75;height:28px;line-height:28px;padding:0 10px;font-size:0.78rem;margin-left:auto;">
+                    <span class="material-symbols-outlined" style="font-size:0.9rem;vertical-align:middle;">add</span>
+                    New
+                </button>
+                <span id="ctrl-select-msg" style="font-size:0.78rem;color:#b2e0e4;width:100%;"></span>
             </div>
-
-            <!-- Code editor section -->
-            <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.5rem;">
-                <label style="font-size:0.82rem;color:#b2e0e4;white-space:nowrap;">Edit / create</label>
-                <input id="ctrl-fname" type="text" placeholder="my_controller.py"
-                       style="flex:1;min-width:160px;max-width:260px;
+            <!-- Inline rename row (hidden until Rename clicked) -->
+            <div id="ctrl-rename-row" style="display:none;align-items:center;gap:0.5rem;
+                 flex-wrap:wrap;margin-bottom:0.7rem;background:#0d1e2e;
+                 border:1px solid #2e4a6a;border-radius:6px;padding:6px 10px;">
+                <span style="font-size:0.8rem;color:#b2e0e4;white-space:nowrap;">Rename to:</span>
+                <input id="ctrl-rename-input" type="text" placeholder="new_name.py"
+                       style="flex:1;min-width:160px;max-width:280px;
                               background:#1a2a3a;color:#e0f7fa;border:1px solid #2e4a6a;
-                              border-radius:4px;padding:4px 8px;font-size:0.83rem;"
-                       value="{{ sim.controller_file }}">
-                <button class="ss-edit-btn" onclick="loadControllerFile()" title="Load file into editor">
-                    <span class="material-symbols-outlined">download</span>
+                              border-radius:4px;padding:4px 8px;font-size:0.85rem;">
+                <button class="waves-effect waves-light btn-small" onclick="confirmRenameCtrl()"
+                        style="background:#22a6b3;height:26px;line-height:26px;padding:0 8px;font-size:0.78rem;">
+                    <span class="material-symbols-outlined" style="font-size:0.9rem;vertical-align:middle;">check</span>
+                    Confirm
                 </button>
-                <button class="ss-edit-btn" onclick="loadTemplateFile()" title="Load built-in template">
-                    <span class="material-symbols-outlined">description</span>
-                </button>
+                <button class="waves-effect btn-flat" onclick="closeRenameCtrl()"
+                        style="color:#7ec8d8;height:26px;line-height:26px;padding:0 6px;font-size:0.78rem;">Cancel</button>
+                <span id="ctrl-rename-msg" style="font-size:0.78rem;color:#e57373;"></span>
             </div>
 
             <!-- Sticky editor ribbon: filename | font controls + save -->
@@ -1221,13 +1239,52 @@
             </div>
 
             <div id="ctrl-editor-wrap" style="width:100%;"></div>
-            <!-- hidden textarea keeps the value for non-JS fallback -->
+            <!-- hidden inputs keep values for JS -->
+            <input id="ctrl-fname" type="hidden" value="{{ sim.controller_file }}">
             <textarea id="ctrl-editor" style="display:none;"></textarea>
 
             <!-- Scan warnings box -->
             <div id="ctrl-warn-box" style="display:none;margin-top:0.6rem;
                  background:#2a1a00;border:1px solid #f39c12;border-radius:4px;
                  padding:0.5rem 0.8rem;font-size:0.78rem;color:#f0d080;"></div>
+        </div>
+    </div>
+
+    <!-- New Controller modal -->
+    <div id="ctrl-new-modal" style="display:none;position:fixed;inset:0;z-index:900;
+         background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+        <div style="background:#f5f7fa;border:1px solid #c5d0dc;border-radius:10px;
+                    padding:1.4rem 1.6rem;width:min(94vw,480px);box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+                <span style="font-size:1rem;font-weight:600;color:#1a2a3a;">New controller file</span>
+                <button onclick="closeNewCtrlModal()" style="background:none;border:none;cursor:pointer;
+                        color:#5a7a9b;font-size:1.4rem;line-height:1;padding:0;">&times;</button>
+            </div>
+            <div style="margin-bottom:0.8rem;">
+                <label style="font-size:0.8rem;color:#3a5a7a;display:block;margin-bottom:4px;">New filename</label>
+                <input id="ctrl-new-fname" type="text" placeholder="my_controller"
+                       style="width:100%;box-sizing:border-box;
+                              background:#fff;color:#1a2a3a;border:1px solid #a0b8cc;
+                              border-radius:4px;padding:6px 10px;font-size:0.88rem;font-family:inherit;">
+            </div>
+            <div style="margin-bottom:1.1rem;">
+                <label style="font-size:0.8rem;color:#3a5a7a;display:block;margin-bottom:4px;">Duplicate from</label>
+                <select id="ctrl-new-from" class="browser-default"
+                        style="width:100%;box-sizing:border-box;
+                               background:#fff;color:#1a2a3a;border:1px solid #a0b8cc;
+                               border-radius:4px;padding:6px 10px;font-size:0.88rem;">
+                    <!-- populated by _ctrlBuildFromSelect() in JS -->
+                </select>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:0.6rem;align-items:center;">
+                <span id="ctrl-new-msg" style="font-size:0.78rem;color:#c0392b;"></span>
+                <button onclick="closeNewCtrlModal()"
+                        class="waves-effect btn-flat"
+                        style="color:#3a7a9b;font-size:0.82rem;">Cancel</button>
+                <button onclick="createNewController()"
+                        class="waves-effect waves-light btn-small"
+                        style="background:#22a6b3;font-size:0.82rem;">Create &amp; open</button>
+            </div>
         </div>
     </div>
 
@@ -1743,7 +1800,31 @@
             });
     }
 
-    // Auto-populate editor on page load.
+    // All controller files from the server (refreshed by _ctrlRefreshSelects after create/rename)
+    var _ctrlAllFiles = {{ controller_files_json|safe }};
+
+    // Build (or rebuild) the ctrl-new-from dropdown from a file list.
+    // Always keeps default_controller.py as the first selected option.
+    function _ctrlBuildFromSelect(files, selectValue) {
+        var sel = document.getElementById('ctrl-new-from');
+        if (!sel) return;
+        sel.innerHTML = '';
+        // First option: built-in default, always present
+        var defOpt = new Option('default_controller.py (built-in)', 'default_controller.py');
+        defOpt.selected = (!selectValue || selectValue === 'default_controller.py');
+        sel.add(defOpt);
+        // Remaining user controllers (sorted, excluding default)
+        files.forEach(function(f) {
+            if (f === 'default_controller.py') return;
+            var opt = new Option(f, f);
+            if (f === selectValue) opt.selected = true;
+            sel.add(opt);
+        });
+    }
+
+    // Populate now (DOM already parsed at this point — script is at end of body)
+    _ctrlBuildFromSelect(_ctrlAllFiles, 'default_controller.py');
+
     document.addEventListener('DOMContentLoaded', function() {
         // Initialise CodeMirror on the wrapper div
         if (typeof CodeMirror !== 'undefined') {
@@ -1775,8 +1856,11 @@
                 var fname = sel.value;
                 document.getElementById('ctrl-fname').value = fname;
                 _loadCtrlByName(fname);
+                _ctrlUpdateRenameBtn(fname);
             });
         }
+        // Set initial rename button state
+        _ctrlUpdateRenameBtn('{{ sim.controller_file|escapejs }}');
     });
 
     function saveControllerSelection() {
@@ -1790,13 +1874,96 @@
             .then(function(d) {
                 if (d.error) { msg.textContent = '✗ ' + d.error; }
                 else {
-                    msg.textContent = fname ? ('✓ ' + fname) : '✓ built-in default';
-                    // Also sync the filename input
-                    document.getElementById('ctrl-fname').value = fname;
+                    msg.textContent = fname ? ('✓ ' + fname + ' active') : '✓ built-in default active';
+                    _loadCtrlByName(fname || 'default_controller.py');
+                    _ctrlUpdateRenameBtn(fname);
                 }
-                msg.style.display = 'inline';
-                setTimeout(function(){ msg.style.display='none'; }, 3000);
+                setTimeout(function(){ msg.textContent = ''; }, 3500);
             });
+    }
+
+    // Grey-out / disable rename button when default is selected
+    function _ctrlUpdateRenameBtn(fname) {
+        var btn = document.getElementById('ctrl-rename-btn');
+        if (!btn) return;
+        var isDefault = !fname || fname === 'default_controller.py';
+        btn.disabled = isDefault;
+        btn.style.opacity = isDefault ? '0.4' : '1';
+        btn.title = isDefault ? 'Cannot rename the built-in default controller'
+                              : 'Rename the selected controller file';
+        if (isDefault) closeRenameCtrl();
+    }
+
+    // ── Rename controller ───────────────────────────────────────────────
+    function openRenameCtrl() {
+        var fname = document.getElementById('ctrl-select').value;
+        if (!fname || fname === 'default_controller.py') return;
+        var row = document.getElementById('ctrl-rename-row');
+        document.getElementById('ctrl-rename-input').value = fname.replace(/\.py$/, '');
+        document.getElementById('ctrl-rename-msg').textContent = '';
+        row.style.display = 'flex';
+        setTimeout(function(){ document.getElementById('ctrl-rename-input').focus(); }, 50);
+    }
+    function closeRenameCtrl() {
+        var row = document.getElementById('ctrl-rename-row');
+        if (row) row.style.display = 'none';
+    }
+    function confirmRenameCtrl() {
+        var oldName = document.getElementById('ctrl-select').value;
+        var newRaw  = document.getElementById('ctrl-rename-input').value.trim();
+        var msg     = document.getElementById('ctrl-rename-msg');
+        if (!oldName || oldName === 'default_controller.py') { closeRenameCtrl(); return; }
+        if (!newRaw) { msg.textContent = 'Enter a new name.'; return; }
+
+        // Silently strip .py extension if typed
+        var stem = newRaw.replace(/\.py$/i, '').trim();
+
+        // Enforce format: lowercase letters, digits, underscores only
+        if (!/^[a-z][a-z0-9_]*$/.test(stem)) {
+            msg.textContent = 'Name must start with a letter and contain only lowercase letters, digits and underscores.';
+            return;
+        }
+
+        var newName = stem + '.py';
+
+        if (newName === 'default_controller.py') {
+            msg.textContent = 'Cannot rename to default_controller.py.';
+            return;
+        }
+
+        // Block duplicate — same as old name, or already exists
+        if (newName === oldName) {
+            msg.textContent = 'New name is the same as the current name.';
+            return;
+        }
+        if (_ctrlAllFiles.indexOf(newName) !== -1) {
+            msg.textContent = '\u2717 \u201c' + newName + '\u201d already exists. Choose a different name.';
+            return;
+        }
+
+        msg.textContent = '';
+        var fd = new FormData();
+        fd.append('csrfmiddlewaretoken', _ctrlCsrf());
+        fd.append('old_filename', oldName);
+        fd.append('new_filename', newName);
+        fetch('{% url "dashboard-rename-controller" %}', {method:'POST', body:fd})
+            .then(r => r.json())
+            .then(function(d) {
+                if (d.error) { msg.textContent = '✗ ' + d.error; return; }
+                _ctrlRefreshSelects(d.files, newName);
+                // Update ribbon if this file is currently open in editor
+                var ribbon = document.getElementById('ctrl-ribbon-fname');
+                if (ribbon && ribbon.textContent.trim() === oldName) {
+                    ribbon.textContent = newName;
+                    document.getElementById('ctrl-fname').value = newName;
+                }
+                var smsg = document.getElementById('ctrl-select-msg');
+                smsg.textContent = '✓ Renamed to ' + newName;
+                setTimeout(function(){ smsg.textContent = ''; }, 3500);
+                closeRenameCtrl();
+                _ctrlUpdateRenameBtn(newName);
+            })
+            .catch(function(e) { msg.textContent = '✗ ' + e; });
     }
     function loadControllerFile() {
         var fname = document.getElementById('ctrl-fname').value.trim();
@@ -1807,11 +1974,84 @@
     function loadTemplateFile() {
         _loadCtrlByName('default_controller.py');
     }
+
+    // ── New controller modal ────────────────────────────────────────────
+    function openNewCtrlModal() {
+        document.getElementById('ctrl-new-fname').value = '';
+        _ctrlBuildFromSelect(_ctrlAllFiles, 'default_controller.py');
+        document.getElementById('ctrl-new-msg').textContent = '';
+        var m = document.getElementById('ctrl-new-modal');
+        m.style.display = 'flex';
+        setTimeout(function(){ document.getElementById('ctrl-new-fname').focus(); }, 60);
+    }
+    function closeNewCtrlModal() {
+        document.getElementById('ctrl-new-modal').style.display = 'none';
+    }
+    // Close modal on backdrop click
+    document.getElementById('ctrl-new-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeNewCtrlModal();
+    });
+    function createNewController() {
+        var fname = document.getElementById('ctrl-new-fname').value.trim();
+        var from  = document.getElementById('ctrl-new-from').value.trim();
+        var msg   = document.getElementById('ctrl-new-msg');
+        if (!fname) { msg.textContent = 'Please enter a filename.'; return; }
+        if (!fname.endsWith('.py')) fname += '.py';
+        if (fname === 'default_controller.py') {
+            msg.textContent = 'Cannot overwrite the built-in template.';
+            return;
+        }
+        msg.textContent = '';
+        // Fetch the source file first, then save under the new name
+        var srcName = from || 'default_controller.py';
+        fetch('{% url "dashboard-get-controller" %}?filename=' + encodeURIComponent(srcName))
+            .then(function(r) { return r.ok ? r.json() : Promise.reject('fetch failed'); })
+            .then(function(d) {
+                var code = d.code || '';
+                var fd = new FormData();
+                fd.append('csrfmiddlewaretoken', _ctrlCsrf());
+                fd.append('filename', fname);
+                fd.append('code', code);
+                return fetch('{% url "dashboard-save-controller" %}', {method:'POST', body:fd})
+                    .then(function(r) { return r.json(); });
+            })
+            .then(function(d) {
+                if (d.error) { msg.textContent = '✗ ' + d.error; return; }
+                // Refresh both selects with updated file list
+                _ctrlRefreshSelects(d.files, fname);
+                // Load the new file into the editor
+                _loadCtrlByName(fname);
+                closeNewCtrlModal();
+            })
+            .catch(function(e) { msg.textContent = '✗ ' + e; });
+    }
+
+    // Refresh both the main ctrl-select and the modal's ctrl-new-from with updated file list
+    function _ctrlRefreshSelects(files, selectValue) {
+        _ctrlAllFiles = files;  // keep global in sync
+        // ctrl-select: 1 fixed option ("— built-in default —"), then all files
+        (function() {
+            var sel = document.getElementById('ctrl-select');
+            while (sel.options.length > 1) sel.remove(1);
+            files.forEach(function(f) {
+                var opt = new Option(f, f);
+                if (f === selectValue) opt.selected = true;
+                sel.add(opt);
+            });
+        })();
+        // ctrl-new-from: fully rebuilt via helper
+        _ctrlBuildFromSelect(files, selectValue);
+    }
     function saveControllerCode() {
-        var fname = document.getElementById('ctrl-fname').value.trim();
+        var rl    = document.getElementById('ctrl-ribbon-fname');
+        var fname = (rl ? rl.textContent.trim() : '') ||
+                    document.getElementById('ctrl-fname').value.trim();
         var code  = _ctrlGetCode();
         var msg   = document.getElementById('ctrl-save-msg');
-        if (!fname) { alert('Enter a filename before saving.'); return; }
+        if (!fname || fname === 'default_controller.py') {
+            alert('Select or create a controller file before saving (cannot overwrite the built-in template).');
+            return;
+        }
         var fd = new FormData();
         fd.append('csrfmiddlewaretoken', _ctrlCsrf());
         fd.append('filename', fname);
@@ -1835,15 +2075,8 @@
                     }
                     msg.textContent = '✓ Saved ' + d.saved;
                     msg.style.color = '#b2e0e4';
-                    // Refresh <select> options
-                    var sel = document.getElementById('ctrl-select');
-                    var current = sel.value;
-                    while (sel.options.length > 1) sel.remove(1);
-                    d.files.forEach(function(f) {
-                        var opt = new Option(f, f);
-                        if (f === current || f === d.saved) opt.selected = true;
-                        sel.add(opt);
-                    });
+                    // Refresh dropdown selects with updated file list
+                    _ctrlRefreshSelects(d.files, d.saved);
                 }
                 msg.style.display = 'inline';
                 setTimeout(function(){ msg.style.display='none'; }, 4000);

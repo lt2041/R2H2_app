@@ -15,6 +15,7 @@ urlpatterns = [
     path('simulations/<int:sim_id>/controller/', views.update_sim_controller, name='dashboard-update-sim-controller'),
     path('controllers/save/', views.save_controller_file, name='dashboard-save-controller'),
     path('controllers/get/',  views.get_controller_file,  name='dashboard-get-controller'),
+    path('controllers/rename/', views.rename_controller_file, name='dashboard-rename-controller'),
     path('simulations/<int:sim_id>/wind-preview/', views.wind_preview_data, name='dashboard-wind-preview'),
     path('simulations/<int:sim_id>/run/',                views.run_simulation,    name='dashboard-run-simulation'),
     path('simulations/<int:sim_id>/run/<int:run_id>/',          views.poll_simulation_run,   name='dashboard-poll-simulation-run'),

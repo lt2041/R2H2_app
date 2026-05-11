@@ -1,4 +1,52 @@
 from django.db import models
+import datetime
+
+
+def _controller_storage():
+    """Deferred FileSystemStorage pointing at <data_root>/controllers/.
+    Callable so it is evaluated at runtime, not at import / migration time."""
+    from django.core.files.storage import FileSystemStorage
+    from r2h2.config import get_controllers_dir
+    return FileSystemStorage(location=str(get_controllers_dir()), base_url=None)
+
+
+#### ---------------------- CONTROLLER MODEL ---------------------- ####
+
+class Controller(models.Model):
+    """Represents a custom engineering controller Python file stored in <data_root>/controllers/."""
+    name        = models.CharField(max_length=100, default='Controller',
+                                   help_text='Display name for this controller.')
+    file        = models.FileField(
+                      storage=_controller_storage,
+                      upload_to='',
+                      unique=True,
+                      db_column='filename',
+                      help_text='The .py controller file stored in <data_root>/controllers/. '
+                                'Upload here or create/edit via the simulation editor.')
+    description = models.TextField(blank=True, default='',
+                                   help_text='Optional description of what this controller does.')
+    author      = models.CharField(max_length=150, blank=True, default='',
+                                   help_text='Name of the person who created this controller.')
+    date_created = models.DateField(default=datetime.date.today,
+                                    help_text='Date this controller was first created.')
+    verified    = models.BooleanField(default=False,
+                                      help_text='Mark True once the controller has been reviewed and validated.')
+    edit_history = models.JSONField(
+        default=list, blank=True,
+        help_text='List of {"datetime": "ISO-8601", "author": "..."} entries, most recent last.')
+
+    class Meta:
+        ordering = ['name']
+
+    @property
+    def filename(self):
+        """Return the bare filename string (e.g. 'my_ctrl.py')."""
+        return self.file.name if self.file else ''
+
+    def __str__(self):
+        verified_tag = ' \u2713' if self.verified else ''
+        return f"{self.name} ({self.filename}){verified_tag}"
+
 
 #### ---------------------- SIMULATION MODEL (TOP-LEVEL) ---------------------- ####
 
@@ -32,8 +80,14 @@ class Simulation(models.Model):
         help_text='Start date (00:00) used as the datetime axis origin for results charts. Defaults to today if not set.')
     controller_file = models.CharField(
         max_length=255, blank=True, default='',
-        help_text='Filename of a custom engineering controller in <data_root>/controllers/. '
-                  'Leave blank to use the built-in default controller.')
+        help_text='[Legacy] Filename of a custom controller. Superseded by controller FK.')
+    controller  = models.ForeignKey(
+        'Controller',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='simulations',
+        help_text='Custom engineering controller to use for this simulation. '
+                  'Leave blank to use the built-in default.')
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"

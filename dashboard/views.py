@@ -96,6 +96,11 @@ def update_simulation(request, sim_id):
 
 def simulations(request):
     """Hierarchical view of Simulation models with M2M component relations."""
+    try:
+        _ensure_default_controller()
+    except Exception:
+        pass  # never break the page over a housekeeping task
+
     sims = Simulation.objects.prefetch_related(
         'batteries',
         'electro_cells',
@@ -287,12 +292,19 @@ def simulation_detail(request, sim_id):
     current_ids_json = json.dumps(current_ids)
 
     # Engineering controllers
+    from .models import Controller
+    import json as _json
     controller_files = _list_controller_files()
+    controller_objects = list(Controller.objects.order_by('name').values('id', 'name', 'file', 'author', 'verified'))
+    controller_files_json = _json.dumps(controller_files)
 
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
         'sim_settings': sim_settings,
         'sim_settings_pairs': sim_settings_pairs,
+        'controller_files': controller_files,
+        'controller_files_json': controller_files_json,
+        'controller_objects': controller_objects,
         'groups': groups_with_items,
         'groups_empty': groups_empty,
         'latest_run': latest_run,
@@ -300,7 +312,6 @@ def simulation_detail(request, sim_id):
         'nsm_sections': nsm_sections,
         'current_ids_json': current_ids_json,
         'update_url': f'/simulations/{sim_id}/update/',
-        'controller_files': controller_files,
     })
 
 
@@ -861,6 +872,32 @@ def update_sim_duration(request, sim_id):
 # Engineering controller management
 # ---------------------------------------------------------------------------
 
+def _ensure_default_controller():
+    """Idempotently create the built-in default Controller DB record.
+
+    Creates (or refreshes) the 'default_controller.py' record.  The physical
+    file is seeded by get_controllers_dir() the first time the controllers
+    directory is accessed, so we only need to ensure the DB row exists.
+    """
+    from .models import Controller
+    from r2h2.config import get_controllers_dir
+    import datetime
+    # Ensure the file exists on disk (get_controllers_dir seeds it)
+    ctrl_dir = get_controllers_dir()
+    default_path = ctrl_dir / 'default_controller.py'
+    Controller.objects.get_or_create(
+        file='default_controller.py',
+        defaults={
+            'name':         'Default Controller',
+            'description':  'Built-in template controller provided with R2H2. '
+                            'Copy and rename before modifying.',
+            'author':       'R2H2',
+            'date_created': datetime.date.today(),
+            'verified':     True,
+        },
+    )
+
+
 def _list_controller_files():
     """Return sorted list of .py filenames in the controllers directory."""
     from r2h2.config import get_controllers_dir
@@ -906,16 +943,25 @@ def _scan_controller_code(code: str) -> list:
 
 @require_POST
 def update_sim_controller(request, sim_id):
-    """POST: set controller_file for a Simulation."""
+    """POST: set controller FK (and legacy controller_file) for a Simulation."""
     from django.http import JsonResponse
     from django.shortcuts import get_object_or_404
+    from .models import Controller
     sim = get_object_or_404(Simulation, pk=sim_id)
     fname = request.POST.get('controller_file', '').strip()
     if fname and not fname.endswith('.py'):
         return JsonResponse({'error': 'Controller file must be a .py file.'}, status=400)
+    # Update legacy field
     sim.controller_file = fname
-    sim.save(update_fields=['controller_file'])
-    return JsonResponse({'controller_file': sim.controller_file})
+    # Update FK: find matching Controller record if one exists
+    if fname:
+        ctrl = Controller.objects.filter(file=fname).first()
+        sim.controller = ctrl  # may be None if not yet registered
+    else:
+        sim.controller = None
+    sim.save(update_fields=['controller_file', 'controller'])
+    ctrl_id = sim.controller_id
+    return JsonResponse({'controller_file': sim.controller_file, 'controller_id': ctrl_id})
 
 
 @require_POST
@@ -929,6 +975,13 @@ def save_controller_file(request):
         return JsonResponse({'error': 'filename is required.'}, status=400)
     if not fname.endswith('.py'):
         fname += '.py'
+    # Enforce naming: lowercase letters/digits/underscores, starting with a letter
+    import re as _re
+    stem = fname[:-3]  # strip .py
+    if not _re.match(r'^[a-z][a-z0-9_]*$', stem):
+        return JsonResponse(
+            {'error': 'Name must start with a letter and contain only lowercase letters, digits and underscores.'},
+            status=400)
     # Block path traversal
     if '/' in fname or '\\' in fname or '..' in fname:
         return JsonResponse({'error': 'Invalid filename.'}, status=400)
@@ -941,11 +994,41 @@ def save_controller_file(request):
     if scan_warnings and scan_warnings[0].startswith('SyntaxError'):
         return JsonResponse({'error': scan_warnings[0]}, status=400)
     ctrl_dir = get_controllers_dir()
+    # Block duplicate creation (allow overwrite only when the file already exists — i.e. editing)
+    is_new_file = not (ctrl_dir / fname).exists()
+    if is_new_file and fname == 'default_controller.py':
+        return JsonResponse({'error': 'Cannot overwrite the built-in default controller.'}, status=403)
     (ctrl_dir / fname).write_text(code, encoding='utf-8')
+    # Create or update the Controller DB record
+    from .models import Controller
+    import datetime
+    author = request.POST.get('author', '').strip()
+    ctrl, created = Controller.objects.get_or_create(
+        file=fname,
+        defaults={
+            'name':         fname.replace('_', ' ').replace('.py', ''),
+            'author':       author,
+            'date_created': datetime.date.today(),
+            'verified':     False,
+        },
+    )
+    # Append an edit-history entry
+    history = ctrl.edit_history if isinstance(ctrl.edit_history, list) else []
+    history.append({
+        'datetime': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'author':   author or (ctrl.author or 'unknown'),
+    })
+    update_fields = ['edit_history']
+    if not created and author:
+        ctrl.author = author
+        update_fields.append('author')
+    ctrl.edit_history = history
+    ctrl.save(update_fields=update_fields)
     return JsonResponse({
-        'saved':    fname,
-        'files':    _list_controller_files(),
-        'warnings': scan_warnings,   # non-empty = dangerous patterns found
+        'saved':         fname,
+        'files':         _list_controller_files(),
+        'warnings':      scan_warnings,
+        'controller_id': ctrl.pk,
     })
 
 
@@ -960,6 +1043,47 @@ def get_controller_file(request):
     if not path.exists():
         raise Http404
     return JsonResponse({'filename': fname, 'code': path.read_text(encoding='utf-8')})
+
+
+@require_POST
+def rename_controller_file(request):
+    """POST: rename a controller .py file and update the Controller DB record."""
+    from django.http import JsonResponse
+    from r2h2.config import get_controllers_dir
+    from .models import Controller
+    old_name = request.POST.get('old_filename', '').strip()
+    new_name = request.POST.get('new_filename', '').strip()
+    if not old_name or not new_name:
+        return JsonResponse({'error': 'Both old_filename and new_filename are required.'}, status=400)
+    for n in (old_name, new_name):
+        if not n.endswith('.py') or '/' in n or '\\' in n or '..' in n:
+            return JsonResponse({'error': f'Invalid filename: {n}'}, status=400)
+    if old_name == 'default_controller.py':
+        return JsonResponse({'error': 'The default controller cannot be renamed.'}, status=403)
+    if new_name == 'default_controller.py':
+        return JsonResponse({'error': 'Cannot rename to default_controller.py.'}, status=400)
+    ctrl_dir = get_controllers_dir()
+    old_path = ctrl_dir / old_name
+    new_path = ctrl_dir / new_name
+    if not old_path.exists():
+        return JsonResponse({'error': f'{old_name} not found.'}, status=404)
+    if new_path.exists():
+        return JsonResponse({'error': f'{new_name} already exists.'}, status=400)
+    old_path.rename(new_path)
+    # Update DB record
+    ctrl = Controller.objects.filter(file=old_name).first()
+    if ctrl:
+        ctrl.file = new_name
+        ctrl.save(update_fields=['file'])
+    # Update any Simulations that referenced the old filename
+    from .models import Simulation
+    Simulation.objects.filter(controller_file=old_name).update(controller_file=new_name)
+    return JsonResponse({
+        'renamed': True,
+        'old':     old_name,
+        'new':     new_name,
+        'files':   _list_controller_files(),
+    })
 
 
 def home(request):

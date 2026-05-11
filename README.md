@@ -1,8 +1,22 @@
 # R2H2_app
 
-The Desktop App for R2H2.
+The Desktop App for R2H2!
 
 ## Quick Install
+
+The instruction below will depend on how you have set up Python in your environment, and which OS applies. Depending on whether you have access the `python`/`pip` commands from the commandline, install as follows:
+
+### Option 1: I can run `pip` from the commandline
+
+```bash
+pip install pipx
+pipx ensurepath
+pipx install git+https://github.com/RenewableTools/R2H2_app.git
+```
+
+### Option 2: **I can't run `pip`, but I have access to the Anaconda Prompt from**
+
+If neither works, look into installing Python from fresh. 
 
 | Platform | Method | Command |
 |---|---|---|

@@ -215,3 +215,4 @@ __marimo__/
 .vscode*
 data/*
 *.ipynb
+*reference_data*

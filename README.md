@@ -8,22 +8,48 @@ The instruction below will depend on how you have set up Python in your environm
 
 ### Option 1: I can run `pip` from the commandline
 
+The best (recommended) approach is to use `pipx`.
 ```bash
 pip install pipx
 pipx ensurepath
 pipx install git+https://github.com/RenewableTools/R2H2_app.git
+python launch_r2h2.py
 ```
+
+If you have any issues with above, try swapping `pipx` for `pip`. Note, that you're more likely to have dependency conflicts with `pip` (compared with `pipx`); as such, you may want to consider using a virtual environment.
 
 ### Option 2: **I can't run `pip`, but I have access to the Anaconda Prompt from**
 
+Open **Anaconda Prompt** from the Start menu and paste these lines one at a time:
+
+```bat
+conda create -n r2h2 python=3.11 -y
+```
+```
+conda run -n r2h2 python -m pip install git+https://github.com/RenewableTools/R2H2_app.git
+```
+```
+conda run -n r2h2 python -m setup_launcher
+```
+
+A **"Launch R2H2.bat"** shortcut will appear on your Desktop.  
+To launch manually from Anaconda Prompt in future:
+
+```bat
+conda activate r2h2
+r2h2
+```
+
+> **Troubleshooting**
+>
+> - If you have only just installed Anaconda (or Miniconda), Anaconda Prompt may ask you to accept terms of service via the command line; follow the instructions given and then carry out the specific R2H2 instructions above.
+
+
+### No Python?
+
 If neither works, look into installing Python from fresh. 
 
-| Platform | Method | Command |
-|---|---|---|
-| **Win/Linux/Mac** (recommended)<br>*assuming `pip` can be called from the terminal* | `pipx` | `pipx install git+https://github.com/RenewableTools/R2H2_app.git` |
-| **Win/Linux/Mac**<br/>*assuming `pip` can be called from the terminal* | plain `pip` | `pip install git+https://github.com/RenewableTools/R2H2_app.git` |
-| **Windows — Anaconda**<br>*open Anaconda Prompt* | conda env | see [Windows (Conda)](#windows--anaconda--miniconda) below |
-| **Windows — PyCharm**<br>*open terminal* | pip | see [Windows (PyCharm)](#windows--pycharm) below |
+## Check your installation
 
 After install, run `r2h2` from a fresh terminal to launch. 
 

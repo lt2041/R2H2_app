@@ -286,6 +286,9 @@ def simulation_detail(request, sim_id):
     }
     current_ids_json = json.dumps(current_ids)
 
+    # Engineering controllers
+    controller_files = _list_controller_files()
+
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
         'sim_settings': sim_settings,
@@ -297,6 +300,7 @@ def simulation_detail(request, sim_id):
         'nsm_sections': nsm_sections,
         'current_ids_json': current_ids_json,
         'update_url': f'/simulations/{sim_id}/update/',
+        'controller_files': controller_files,
     })
 
 
@@ -850,6 +854,112 @@ def update_sim_duration(request, sim_id):
 
 
 
+
+
+
+# ---------------------------------------------------------------------------
+# Engineering controller management
+# ---------------------------------------------------------------------------
+
+def _list_controller_files():
+    """Return sorted list of .py filenames in the controllers directory."""
+    from r2h2.config import get_controllers_dir
+    ctrl_dir = get_controllers_dir()
+    return sorted(p.name for p in ctrl_dir.glob('*.py'))
+
+
+# Patterns that are flagged as warnings on save (not blocked — desktop app).
+# Each entry: (regex_pattern, human-readable reason)
+_CTRL_DANGEROUS_PATTERNS = [
+    (r'\bsubprocess\b',          'subprocess: can execute arbitrary OS commands'),
+    (r'\bos\.system\b',          'os.system: can execute arbitrary OS commands'),
+    (r'\bos\.popen\b',           'os.popen: can execute arbitrary OS commands'),
+    (r'\beval\s*\(',             'eval(): executes arbitrary Python code'),
+    (r'\bexec\s*\(',             'exec(): executes arbitrary Python code'),
+    (r'__import__\s*\(',         '__import__(): dynamic import of arbitrary modules'),
+    (r'\bshutil\.rmtree\b',      'shutil.rmtree: recursive directory deletion'),
+    (r'\bos\.remove\b',          'os.remove: file deletion'),
+    (r'\bopen\s*\([^)]*["\']w', 'open(..., "w"): writes to arbitrary file paths'),
+    (r'\bsocket\b',              'socket: network access'),
+    (r'\brequests\b',            'requests: HTTP/network access'),
+    (r'\burllib\b',              'urllib: HTTP/network access'),
+    (r'\bpickle\b',              'pickle: can execute code on deserialisation'),
+    (r'\bctypes\b',              'ctypes: low-level OS/memory access'),
+]
+
+
+def _scan_controller_code(code: str) -> list:
+    """Return a list of human-readable warning strings for any dangerous
+    patterns found in *code*.  Empty list means the code looks clean."""
+    import re
+    warnings = []
+    for pattern, reason in _CTRL_DANGEROUS_PATTERNS:
+        if re.search(pattern, code):
+            warnings.append(reason)
+    # Syntax check
+    try:
+        compile(code, '<controller>', 'exec')
+    except SyntaxError as exc:
+        warnings.insert(0, f'SyntaxError: {exc}')
+    return warnings
+
+
+@require_POST
+def update_sim_controller(request, sim_id):
+    """POST: set controller_file for a Simulation."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    fname = request.POST.get('controller_file', '').strip()
+    if fname and not fname.endswith('.py'):
+        return JsonResponse({'error': 'Controller file must be a .py file.'}, status=400)
+    sim.controller_file = fname
+    sim.save(update_fields=['controller_file'])
+    return JsonResponse({'controller_file': sim.controller_file})
+
+
+@require_POST
+def save_controller_file(request):
+    """POST: scan, then save a controller .py file.  Returns any warnings."""
+    from django.http import JsonResponse
+    from r2h2.config import get_controllers_dir
+    fname = request.POST.get('filename', '').strip()
+    code  = request.POST.get('code', '')
+    if not fname:
+        return JsonResponse({'error': 'filename is required.'}, status=400)
+    if not fname.endswith('.py'):
+        fname += '.py'
+    # Block path traversal
+    if '/' in fname or '\\' in fname or '..' in fname:
+        return JsonResponse({'error': 'Invalid filename.'}, status=400)
+    # Block empty files
+    if not code.strip():
+        return JsonResponse({'error': 'Controller file is empty.'}, status=400)
+    # Static analysis — collect warnings but do not block (desktop-app policy)
+    scan_warnings = _scan_controller_code(code)
+    # Block on syntax errors (first item prefixed 'SyntaxError:') before writing
+    if scan_warnings and scan_warnings[0].startswith('SyntaxError'):
+        return JsonResponse({'error': scan_warnings[0]}, status=400)
+    ctrl_dir = get_controllers_dir()
+    (ctrl_dir / fname).write_text(code, encoding='utf-8')
+    return JsonResponse({
+        'saved':    fname,
+        'files':    _list_controller_files(),
+        'warnings': scan_warnings,   # non-empty = dangerous patterns found
+    })
+
+
+def get_controller_file(request):
+    """GET: return source code of a controller file."""
+    from django.http import JsonResponse, Http404
+    from r2h2.config import get_controllers_dir
+    fname = request.GET.get('filename', '').strip()
+    if not fname or not fname.endswith('.py') or '/' in fname or '..' in fname:
+        return JsonResponse({'error': 'Invalid filename.'}, status=400)
+    path = get_controllers_dir() / fname
+    if not path.exists():
+        raise Http404
+    return JsonResponse({'filename': fname, 'code': path.read_text(encoding='utf-8')})
 
 
 def home(request):

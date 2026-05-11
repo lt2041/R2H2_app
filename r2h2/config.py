@@ -166,6 +166,36 @@ def update_wind_data_dir(new_path: str):
     return cfg
 
 
+def get_controllers_dir() -> Path:
+    """Return the directory where user-supplied controller Python files are stored.
+
+    Defaults to ``<data_root>/controllers``.  The directory is created on first
+    access.  If it is empty a copy of the built-in template is placed there so
+    the user always has a working example to start from.
+    """
+    cfg = load_config()
+    ctrl_dir: Path | None = None
+    if cfg:
+        data_root = cfg.get("paths", {}).get("data_root")
+        if data_root:
+            ctrl_dir = Path(data_root) / "controllers"
+
+    if ctrl_dir is None:
+        here = Path(__file__).resolve().parent.parent / "data" / "controllers"
+        ctrl_dir = here
+
+    ctrl_dir.mkdir(parents=True, exist_ok=True)
+
+    # Seed with the built-in template if the folder is empty
+    if not any(ctrl_dir.glob("*.py")):
+        template_src = Path(__file__).resolve().parent / "defaults" / "controller_template.py"
+        if template_src.exists():
+            import shutil
+            shutil.copy(template_src, ctrl_dir / "default_controller.py")
+
+    return ctrl_dir
+
+
 def get_wind_data_dir() -> Path:
     """
     Return the configured wind data directory, falling back to

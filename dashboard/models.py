@@ -30,6 +30,10 @@ class Simulation(models.Model):
     datum_date = models.DateField(
         null=True, blank=True,
         help_text='Start date (00:00) used as the datetime axis origin for results charts. Defaults to today if not set.')
+    controller_file = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Filename of a custom engineering controller in <data_root>/controllers/. '
+                  'Leave blank to use the built-in default controller.')
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"

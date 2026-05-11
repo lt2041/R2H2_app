@@ -365,6 +365,83 @@ def _make_bank_index_maps(units: list) -> Tuple[List[List[int]], np.ndarray]:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Controller safety wrapper
+# ---------------------------------------------------------------------------
+
+_CONTROLLER_TIMEOUT_S = 30  # max seconds allowed for one hourly control call
+
+
+def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
+    """Call a user-supplied controller with a wall-clock timeout and return-value
+    validation.  Falls back to ``dynamicControl`` on any failure.
+
+    Uses a ``ThreadPoolExecutor`` so the timeout works inside the already-running
+    background simulation thread (``signal.alarm`` only works on the main thread).
+    """
+    import concurrent.futures
+    import warnings
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(fn, units, battery, t_out, settings)
+        try:
+            result = future.result(timeout=_CONTROLLER_TIMEOUT_S)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            warnings.warn(
+                f"Custom controller timed out after {_CONTROLLER_TIMEOUT_S}s. "
+                "Falling back to built-in dynamicControl.",
+                RuntimeWarning, stacklevel=4,
+            )
+            return dynamicControl(units, battery, t_out, settings)
+        except Exception as exc:
+            warnings.warn(
+                f"Custom controller raised an exception: {exc}. "
+                "Falling back to built-in dynamicControl.",
+                RuntimeWarning, stacklevel=4,
+            )
+            return dynamicControl(units, battery, t_out, settings)
+
+    # ── Validate the returned tuple ──────────────────────────────────────────
+    try:
+        ret_units, ret_t_out, ret_battery = result
+
+        # Must return the same number of units
+        if len(ret_units) != num_units:
+            raise ValueError(
+                f"controller returned {len(ret_units)} units, expected {num_units}"
+            )
+        # Key arrays must be present and have the right length
+        for arr_name in ('arElectroAvailablePower', 'arTotalElectroOn',
+                         'arProportionPower', 'aiIsOn'):
+            arr = getattr(ret_t_out, arr_name, None)
+            if arr is None:
+                raise ValueError(f"controller did not set t_out.{arr_name}")
+        if len(ret_t_out.arElectroAvailablePower) != T:
+            raise ValueError(
+                f"t_out.arElectroAvailablePower length {len(ret_t_out.arElectroAvailablePower)}, expected {T}"
+            )
+        if np.shape(ret_t_out.aiIsOn) != (num_units, T):
+            raise ValueError(
+                f"t_out.aiIsOn shape {np.shape(ret_t_out.aiIsOn)}, expected ({num_units},{T})"
+            )
+        # NaN / Inf guard on power arrays
+        for arr_name in ('arElectroAvailablePower', 'arTotalElectroOn'):
+            arr = getattr(ret_t_out, arr_name)
+            if np.any(~np.isfinite(arr)):
+                raise ValueError(f"t_out.{arr_name} contains NaN or Inf")
+
+    except Exception as val_exc:
+        warnings.warn(
+            f"Custom controller returned invalid data: {val_exc}. "
+            "Falling back to built-in dynamicControl.",
+            RuntimeWarning, stacklevel=4,
+        )
+        return dynamicControl(units, battery, t_out, settings)
+
+    return ret_units, ret_t_out, ret_battery
+
+
 # Dynamic control (on/off dispatch + proportional sharing)
 # ---------------------------------------------------------------------------
 
@@ -476,6 +553,7 @@ def runElectroStackStep1(
     iCntHours,
     t_out_prev,
     cooling_power_feedback: Optional[np.ndarray] = None,
+    controller_fn=None,
 ):
     num_units = units[0].iNumUnits
     T = len(arTime)
@@ -569,7 +647,13 @@ def runElectroStackStep1(
     t_out.arP_cool_elec_total       = np.zeros(T)
 
     # ── Dynamic control pass ─────────────────────────────────────────────────
-    units, t_out, battery = dynamicControl(units, battery, t_out, settings)
+    if controller_fn is not None:
+        units, t_out, battery = _call_controller_safe(
+            controller_fn, units, battery, t_out, settings,
+            num_units=num_units, T=T,
+        )
+    else:
+        units, t_out, battery = dynamicControl(units, battery, t_out, settings)
 
     min_power   = units[0].rMinPower_s
     rated_power = units[0].rRatedPower_s
@@ -1274,6 +1358,31 @@ class R2H2():
         units    = self.electrolyserunits
         ec_curves = self.electrocellpem   # already built by setUpElectro1
 
+        # ── Load custom engineering controller (if configured) ───────────────
+        _controller_fn = None
+        _ctrl_file = getattr(self.simulation_name, 'controller_file', None) if self.simulation_name is not None else None
+        if _ctrl_file:
+            try:
+                from r2h2.config import get_controllers_dir
+                import importlib.util
+                ctrl_path = get_controllers_dir() / _ctrl_file
+                spec = importlib.util.spec_from_file_location("_r2h2_user_controller", ctrl_path)
+                _ctrl_mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(_ctrl_mod)
+                _controller_fn = getattr(_ctrl_mod, 'control', None)
+                if _controller_fn is None:
+                    raise AttributeError(f"Controller file '{_ctrl_file}' has no 'control' function.")
+                if self.verbose:
+                    print(f"  [run] Using custom controller: {_ctrl_file}", flush=True)
+            except Exception as _ctrl_err:
+                import warnings
+                warnings.warn(
+                    f"Could not load custom controller '{_ctrl_file}': {_ctrl_err}. "
+                    "Falling back to built-in dynamicControl.",
+                    RuntimeWarning, stacklevel=2,
+                )
+                _controller_fn = None
+
         # ── Bank thermal states ──────────────────────────────────────────────
         el = self.electrolyserunit
         num_banks_total = el.iN_banks * el.iNumElectro
@@ -1361,6 +1470,7 @@ class R2H2():
                     ec_curves, th_banks, battery, P_hour,
                     units, wind.arTime, settings, h, t_out_prev,
                     cooling_power_feedback=_cooling_feedback_prev if _feedback else None,
+                    controller_fn=_controller_fn,
                 )
 
                 if _feedback:

@@ -1,6 +1,36 @@
 {% extends "dashboard/base.html" %}
 {% block title %}{{ sim.name }}{% endblock %}
 
+{% block extrahead %}
+<!-- CodeMirror 5 — Python syntax highlighting for the controller editor -->
+<link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<style>
+    /* Override Dracula theme background to match panel dark-blue palette */
+    #ctrl-editor-wrap .CodeMirror {
+        background: #0e1e2e;
+        color: #c9e8f0;
+        border: 1px solid #2e4a6a;
+        border-radius: 4px;
+        font-family: 'Fira Mono', 'Ubuntu Mono', 'Courier New', monospace;
+        font-size: 0.95rem;
+        line-height: 1.55;
+        min-height: 360px;
+        height: auto;
+    }
+    #ctrl-editor-wrap .CodeMirror-scroll { min-height: 360px; }
+    /* Dracula colour overrides to keep the dark-blue theme consistent */
+    #ctrl-editor-wrap .cm-s-dracula.CodeMirror { background: #0e1e2e; }
+    #ctrl-editor-wrap .cm-s-dracula .CodeMirror-gutters { background: #0a1825; border-right: 1px solid #1e3a52; }
+    #ctrl-editor-wrap .cm-s-dracula .CodeMirror-linenumber { color: #4a7a9b; }
+    /* cursor / selection */
+    #ctrl-editor-wrap .CodeMirror-cursor { border-left: 1px solid #e0f7fa; }
+    #ctrl-editor-wrap .CodeMirror-selected { background: #1a3a5a !important; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 
@@ -314,6 +344,42 @@
 
     .sim-settings-body { display: none; }
     .sim-settings-body.open { display: block; }
+
+    /* Controller panel: allow sticky ribbon inside */
+    #ctrl-panel { overflow: visible; }
+    #ctrl-panel .sim-settings-body.open { display: flex; flex-direction: column; }
+
+    #ctrl-editor-ribbon {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        background: #0d1e2e;
+        border-bottom: 1px solid #1e3a52;
+        border-radius: 4px 4px 0 0;
+        padding: 4px 8px;
+        margin-bottom: 0;
+    }
+    #ctrl-editor-ribbon .ctrl-ribbon-fname {
+        font-family: 'Ubuntu Mono', 'Courier New', monospace;
+        font-size: 0.8rem;
+        color: #7ec8d8;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 220px;
+    }
+    #ctrl-editor-ribbon .ctrl-ribbon-right {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-shrink: 0;
+    }
+    /* Remove top border-radius from editor when ribbon sits above it */
+    #ctrl-editor-wrap .CodeMirror { border-radius: 0 0 4px 4px; border-top: none; }
 
     .sim-settings-table {
         width: 100%;
@@ -1092,6 +1158,79 @@
         </div>
     </div>
 
+    <!-- Engineering Controller panel -->
+    <div class="sim-settings-panel" id="ctrl-panel">
+        <div class="sim-settings-header" onclick="toggleSettings(this)">
+            <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">settings_suggest</span>
+            <span class="ss-title">Controller Code</span>
+            <span class="material-symbols-outlined ss-toggle">expand_more</span>
+        </div>
+        <div class="sim-settings-body" style="padding:1rem 1.2rem;">
+            <!-- Controller selector row -->
+            <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.9rem;">
+                <label style="font-size:0.82rem;color:#b2e0e4;white-space:nowrap;">Active controller</label>
+                <select id="ctrl-select" style="flex:1;min-width:180px;max-width:320px;
+                        background:#1a2a3a;color:#e0f7fa;border:1px solid #2e4a6a;
+                        border-radius:4px;padding:4px 8px;font-size:0.83rem;">
+                    <option value="">— built-in default —</option>
+                    {% for fname in controller_files %}
+                    <option value="{{ fname }}"{% if sim.controller_file == fname %} selected{% endif %}>{{ fname }}</option>
+                    {% endfor %}
+                </select>
+                <button class="ss-save-btn" id="ctrl-select-save" onclick="saveControllerSelection()" title="Apply selection">
+                    <span class="material-symbols-outlined">check</span>
+                </button>
+                <span id="ctrl-select-msg" style="font-size:0.78rem;color:#b2e0e4;display:none;"></span>
+            </div>
+
+            <!-- Code editor section -->
+            <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+                <label style="font-size:0.82rem;color:#b2e0e4;white-space:nowrap;">Edit / create</label>
+                <input id="ctrl-fname" type="text" placeholder="my_controller.py"
+                       style="flex:1;min-width:160px;max-width:260px;
+                              background:#1a2a3a;color:#e0f7fa;border:1px solid #2e4a6a;
+                              border-radius:4px;padding:4px 8px;font-size:0.83rem;"
+                       value="{{ sim.controller_file }}">
+                <button class="ss-edit-btn" onclick="loadControllerFile()" title="Load file into editor">
+                    <span class="material-symbols-outlined">download</span>
+                </button>
+                <button class="ss-edit-btn" onclick="loadTemplateFile()" title="Load built-in template">
+                    <span class="material-symbols-outlined">description</span>
+                </button>
+            </div>
+
+            <!-- Sticky editor ribbon: filename | font controls + save -->
+            <div id="ctrl-editor-ribbon">
+                <span class="ctrl-ribbon-fname" id="ctrl-ribbon-fname">{{ sim.controller_file|default:"default_controller.py" }}</span>
+                <div class="ctrl-ribbon-right">
+                    <span style="font-size:0.72rem;color:#4a7a9b;">Font</span>
+                    <button class="ss-edit-btn" onclick="ctrlFontSize(-1)" title="Decrease font size"
+                            style="font-size:0.75rem;padding:1px 5px;line-height:1.3;min-width:24px;color:#7ec8d8;">A&#8722;</button>
+                    <button class="ss-edit-btn" onclick="ctrlFontSize(0)"  title="Reset font size"
+                            style="font-size:0.75rem;padding:1px 5px;line-height:1.3;min-width:24px;color:#7ec8d8;">A</button>
+                    <button class="ss-edit-btn" onclick="ctrlFontSize(+1)" title="Increase font size"
+                            style="font-size:0.82rem;padding:1px 5px;line-height:1.3;min-width:24px;font-weight:600;color:#7ec8d8;">A+</button>
+                    <div style="width:1px;height:18px;background:#1e3a52;margin:0 2px;"></div>
+                    <button class="waves-effect waves-light btn-small" onclick="saveControllerCode()"
+                            style="background:#1a6870;height:26px;line-height:26px;padding:0 8px;font-size:0.75rem;">
+                        <span class="material-symbols-outlined" style="font-size:0.9rem;vertical-align:middle;">save</span>
+                        Save
+                    </button>
+                    <span id="ctrl-save-msg" style="font-size:0.75rem;color:#7ec8d8;"></span>
+                </div>
+            </div>
+
+            <div id="ctrl-editor-wrap" style="width:100%;"></div>
+            <!-- hidden textarea keeps the value for non-JS fallback -->
+            <textarea id="ctrl-editor" style="display:none;"></textarea>
+
+            <!-- Scan warnings box -->
+            <div id="ctrl-warn-box" style="display:none;margin-top:0.6rem;
+                 background:#2a1a00;border:1px solid #f39c12;border-radius:4px;
+                 padding:0.5rem 0.8rem;font-size:0.78rem;color:#f0d080;"></div>
+        </div>
+    </div>
+
     <!-- Wind data preview card -->
     <!-- {% if sim.wind_inputs.all %}
     <div class="group-card" id="wind-preview-card">
@@ -1439,7 +1578,13 @@
 <script>
     function toggleSettings(header) {
         header.classList.toggle('open');
-        header.nextElementSibling.classList.toggle('open');
+        var body = header.nextElementSibling;
+        body.classList.toggle('open');
+        // If the ctrl panel just became visible, refresh CodeMirror so
+        // syntax highlighting renders without requiring a click first.
+        if (body.classList.contains('open') && body.querySelector('#ctrl-editor-wrap') && _ctrlCM) {
+            setTimeout(function() { _ctrlCM.refresh(); }, 20);
+        }
     }
 
     // ── Duration inline edit ──
@@ -1540,6 +1685,171 @@
             if (e.key === 'Escape') cancelEditDatum();
         });
     });
+
+    // ── Engineering Controller panel ────────────────────────────────────────
+    function _ctrlCsrf() {
+        var el = document.querySelector('[name=csrfmiddlewaretoken]');
+        return el ? el.value : '';
+    }
+
+    // CodeMirror instance (initialised in DOMContentLoaded)
+    var _ctrlCM = null;
+    var _ctrlFontSizeBase = 0.95;   // rem — matches initial CSS
+    var _ctrlFontSizeCur  = 0.95;
+
+    function ctrlFontSize(delta) {
+        if (delta === 0) {
+            _ctrlFontSizeCur = _ctrlFontSizeBase;
+        } else {
+            _ctrlFontSizeCur = Math.min(1.6, Math.max(0.55, _ctrlFontSizeCur + delta * 0.08));
+        }
+        if (_ctrlCM) {
+            _ctrlCM.getWrapperElement().style.fontSize = _ctrlFontSizeCur + 'rem';
+            _ctrlCM.refresh();
+        }
+    }
+
+    function _ctrlGetCode()  { return _ctrlCM ? _ctrlCM.getValue() : document.getElementById('ctrl-editor').value; }
+    function _ctrlSetCode(v) {
+        if (_ctrlCM) {
+            _ctrlCM.setValue(v || '');
+            _ctrlCM.clearHistory();
+            // Defer refresh so the browser has laid out the element first
+            setTimeout(function() { _ctrlCM.refresh(); }, 10);
+        } else {
+            document.getElementById('ctrl-editor').value = v || '';
+        }
+    }
+
+    // Load a controller file by name into the editor; falls back to template silently.
+    function _loadCtrlByName(fname) {
+        var target = fname || 'default_controller.py';
+        fetch('{% url "dashboard-get-controller" %}?filename=' + encodeURIComponent(target))
+            .then(function(r) {
+                if (!r.ok) {
+                    if (fname) return fetch('{% url "dashboard-get-controller" %}?filename=default_controller.py');
+                    return null;
+                }
+                return r;
+            })
+            .then(function(r) { return r ? r.json() : null; })
+            .then(function(d) {
+                if (d && d.code !== undefined) {
+                    _ctrlSetCode(d.code);
+                    document.getElementById('ctrl-fname').value = d.filename;
+                    var rl = document.getElementById('ctrl-ribbon-fname');
+                    if (rl) rl.textContent = d.filename || 'default_controller.py';
+                }
+            });
+    }
+
+    // Auto-populate editor on page load.
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialise CodeMirror on the wrapper div
+        if (typeof CodeMirror !== 'undefined') {
+            _ctrlCM = CodeMirror(document.getElementById('ctrl-editor-wrap'), {
+                mode:          'python',
+                theme:         'dracula',
+                lineNumbers:   true,
+                indentUnit:    4,
+                tabSize:       4,
+                indentWithTabs: false,
+                lineWrapping:  false,
+                autofocus:     false,
+                extraKeys: {
+                    'Tab': function(cm) {
+                        if (cm.somethingSelected()) cm.indentSelection('add');
+                        else cm.replaceSelection('    ', 'end');
+                    },
+                    'Shift-Tab': function(cm) { cm.indentSelection('subtract'); },
+                }
+            });
+        }
+
+        _loadCtrlByName('{{ sim.controller_file|escapejs }}');
+
+        // Sync dropdown → filename input → editor on change
+        var sel = document.getElementById('ctrl-select');
+        if (sel) {
+            sel.addEventListener('change', function() {
+                var fname = sel.value;
+                document.getElementById('ctrl-fname').value = fname;
+                _loadCtrlByName(fname);
+            });
+        }
+    });
+
+    function saveControllerSelection() {
+        var fname = document.getElementById('ctrl-select').value;
+        var msg   = document.getElementById('ctrl-select-msg');
+        var fd = new FormData();
+        fd.append('csrfmiddlewaretoken', _ctrlCsrf());
+        fd.append('controller_file', fname);
+        fetch('{% url "dashboard-update-sim-controller" sim.id %}', {method:'POST', body:fd})
+            .then(r => r.json())
+            .then(function(d) {
+                if (d.error) { msg.textContent = '✗ ' + d.error; }
+                else {
+                    msg.textContent = fname ? ('✓ ' + fname) : '✓ built-in default';
+                    // Also sync the filename input
+                    document.getElementById('ctrl-fname').value = fname;
+                }
+                msg.style.display = 'inline';
+                setTimeout(function(){ msg.style.display='none'; }, 3000);
+            });
+    }
+    function loadControllerFile() {
+        var fname = document.getElementById('ctrl-fname').value.trim();
+        if (!fname) { alert('Enter a filename to load.'); return; }
+        if (!fname.endsWith('.py')) fname += '.py';
+        _loadCtrlByName(fname);
+    }
+    function loadTemplateFile() {
+        _loadCtrlByName('default_controller.py');
+    }
+    function saveControllerCode() {
+        var fname = document.getElementById('ctrl-fname').value.trim();
+        var code  = _ctrlGetCode();
+        var msg   = document.getElementById('ctrl-save-msg');
+        if (!fname) { alert('Enter a filename before saving.'); return; }
+        var fd = new FormData();
+        fd.append('csrfmiddlewaretoken', _ctrlCsrf());
+        fd.append('filename', fname);
+        fd.append('code', code);
+        fetch('{% url "dashboard-save-controller" %}', {method:'POST', body:fd})
+            .then(r => r.json())
+            .then(function(d) {
+                if (d.error) {
+                    msg.textContent = '✗ ' + d.error;
+                    msg.style.color = '#e74c3c';
+                } else {
+                    // Surface any dangerous-pattern warnings
+                    if (d.warnings && d.warnings.length > 0) {
+                        var warnDiv = document.getElementById('ctrl-warn-box');
+                        warnDiv.innerHTML = '<strong style="color:#f39c12;">⚠ Saved with warnings:</strong><ul style="margin:0.3rem 0 0 1rem;">'
+                            + d.warnings.map(function(w){ return '<li>' + w + '</li>'; }).join('')
+                            + '</ul>';
+                        warnDiv.style.display = 'block';
+                    } else {
+                        document.getElementById('ctrl-warn-box').style.display = 'none';
+                    }
+                    msg.textContent = '✓ Saved ' + d.saved;
+                    msg.style.color = '#b2e0e4';
+                    // Refresh <select> options
+                    var sel = document.getElementById('ctrl-select');
+                    var current = sel.value;
+                    while (sel.options.length > 1) sel.remove(1);
+                    d.files.forEach(function(f) {
+                        var opt = new Option(f, f);
+                        if (f === current || f === d.saved) opt.selected = true;
+                        sel.add(opt);
+                    });
+                }
+                msg.style.display = 'inline';
+                setTimeout(function(){ msg.style.display='none'; }, 4000);
+            });
+    }
+
     function toggleCard(header) {
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');

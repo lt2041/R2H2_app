@@ -1079,29 +1079,24 @@ class R2H2():
             self.windinputs = load_wind_h5(wind_h5_path)
 
 
-    # ---  GENERIC UPDATE FUNCTION TO RE-LOAD PARAMETERS FROM YAML FILES  --- #
+    # ---  GENERIC UPDATE FUNCTION TO RELOAD A COMPONENT FROM THE DATABASE  --- #
 
     def update_component(self, class_name=None, component_name=None):
         """Reload a component instance from the database.
 
         Args:
             class_name (str):     Component class name (e.g. ``'Battery'``).
-            component_name (str): DB record name (e.g. ``'Battery-0'``).
-                                  A ``.yaml`` / ``.yml`` suffix is silently
-                                  stripped for backwards compatibility.
+            component_name (str): DB record name (e.g. ``'Main Battery'``).
 
         Usage examples::
 
-            sim.update_component(class_name='Battery', component_name='Battery-0')
-            sim.update_component(class_name='ElectrolyserUnit', component_name='ElectrolyserUnit-1')
+            sim.update_component(class_name='Battery', component_name='Main Battery')
+            sim.update_component(class_name='ElectrolyserUnit', component_name='Main Electrolyser Unit')
         """
         if class_name is None:
             raise KeyError("Please provide a class name to update (e.g. 'Battery').")
         if component_name is None:
-            raise KeyError("Please provide a component name to update (e.g. 'Battery-0').")
-
-        # Strip legacy file extension if caller still passes it
-        component_name = component_name.replace('.yaml', '').replace('.yml', '')
+            raise KeyError("Please provide a component name to update (e.g. 'Main Battery').")
 
         # Start from built-in defaults then overwrite from DB
         component_instance = self._safe_instantiate_component(class_name)

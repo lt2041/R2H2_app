@@ -33,6 +33,23 @@ def landing(request):
     return render(request, 'dashboard/landing.html', context)
 
 
+def help_page(request):
+    """Help & guide page."""
+    import sys
+    import django
+    from importlib.metadata import version as _pkg_version
+    try:
+        app_version = _pkg_version('r2h2')
+    except Exception:
+        app_version = 'dev'
+    context = {
+        'version':        app_version,
+        'django_version': django.get_version(),
+        'python_version': sys.version.split()[0],
+    }
+    return render(request, 'dashboard/help.html', context)
+
+
 def create_simulation(request):
     """POST: create a new Simulation with name, description and optional M2M components."""
     from django.http import JsonResponse

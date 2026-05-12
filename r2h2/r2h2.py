@@ -1041,8 +1041,11 @@ class R2H2():
         # ── Build component instances from built-in defaults ─────────────────
         # DB values are applied later via map_to_db_objects() when
         # simulation_name (a Django Simulation instance) is provided.
-        for component in self.simulation.components:
-            class_name = component['class']
+        _COMPONENT_CLASSES = [
+            'Battery', 'ElectroCellPEM', 'ElectrolyserUnit',
+            'ThermalProperties', 'TimeOutputs', 'WindInputs',
+        ]
+        for class_name in _COMPONENT_CLASSES:
             component_instance = self._safe_instantiate_component(class_name)
             setattr(self, class_name.lower(), component_instance)
 
@@ -1360,7 +1363,8 @@ class R2H2():
 
         # ── Load custom engineering controller (if configured) ───────────────
         _controller_fn = None
-        _ctrl_file = getattr(self.simulation_name, 'controller_file', None) if self.simulation_name is not None else None
+        _ctrl_obj  = getattr(self.simulation_name, 'controller', None) if self.simulation_name is not None else None
+        _ctrl_file = _ctrl_obj.filename if _ctrl_obj is not None else None
         if _ctrl_file:
             try:
                 from r2h2.config import get_controllers_dir

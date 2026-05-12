@@ -1,0 +1,227 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}R2H2 — Help{% endblock %}
+
+{% block content %}
+<style>
+    .help-hero {
+        background: linear-gradient(135deg, #00897b 0%, #26a69a 60%, #80cbc4 100%);
+        border-radius: 8px;
+        padding: 2.5rem 2.5rem 2rem;
+        margin-bottom: 2rem;
+        color: #fff;
+    }
+    .help-hero h1 {
+        font-family: 'Michroma', sans-serif;
+        font-size: 2.2rem;
+        letter-spacing: 0.08em;
+        margin: 0 0 0.4rem;
+    }
+    .help-hero .version-badge {
+        display: inline-block;
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.45);
+        border-radius: 20px;
+        padding: 0.2rem 0.9rem;
+        font-size: 0.88rem;
+        letter-spacing: 0.05em;
+        margin-bottom: 1rem;
+    }
+    .help-hero p {
+        font-size: 1.05rem;
+        opacity: 0.92;
+        max-width: 640px;
+        margin: 0;
+    }
+    .tip-card {
+        border-left: 4px solid #00897b;
+        background: #f5fffe;
+        border-radius: 0 6px 6px 0;
+        padding: 1rem 1.2rem;
+        margin-bottom: 1rem;
+    }
+    .tip-card .tip-title {
+        font-weight: 600;
+        color: #00695c;
+        margin-bottom: 0.3rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .tip-card p {
+        margin: 0;
+        color: #444;
+        font-size: 0.97rem;
+        line-height: 1.55;
+    }
+    .section-heading {
+        font-size: 1.15rem;
+        font-weight: 600;
+        color: #00695c;
+        border-bottom: 2px solid #b2dfdb;
+        padding-bottom: 0.4rem;
+        margin: 2rem 0 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .step-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 0.9rem;
+    }
+    .step-circle {
+        flex-shrink: 0;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        background: #00897b;
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .step-text strong {
+        color: #00695c;
+    }
+    .step-text {
+        color: #444;
+        font-size: 0.97rem;
+        line-height: 1.55;
+        padding-top: 0.2rem;
+    }
+    .meta-table td {
+        padding: 0.35rem 1rem 0.35rem 0;
+        color: #444;
+        font-size: 0.95rem;
+        vertical-align: top;
+    }
+    .meta-table td:first-child {
+        font-weight: 600;
+        color: #00695c;
+        white-space: nowrap;
+    }
+    .kbd {
+        display: inline-block;
+        background: #e8f5e9;
+        border: 1px solid #a5d6a7;
+        border-radius: 4px;
+        padding: 0.05rem 0.45rem;
+        font-family: 'Ubuntu Mono', monospace;
+        font-size: 0.88rem;
+        color: #2e7d32;
+    }
+</style>
+
+<!-- Hero -->
+<div class="help-hero">
+    <h1><span class="material-symbols-outlined" style="font-size:2rem;vertical-align:middle;margin-right:0.5rem;">help</span>Help &amp; Guide</h1>
+    <div class="version-badge">Version {{ version }}</div>
+    <p>R2H2 is a desktop simulation tool for renewable-to-hydrogen systems. This page covers the key workflows and tips to get the most from the app.</p>
+</div>
+
+<div class="row">
+
+    <!-- Left column -->
+    <div class="col s12 l7">
+
+        <!-- Getting started -->
+        <div class="section-heading">
+            <span class="material-symbols-outlined">play_circle</span> Getting started
+        </div>
+
+        <div class="step-row">
+            <div class="step-circle">1</div>
+            <div class="step-text"><strong>Configure wind data</strong> — Go to <em>Wind Data</em> in the sidebar and either upload an <span class="kbd">.h5</span> wind file or point the app to a folder containing wind files. The file must include <span class="kbd">/Time</span>, <span class="kbd">/WindSpeed</span> and <span class="kbd">/PowerInput</span> datasets.</div>
+        </div>
+        <div class="step-row">
+            <div class="step-circle">2</div>
+            <div class="step-text"><strong>Build your components</strong> — Visit the <em>Component Library</em> to create Battery, Electrolyser Unit, Electro Cell and Thermal Properties records. The pre-loaded <em>Main</em> components are a good starting point.</div>
+        </div>
+        <div class="step-row">
+            <div class="step-circle">3</div>
+            <div class="step-text"><strong>Set up a simulation</strong> — Open <em>Models &amp; Simulations</em>, select a model, then link your components and a wind file. The <em>Main Model</em> simulation is pre-configured with default component values.</div>
+        </div>
+        <div class="step-row">
+            <div class="step-circle">4</div>
+            <div class="step-text"><strong>Run</strong> — Click <em>Run Simulation</em> on the simulation detail page. Progress is shown in real time. Results are saved automatically and can be viewed after the run completes.</div>
+        </div>
+        <div class="step-row">
+            <div class="step-circle">5</div>
+            <div class="step-text"><strong>Explore results</strong> — Click a completed run to open the results dashboard with H₂ production, SoC, thermal and degradation charts.</div>
+        </div>
+
+        <!-- Controllers -->
+        <div class="section-heading">
+            <span class="material-symbols-outlined">code</span> Custom controllers
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">lightbulb</span> What is a controller?</div>
+            <p>A controller is a Python file with a single <span class="kbd">control(units, battery, t_out, settings)</span> function. It replaces the built-in dispatch logic and lets you implement custom on/off scheduling or proportional sharing strategies.</p>
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">edit_note</span> Creating a controller</div>
+            <p>On the simulation detail page, open the <em>Controller</em> panel → click <strong>New</strong> → choose a base file and enter a name (lowercase letters and underscores only, no <span class="kbd">.py</span> extension). Edit the code directly in the browser. Click <strong>Save</strong> before running.</p>
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">warning</span> Controller timeouts</div>
+            <p>If a custom controller takes longer than 30 s for a single hourly call, it is automatically cancelled and the built-in <span class="kbd">dynamicControl</span> is used as a fallback. A warning is raised in the run log.</p>
+        </div>
+
+    </div>
+
+    <!-- Right column -->
+    <div class="col s12 l5">
+
+        <!-- Tips -->
+        <div class="section-heading">
+            <span class="material-symbols-outlined">tips_and_updates</span> Quick tips
+        </div>
+
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">content_copy</span> Duplicate a simulation</div>
+            <p>On the <em>Models &amp; Simulations</em> list, use the duplicate icon to copy a simulation including all its component links. Useful for parameter sweeps.</p>
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">calendar_today</span> Set a datum date</div>
+            <p>Set a <em>Datum date</em> on the simulation to align result charts to a real calendar timeline rather than elapsed hours.</p>
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">hourglass_top</span> Limit simulation duration</div>
+            <p>Use the <em>Duration (days)</em> field to run only the first N days of a wind file, useful for quick parameter checks before running the full year.</p>
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">storage</span> Component Library YAML import</div>
+            <p>Run <span class="kbd">python manage.py load_component_library</span> to bulk-import components from <span class="kbd">data/component_library/*.yaml</span> files.</p>
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">sync</span> Re-seed default data</div>
+            <p>Run <span class="kbd">python manage.py create_main_model</span> to recreate the <em>Main Model</em> simulation and its pre-configured components if they are missing. Use <span class="kbd">--overwrite</span> to force a full reset.</p>
+        </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">cancel</span> Cancel a run</div>
+            <p>A running simulation can be cancelled at any time via the <strong>Cancel</strong> button on the simulation detail page. Partial results are discarded.</p>
+        </div>
+
+        <!-- About -->
+        <div class="section-heading">
+            <span class="material-symbols-outlined">info</span> About
+        </div>
+        <div class="card-panel white z-depth-1" style="border-radius:8px; padding:1.2rem 1.4rem;">
+            <table class="meta-table">
+                <tr><td>Version</td><td>{{ version }}</td></tr>
+                <tr><td>Licence</td><td>GNU GPL v3</td></tr>
+                <tr><td>Authors</td><td>Adam Stock, Francesco Superchi, Peter McCallum</td></tr>
+                <tr><td>Institution</td><td>Heriot-Watt University</td></tr>
+                <tr><td>Django</td><td>{{ django_version }}</td></tr>
+                <tr><td>Python</td><td>{{ python_version }}</td></tr>
+            </table>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

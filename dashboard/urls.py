@@ -33,4 +33,5 @@ urlpatterns = [
     path('wind-data/upload/', views.wind_data_upload, name='dashboard-wind-data-upload'),
     path('wind-data/set-dir/', views.wind_data_set_dir, name='dashboard-wind-data-set-dir'),
     path('help/', views.help_page, name='dashboard-help'),
+    path('help/git-pull/', views.git_pull, name='dashboard-git-pull'),
 ]

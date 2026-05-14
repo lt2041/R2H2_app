@@ -50,6 +50,29 @@ def help_page(request):
     return render(request, 'dashboard/help.html', context)
 
 
+@require_POST
+def git_pull(request):
+    """POST: run `git pull` in the project root and return stdout/stderr."""
+    from django.http import JsonResponse
+    import subprocess
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        result = subprocess.run(
+            ['git', 'pull'],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        output = (result.stdout + result.stderr).strip()
+        changed = 'Already up to date.' not in output
+        return JsonResponse({'ok': True, 'output': output, 'changed': changed})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'output': str(exc), 'changed': False}, status=500)
+
+
 def create_simulation(request):
     """POST: create a new Simulation with name, description and optional M2M components."""
     from django.http import JsonResponse

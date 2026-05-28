@@ -22,6 +22,7 @@ urlpatterns = [
     path('simulations/<int:sim_id>/run/<int:run_id>/cancel/',   views.cancel_simulation_run,  name='dashboard-cancel-simulation-run'),
     path('simulations/<int:sim_id>/run/<int:run_id>/delete/',   views.delete_simulation_run,  name='dashboard-delete-simulation-run'),
     path('simulations/<int:sim_id>/run/<int:run_id>/description/', views.update_run_description, name='dashboard-update-run-description'),
+    path('simulations/<int:sim_id>/run/<int:run_id>/download/',     views.download_run_output,      name='dashboard-download-run-output'),
     path('simulations/<int:sim_id>/run/<int:run_id>/results/',     views.view_run_results,         name='dashboard-run-results'),
     path('simulations/<int:sim_id>/run/<int:run_id>/xaxis/',      views.update_run_xaxis,          name='dashboard-update-run-xaxis'),
     path('browse/<str:table_name>', views.browse, name='dashboard-browse'),

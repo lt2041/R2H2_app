@@ -728,6 +728,31 @@ def update_run_description(request, sim_id, run_id):
     return JsonResponse({'description': run.description, 'message': run.message})
 
 
+def download_run_output(request, sim_id, run_id):
+    """GET: serve the HDF5 output file with correct Content-Type so browsers
+    don't append an extra .html suffix (Safari issue)."""
+    from django.http import FileResponse, Http404
+    from django.shortcuts import get_object_or_404
+    from django.conf import settings as dj_settings
+    from pathlib import Path
+
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    if not run.output_path:
+        raise Http404('No output file for this run.')
+
+    abs_path = Path(dj_settings.MEDIA_ROOT) / run.output_path
+    if not abs_path.exists():
+        raise Http404('Output file not found.')
+
+    response = FileResponse(
+        open(abs_path, 'rb'),
+        content_type='application/x-hdf5',
+        as_attachment=True,
+        filename=abs_path.name,
+    )
+    return response
+
+
 def view_run_results(request, sim_id, run_id):
     """GET: display interactive charts for a completed SimulationRun."""
     from django.shortcuts import get_object_or_404

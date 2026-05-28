@@ -812,8 +812,7 @@
                     </td>
                     <td style="text-align:center;" id="run-dl-{{ run.id }}">
                         {% if run.output_path %}
-                        <a href="{{ MEDIA_URL }}{{ run.output_path }}"
-                           download
+                        <a href="{% url 'dashboard-download-run-output' sim_id=sim.id run_id=run.id %}"
                            title="Download HDF5 results"
                            style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;">
                             <span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5

@@ -52,23 +52,100 @@ def help_page(request):
 
 @require_POST
 def git_pull(request):
-    """POST: run `git pull` in the project root and return stdout/stderr."""
+    """POST: check for a newer release on GitHub and upgrade via pip if found.
+
+    Works whether the app was installed via pip or cloned from GitHub.
+    Falls back to `git pull` if a .git directory is present (dev installs).
+    """
     from django.http import JsonResponse
     import subprocess
+    import sys
     from pathlib import Path
+    import importlib.metadata
 
     repo_root = Path(__file__).resolve().parent.parent
+
+    # ── Dev install: fall back to git pull if .git is present ──────────────
+    if (repo_root / '.git').is_dir():
+        try:
+            result = subprocess.run(
+                ['git', 'pull'],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            output = (result.stdout + result.stderr).strip()
+            changed = 'Already up to date.' not in output
+            return JsonResponse({'ok': True, 'output': output, 'changed': changed})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'output': str(exc), 'changed': False}, status=500)
+
+    # ── Pip install: check GitHub releases API then upgrade ─────────────────
+    import urllib.request
+    import json as _json
+
+    GITHUB_API = 'https://api.github.com/repos/RenewableTools/R2H2_app/releases/latest'
+
+    try:
+        current_version = importlib.metadata.version('r2h2')
+    except importlib.metadata.PackageNotFoundError:
+        current_version = 'unknown'
+
+    # 1. Fetch latest release tag from GitHub
+    try:
+        req = urllib.request.Request(GITHUB_API, headers={'Accept': 'application/vnd.github+json',
+                                                           'User-Agent': 'R2H2-app'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            release = _json.loads(resp.read())
+        latest_tag = release.get('tag_name', '').lstrip('v')
+        release_url = release.get('html_url', '')
+    except Exception as exc:
+        return JsonResponse({'ok': False,
+                             'output': f'Could not reach GitHub: {exc}',
+                             'changed': False}, status=500)
+
+    # Normalise versions for comparison
+    def _ver_tuple(v):
+        try:
+            return tuple(int(x) for x in v.split('.'))
+        except ValueError:
+            return (0,)
+
+    if _ver_tuple(latest_tag) <= _ver_tuple(current_version):
+        return JsonResponse({
+            'ok': True,
+            'output': f'Already up to date (v{current_version}).',
+            'changed': False,
+        })
+
+    # 2. Upgrade — detect pipx vs plain pip
+    import shutil
+    is_pipx = 'pipx/venvs' in sys.executable.replace('\\', '/')
+
+    if is_pipx:
+        pipx_bin = shutil.which('pipx')
+        if not pipx_bin:
+            return JsonResponse({'ok': False,
+                                 'output': 'pipx not found on PATH.',
+                                 'changed': False}, status=500)
+        upgrade_cmd = [pipx_bin, 'upgrade', 'r2h2']
+    else:
+        pip_source = f'https://github.com/RenewableTools/R2H2_app/archive/refs/tags/{release["tag_name"]}.zip'
+        upgrade_cmd = [sys.executable, '-m', 'pip', 'install', '--upgrade', pip_source]
+
     try:
         result = subprocess.run(
-            ['git', 'pull'],
-            cwd=str(repo_root),
+            upgrade_cmd,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=180,
         )
         output = (result.stdout + result.stderr).strip()
-        changed = 'Already up to date.' not in output
-        return JsonResponse({'ok': True, 'output': output, 'changed': changed})
+        ok = result.returncode == 0
+        summary = (f'Updated v{current_version} → v{latest_tag}\n\n{output}'
+                   if ok else output)
+        return JsonResponse({'ok': ok, 'output': summary, 'changed': ok})
     except Exception as exc:
         return JsonResponse({'ok': False, 'output': str(exc), 'changed': False}, status=500)
 

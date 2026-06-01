@@ -721,7 +721,7 @@
                     type: 'scatter', mode: 'lines',
                     line: { color: UNIT_PALETTE[ui % UNIT_PALETTE.length], width: 1.3 },
                     name: degUnits.length === 1 ? 'Efficiency' : 'Unit ' + (ui + 1),
-                    hovertemplate: '%{y:.4f}%<extra>' + (degUnits.length === 1 ? 'Efficiency' : 'Unit ' + (ui + 1)) + '</extra>',
+                    hovertemplate: '%{y:.1f}%<extra>' + (degUnits.length === 1 ? 'Efficiency' : 'Unit ' + (ui + 1)) + '</extra>',
                 });
             });
         }
@@ -729,7 +729,7 @@
             Plotly.newPlot('chart-eff-' + idx, effTraces,
                 Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                           { title: '% of original', tickformat: '.4f' }),
+                           { title: '% of original', tickformat: '.1f' }),
                     xaxis: xaxisLayout('Hour'),
                     showlegend: effTraces.length > 1,
                 }), { responsive: true, displayModeBar: false, scrollZoom: true });
@@ -745,16 +745,24 @@
             ratingFrac = d.arBatteryRating.map(function(v) { return v / origRating; });
         }
         if (d.arSoc && d.arSoc.length) {
-            // arSoc is 0–1 fraction of *current* rated capacity;
-            // rescale by ratingFrac so it is bounded by the yellow capacity curve
+            // arSoc is 0–1 fraction of *current* (transient) rated capacity —
+            // push it first so it appears above the rescaled trace in the legend
+            socTraces.push({
+                x: xvals(d.arSoc, cumHours), y: d.arSoc,
+                type: 'scatter', mode: 'lines',
+                line: { color: '#5b8dd9', width: 1.2, dash: 'dot' },
+                name: 'SoC (fraction of current capacity)',
+                hovertemplate: '%{y:.4f}<extra>SoC (current capacity)</extra>',
+            });
+            // rescale by ratingFrac so it is expressed as a fraction of *original* capacity
             var socScaled = (ratingFrac && ratingFrac.length === d.arSoc.length)
                 ? d.arSoc.map(function(v, i) { return v * ratingFrac[i]; })
                 : d.arSoc;
             socTraces.push({
                 x: xvals(socScaled, cumHours), y: socScaled,
                 type: 'scatter', mode: 'lines',
-                line: { color: TEAL, width: 1.2 }, name: 'SoC (fraction of original)',
-                hovertemplate: '%{y:.4f}<extra>SoC</extra>',
+                line: { color: TEAL, width: 1.2 }, name: 'SoC (fraction of original capacity)',
+                hovertemplate: '%{y:.4f}<extra>SoC (original capacity)</extra>',
             });
         }
         if (ratingFrac) {
@@ -792,7 +800,7 @@
             }],
             Object.assign({}, LAYOUT_DEFAULTS, {
                 yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                       { title: '% units on', range: [0, 100] }),
+                       { title: '% units on', range: [-5, 105] }),
                 xaxis: xaxisLayout('Hour'),
             }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {

@@ -275,6 +275,14 @@ class ElectroCellPEM(models.Model):
             'arFaradayF1':      'Faraday F1 Points',
             'arFaradayF2':      'Faraday F2 Points',
         }
+        editable_groups = {
+            'Electro Cell': ['name'],
+            'Geometry & Grid': ['iNumCurrent', 'rA_cell', 'rI_rated'],
+            'Temperature': ['rT_0', 'rT'],
+            'PEM Voltage': ['rE_min0', 'rR_0', 'rD_rt'],
+            'Nominals': ['rV_cellNom', 'rV_bank', 'rI_bank'],
+            'Faraday Efficiency': ['rF1', 'rF2', 'arFaradayTemp_C', 'arFaradayF1', 'arFaradayF2'],
+        }
 
 
 ### -------------------- ELECTROLYSER UNIT MODEL -------------------- ####
@@ -366,6 +374,12 @@ class ElectrolyserUnit(models.Model):
             'rDegradationSteadyTotal':   'Deg Steady Total',
             'rDegradationFatigueTotal':  'Deg Fatigue Total',
         }
+        editable_groups = {
+            'Electrolyser Unit': ['name'],
+            'Topology': ['iN_stacks', 'iN_banks', 'iNumElectro', 'iN_cell', 'iControlLevel'],
+            'Dynamics': ['rTimeConst', 'rDegradation', 'rTurnDownRatio', 'r_s', 'r_f', 'r_o', 'rAncilliaryPowerFrac', 'rDeadBandRatio'],
+            'Ramp Limits': ['rRampUp_W_s', 'rRampDown_W_s'],
+        }
 
 ### -------------------- THERMAL PROPERTIES MODEL -------------------- ####
 
@@ -390,6 +404,10 @@ class ThermalProperties(models.Model):
             'rTauCooling':   'Cooling Time Const (s)',
             'rTargetTemp':   'Target Temp (°C)',
             'rMinTemp':      'Min Temp (°C)',
+        }
+        editable_groups = {
+            'Thermal Properties': ['name'],
+            'Temperature Settings': ['rAmbientTemp', 'rTauHeating', 'rTauCooling', 'rTargetTemp', 'rMinTemp'],
         }
 
 ### --------------------- TIME OUTPUT MODEL -------------------- ####

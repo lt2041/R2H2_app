@@ -339,11 +339,12 @@
                                           style="width:100%; border:1px solid #b2e0e4; border-radius:4px;
                                                  padding:0.3rem 0.5rem; font-family:'Ubuntu Mono',monospace;
                                                  font-size:0.82rem; color:#1a2e30; resize:vertical;
-                                                 box-sizing:border-box;">{{ f.default|default:'' }}</textarea>
+                                                 box-sizing:border-box;">{{ f.default|fmt_float }}</textarea>
                             {% else %}
-                                <input type="{{ f.ftype }}" name="{{ f.name }}"
-                                       value="{{ f.default|default:'' }}"
-                                       step="any"
+                                <input type="{% if f.ftype == 'number' %}text{% else %}{{ f.ftype }}{% endif %}"
+                                       name="{{ f.name }}"
+                                       value="{{ f.default|fmt_float }}"
+                                       {% if f.ftype == 'number' %}inputmode="decimal"{% endif %}
                                        style="width:100%; border:1px solid #b2e0e4; border-radius:4px;
                                               padding:0.3rem 0.5rem; font-family:'Ubuntu Mono',monospace;
                                               font-size:0.82rem; color:#1a2e30; background:#f4fafb;
@@ -608,6 +609,28 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    function fmtVal(val, ftype) {
+        // Mirror Python ':,g': thousand commas for normal-range numbers,
+        // scientific notation for very small/large, strip trailing zeros.
+        if (ftype === 'number' && val !== '' && val !== null && val !== undefined) {
+            const n = parseFloat(val);
+            if (!isNaN(n)) {
+                const abs = Math.abs(n);
+                if (n === 0) return '0';
+                // Scientific range: use toPrecision(6) which gives e.g. 4.14e-10
+                if (abs !== 0 && (abs < 1e-4 || abs >= 1e7)) {
+                    return parseFloat(n.toPrecision(6)).toString();
+                }
+                // Normal range: strip trailing zeros then add thousand commas
+                const stripped = parseFloat(n.toPrecision(10)).toString();
+                const parts = stripped.split('.');
+                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                return parts.join('.');
+            }
+        }
+        return (val !== null && val !== undefined) ? String(val) : '';
+    }
+
     function _buildFieldRow(f, val) {
         let input = '';
         val = (val !== undefined && val !== null) ? val : '';
@@ -631,7 +654,9 @@ document.addEventListener('DOMContentLoaded', function() {
                       + 'font-size:0.82rem;color:#1a2e30;resize:vertical;box-sizing:border-box;">'
                       + val + '</textarea>';
             } else {
-                input = '<input type="' + f.ftype + '" name="' + f.name + '" value="' + val + '" step="any"'
+                const itype = f.ftype === 'number' ? 'text' : f.ftype;
+                const imode = f.ftype === 'number' ? ' inputmode="decimal"' : '';
+                input = '<input type="' + itype + '" name="' + f.name + '" value="' + fmtVal(val, f.ftype) + '"' + imode
                       + ' style="width:100%;border:1px solid #b2e0e4;border-radius:4px;'
                       + 'padding:0.3rem 0.5rem;font-family:\'Ubuntu Mono\',monospace;'
                       + 'font-size:0.82rem;color:#1a2e30;background:#f4fafb;'
@@ -692,7 +717,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function openEditModal(pk) {
         _editPk = pk;
         _linkedSims = [];
-        editTitle.textContent = 'Edit {{ ui_nice_name }} #' + pk;
+        editTitle.textContent = 'Edit {{ ui_verbose_name }} #' + pk;
         editBody.innerHTML = '<p style="color:#4a7a80;font-size:0.85rem;">Loading\u2026</p>';
         linkedSimsBar.style.display = 'none';
         copyChoicePanel.style.display = 'none';

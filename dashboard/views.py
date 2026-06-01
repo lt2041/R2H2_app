@@ -1397,12 +1397,12 @@ def add_component(request, table_name):
                 kwargs[f.name] = (raw.lower() in ('on', 'true', '1', 'yes'))
             elif isinstance(f, (dm.FloatField, dm.DecimalField)):
                 try:
-                    kwargs[f.name] = float(raw)
+                    kwargs[f.name] = float(raw.replace(',', ''))
                 except ValueError:
                     pass
             elif isinstance(f, (dm.IntegerField, dm.PositiveIntegerField)):
                 try:
-                    kwargs[f.name] = int(raw)
+                    kwargs[f.name] = int(raw.replace(',', ''))
                 except ValueError:
                     pass
             else:
@@ -1490,12 +1490,12 @@ def edit_component(request, table_name, pk):
                 setattr(target, f.name, raw.lower() in ('on', 'true', '1', 'yes'))
             elif isinstance(f, (dm.FloatField, dm.DecimalField)):
                 try:
-                    setattr(target, f.name, float(raw))
+                    setattr(target, f.name, float(raw.replace(',', '')))
                 except ValueError:
                     pass
             elif isinstance(f, (dm.IntegerField, dm.PositiveIntegerField)):
                 try:
-                    setattr(target, f.name, int(raw))
+                    setattr(target, f.name, int(raw.replace(',', '')))
                 except ValueError:
                     pass
             else:
@@ -1577,6 +1577,7 @@ def browse(request, table_name=None):
     )
     ui_nice_name = getattr(metainfo, 'verbose_name_plural',
                    getattr(metainfo, 'ui_nice_name', table_name.replace('_', ' ')))
+    ui_verbose_name = getattr(metainfo, 'verbose_name', ui_nice_name)
 
     if ui_column_names:
         columns = list(ui_column_names.keys())    # field names for data lookup
@@ -1639,12 +1640,9 @@ def browse(request, table_name=None):
                     _group_col_fields[_gname].append((_fname, _label))
                     _all_grouped_fnames.add(_fname)
 
-        # Columns: name first (always), then one per group
+        # Columns: one per group only (name shown via edit/delete buttons, not as a column)
         columns = []
         headers = []
-        if 'name' in _all_field_map:
-            columns.append('name')
-            headers.append(_ui_labels.get('name', 'Name'))
         for _gname in _editable_groups:
             columns.append(_gname)
             headers.append(_gname.replace('_', ' '))
@@ -1703,6 +1701,7 @@ def browse(request, table_name=None):
         'group_column_names': list(group_column_names),
         'total_count': model_class.objects.count(),
         'ui_nice_name': ui_nice_name,
+        'ui_verbose_name': ui_verbose_name,
         'table_name': table_name,
         'modal_fields': [f for f in _modal_fields if f.get('group')] if _editable_groups else _modal_fields,
         'modal_fields_json': json.dumps([f for f in _modal_fields if f.get('group')] if _editable_groups else _modal_fields),

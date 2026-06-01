@@ -106,7 +106,7 @@ class Battery(models.Model):
     rSoCRef = models.FloatField(default=0.5, help_text="SoC Ref")
     arInitialSoC = models.FloatField(default=0.5, help_text="Initial SoC")
     # DEGRADATION
-    rKt_lc = models.FloatField(default=4.14e-10, help_text="Elapsed time degradation factor (1/s)")
+    fKt = models.FloatField(default=4.14e-10, help_text="Elapsed time degradation factor (1/s)")
     rKs = models.FloatField(default=1.04, help_text="State of charge degradation factor")
     KTemp = models.FloatField(default=6.93e-2, help_text="Temperature degradation factor (°C)")
     rKd1 = models.FloatField(default=1.4e5, help_text="Depth of discharge degradation factor 1")
@@ -144,7 +144,7 @@ class Battery(models.Model):
         verbose_name_plural = 'Batteries'
         ui_display_fields = {
             'name':                      'Name',
-            'rKt_lc':                    'Kt lc',
+            'fKt':                        'Kt lc',
             'rKs':                       'Ks',
             'KTemp':                     'KTemp',
             'rAlphaSei':                 'Alpha SEI',
@@ -175,16 +175,17 @@ class Battery(models.Model):
             'arBatteryDemand':           'Battery Demand',
         }
         editable_groups = {
+            'Battery': ['name'],
             'General': [
                 'rBatteryMWh',
                 'rControlMinSoC',
-                'rBatteryProportionalGain'
+                'rBatteryProportionalGain',
                 'rTcRef',
-                'rSoCRef'
-                'rFt'
+                'rSoCRef',
+                'arInitialSoC',
             ],
             'Degradation': [
-                'rKt_lc',
+                'fKt',
                 'rKs',
                 'KTemp',
                 'rKd1',

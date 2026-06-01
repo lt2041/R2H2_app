@@ -44,7 +44,7 @@ MODEL_MAP = {
 # Only entries where they differ are listed.
 FIELD_REMAP = {
     Battery: {
-        "rKt":  "rKt_lc",   # Battery YAML uses rKt; model uses rKt_lc
+        "rKt":  "fKt",      # Battery YAML uses rKt; model field is fKt
         "rKT":  "KTemp",    # Battery YAML uses rKT; model uses KTemp
     },
 }

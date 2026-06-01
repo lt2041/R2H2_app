@@ -22,3 +22,20 @@ def zip(a, b):
     """Zip two iterables together for parallel iteration in templates."""
     import builtins
     return builtins.zip(a, b)
+
+
+@register.filter
+def fmt_float(value):
+    """Format a number for display in form inputs.
+    Uses Python ':,g' which:
+    - applies thousand-comma separators for numbers in normal range (e.g. 96,485)
+    - auto-switches to scientific notation for very small/large values (e.g. 4.14e-10)
+    - strips trailing zeros (e.g. 15.0 → 15, 0.50 → 0.5)
+    Non-numeric values are returned unchanged; None returns ''."""
+    if value is None:
+        return ''
+    try:
+        f = float(value)
+        return f'{f:,g}'
+    except (TypeError, ValueError):
+        return value

@@ -1662,8 +1662,10 @@ def browse(request, table_name=None):
                             _fval = f'{float(_val):.4g}'
                         except (TypeError, ValueError):
                             _fval = str(_val)
+                        _help = getattr(_all_field_map.get(_fname), 'help_text', '') or ''
+                        _title = f'{_flabel}: {_help}' if _help else _flabel
                         _badges.append(
-                            f'<span class="param-badge">'
+                            f'<span class="param-badge" title="{_title}">'
                             f'<span class="param-badge-name">{_flabel}</span>'
                             f'<span class="param-badge-val">{_fval}</span>'
                             f'</span>'

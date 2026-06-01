@@ -144,7 +144,7 @@ class Battery(models.Model):
         verbose_name_plural = 'Batteries'
         ui_display_fields = {
             'name':                      'Name',
-            'fKt':                        'Kt lc',
+            'fKt':                        'Kt',
             'rKs':                       'Ks',
             'KTemp':                     'KTemp',
             'rAlphaSei':                 'Alpha SEI',

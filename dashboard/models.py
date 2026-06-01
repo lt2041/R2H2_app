@@ -118,7 +118,7 @@ class Battery(models.Model):
     # HIDDEN
     rFt = models.FloatField(default=0.0, help_text="Fatigue on battery due to temperature")                 # Found-by-code: should be nullable or removed
     rFc = models.FloatField(default=0.0, help_text="Fatigue on battery due to cycles")                      # Found-by-code: should be nullable or removed
-    rInitialBatteryRating = models.FloatField(default=0.0, help_text="Initial size of the Battery (MW)")    # Found-by-code: should be nullable or removed
+    rInitialBatteryRating = models.FloatField(default=0.0, help_text="Initial rated energy capacity of the battery (J)")    # Found-by-code: should be nullable or removed
     rRCD = models.FloatField(default=1.0, help_text="Rated energy capacity (J)")
     iNumReplacements = models.PositiveIntegerField(default=0, help_text="Number of times the battery has been replaced")
     aiReplacementHour = models.JSONField(default=None, blank=True, null=True, help_text="Vector of the hours at which the battery was replaced (H)")
@@ -131,7 +131,7 @@ class Battery(models.Model):
     arSoC = models.JSONField(default=None, blank=True, null=True, help_text="State of Charge of Battery")
     arDoD = models.JSONField(default=None, blank=True, null=True, help_text="Depth of Discharge of Battery")
     # OBSOLETE?
-    rBatteryRating = models.FloatField(default=0.0, help_text="Rating (MW)")
+    rBatteryRating = models.FloatField(default=0.0, help_text="Rated energy capacity (J)")
     # CONTROL
     arBatteryDemand = models.JSONField(default=None, blank=True, null=True)
 
@@ -158,8 +158,8 @@ class Battery(models.Model):
             'rFt':                       'Ft',
             'rFc':                       'Fc',
             'rBatteryMWh':               'Capacity (MWh)',
-            'rInitialBatteryRating':     'Initial Rating (MW)',
-            'rBatteryRating':            'Rating (MW)',
+            'rInitialBatteryRating':     'Initial Rating (J)',
+            'rBatteryRating':            'Rating (J)',
             'rRCD':                      'RCD',
             'rControlMinSoC':            'Ctrl Min SoC',
             'rBatteryProportionalGain':  'Batt. Prop. Gain',

@@ -600,9 +600,18 @@ def _save_run_outputs(run, results: dict) -> str:
                                         compression='gzip', compression_opts=4)
             deg = log.get('arHourlyDegradation')
             if deg is not None:
+                # Store as 2-D [n_units, n_hours]; squeeze to 1-D if single unit
                 elec.create_dataset('arHourlyDegradation',
                                     data=np.asarray(deg, dtype=np.float64),
                                     compression='gzip', compression_opts=4)
+
+            # Power time-series
+            pwr = grp.create_group('power')
+            for key in ('arWindPowerFilt', 'arAvailablePower', 'arTotalElectroDemand'):
+                arr = log.get(key)
+                if arr is not None:
+                    pwr.create_dataset(key, data=np.asarray(arr, dtype=np.float64),
+                                       compression='gzip', compression_opts=4)
 
             # H2 production
             h2 = grp.create_group('h2')
@@ -894,12 +903,28 @@ def view_run_results(request, sim_id, run_id):
                 ydata['arElecOnAv'] = arr.tolist()
             if 'arHourlyDegradation' in elec:
                 deg = elec['arHourlyDegradation'][:]
-                # Sum across units → 1-D
-                if deg.ndim == 2:
-                    deg = deg.mean(axis=0)
-                if len(deg) > 8760:
-                    deg = deg[:8760]
-                ydata['arHourlyDegradation'] = deg.tolist()
+                if deg.ndim == 1:
+                    # Single unit — wrap in outer list
+                    units = [deg[:8760].tolist()]
+                else:
+                    # 2-D [n_units, n_hours]
+                    units = [deg[u, :8760].tolist() for u in range(deg.shape[0])]
+                ydata['arDegradationPerUnit'] = units
+
+            # Power traces
+            pwr_grp = yr_grp.get('power', {})
+            for key, out_key in (
+                ('arWindPowerFilt',      'arWindPower'),
+                ('arAvailablePower',     'arAvailablePower'),
+                ('arTotalElectroDemand', 'arElectroPower'),
+            ):
+                if key in pwr_grp:
+                    arr = pwr_grp[key][:]
+                    if arr.ndim > 1:
+                        arr = arr.mean(axis=0)
+                    if len(arr) > 8760:
+                        arr = arr[:8760]
+                    ydata[out_key] = arr.tolist()
 
             # H2
             h2g = yr_grp.get('h2', {})

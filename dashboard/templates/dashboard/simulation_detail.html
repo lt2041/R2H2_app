@@ -1,4 +1,5 @@
 {% extends "dashboard/base.html" %}
+{% load browse_extras %}
 {% block title %}{{ sim.name }}{% endblock %}
 
 {% block extrahead %}
@@ -1145,7 +1146,7 @@
                     {% elif s.value is None %}
                         <span style="color:#b2e0e4;">—</span>
                     {% else %}
-                        {{ s.value }}{% if s.unit %} <span style="color:#b2e0e4;font-size:0.75rem;">{{ s.unit }}</span>{% endif %}
+                        {{ s.value|fmt_float }}{% if s.unit %} <span style="color:#b2e0e4;font-size:0.75rem;">{{ s.unit }}</span>{% endif %}
                     {% endif %}
                 </td>
                 {% endfor %}
@@ -1499,7 +1500,7 @@
                         <tr>
                             {% for field in row %}
                             <td class="{% if forloop.first %}st-name{% else %}st-name-r{% endif %}">{{ field.name }}</td>
-                            <td class="{% if forloop.last %}st-val-last{% else %}st-val{% endif %}">{% if field.value is None %}<span style="color:#b2e0e4;">—</span>{% else %}{{ field.value }}{% endif %}</td>
+                            <td class="{% if forloop.last %}st-val-last{% else %}st-val{% endif %}">{% if field.value is None %}<span style="color:#b2e0e4;">—</span>{% else %}{{ field.value|fmt_float }}{% endif %}</td>
                             {% endfor %}
                             {% if row|length == 1 %}<td></td><td></td>{% endif %}
                         </tr>

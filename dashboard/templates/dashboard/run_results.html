@@ -328,21 +328,10 @@
         <!-- Summary stats (filled by JS) -->
         <div class="summary-row" id="summary-row-{{ i }}"></div>
 
-        <!-- Charts grid -->
+        <!-- Charts grid: 2 columns × 3 rows -->
         <div class="charts-grid" style="margin-top:1rem;">
 
-            <!-- Battery SOC -->
-            <div class="chart-card">
-                <div class="chart-card-header">
-                    <span class="material-symbols-outlined">battery_charging_full</span>
-                    Battery State of Charge
-                </div>
-                <div class="chart-body">
-                    <div id="chart-soc-{{ i }}" style="height:280px;"></div>
-                </div>
-            </div>
-
-            <!-- H2 Production -->
+            <!-- Row 1, Col 1: H2 Production -->
             <div class="chart-card">
                 <div class="chart-card-header">
                     <span class="material-symbols-outlined">science</span>
@@ -353,33 +342,55 @@
                 </div>
             </div>
 
-            <!-- Electrolyser availability -->
+            <!-- Row 1, Col 2: Electrolyser efficiency -->
             <div class="chart-card">
                 <div class="chart-card-header">
                     <span class="material-symbols-outlined">developer_board</span>
-                    Electrolyser Availability
+                    Electrolyser Peak Efficiency (% of original)
+                </div>
+                <div class="chart-body">
+                    <div id="chart-eff-{{ i }}" style="height:280px;"></div>
+                </div>
+            </div>
+
+            <!-- Row 2, Col 1: Normalised SOC + rated capacity -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <span class="material-symbols-outlined">battery_charging_full</span>
+                    Battery SoC &amp; Rated Capacity (fraction of original)
+                </div>
+                <div class="chart-body">
+                    <div id="chart-soc-{{ i }}" style="height:280px;"></div>
+                </div>
+            </div>
+
+            <!-- Row 2, Col 2: % electrolysers switched on -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <span class="material-symbols-outlined">power</span>
+                    Electrolysers Switched On (%)
                 </div>
                 <div class="chart-body">
                     <div id="chart-elec-{{ i }}" style="height:280px;"></div>
                 </div>
             </div>
 
-            <!-- Battery Rating / RCD -->
+            <!-- Row 3, Col 1: Power traces -->
             <div class="chart-card">
                 <div class="chart-card-header">
                     <span class="material-symbols-outlined">electric_bolt</span>
-                    Battery Power (RCD) &amp; Rating
+                    Power — Wind, Electrolyser &amp; Battery
                 </div>
                 <div class="chart-body">
-                    <div id="chart-rcd-{{ i }}" style="height:280px;"></div>
+                    <div id="chart-power-{{ i }}" style="height:280px;"></div>
                 </div>
             </div>
 
-            <!-- Wind speed -->
+            <!-- Row 3, Col 2: Wind speed -->
             <div class="chart-card">
                 <div class="chart-card-header">
                     <span class="material-symbols-outlined">air</span>
-                    1hr Average Site Wind Speed
+                    Wind Speed (1 hr average)
                 </div>
                 <div class="chart-body">
                     <div id="chart-wind-{{ i }}" style="height:280px;"></div>
@@ -622,11 +633,15 @@
         dragmode: 'zoom',
     };
 
-    var TEAL  = '#22a6b3';
-    var TEAL2 = '#136b75';
-    var AMBER = '#f0a500';
-    var GREEN = '#27ae60';
-    var GREY  = '#95a5a6';
+    var TEAL   = '#22a6b3';
+    var TEAL2  = '#136b75';
+    var AMBER  = '#f0a500';
+    var GREEN  = '#27ae60';
+    var GREY   = '#95a5a6';
+    var PURPLE = '#8e44ad';
+    var ORANGE = '#e67e22';
+    // Palette for multi-unit traces
+    var UNIT_PALETTE = ['#22a6b3','#136b75','#f0a500','#27ae60','#8e44ad','#e67e22','#c0392b','#2980b9'];
 
     // Build x-axis values: datetime ISO strings or hour indices
     function xvals(arr, cumHours) {
@@ -670,47 +685,21 @@
 
         var cumHours = yearCumulativeHours[idx] || 0;
 
-        // ── SOC chart ────────────────────────────────────────────────────
-        var socTraces = [];
-        if (d.arSocMax && d.arSocMin) {
-            var xfwd = xvals(d.arSocMax, cumHours);
-            var xrev = xvals(d.arSocMin, cumHours).slice().reverse();
-            socTraces.push({
-                x: xfwd.concat(xrev),
-                y: d.arSocMax.concat(d.arSocMin.slice().reverse()),
-                fill: 'toself', fillcolor: 'rgba(34,166,179,0.10)',
-                line: { color: 'transparent' }, type: 'scatter', mode: 'none',
-                name: 'SoC range', hoverinfo: 'skip', showlegend: true,
-            });
-        }
-        if (d.arSoc) {
-            socTraces.push({ x: xvals(d.arSoc, cumHours), y: d.arSoc,
-                type: 'scatter', mode: 'lines', line: { color: TEAL, width: 1.2 }, name: 'SoC' });
-        }
-        if (d.arSocAv) {
-            socTraces.push({ x: xvals(d.arSocAv, cumHours), y: d.arSocAv,
-                type: 'scatter', mode: 'lines',
-                line: { color: TEAL2, width: 1.5, dash: 'dot' }, name: 'SoC avg' });
-        }
-        if (socTraces.length) {
-            Plotly.newPlot('chart-soc-' + idx, socTraces,
-                Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'SoC (MWh)', tickformat: '.2f' }),
-                    xaxis: xaxisLayout('Hour'),
-                }), { responsive: true, displayModeBar: false, scrollZoom: true });
-        } else {
-            document.getElementById('chart-soc-' + idx).innerHTML =
-                '<div class="no-data-notice">No battery SoC data.</div>';
+        // Original battery rating = first value of year 0 arBatteryRating
+        var origRating = null;
+        if (yearsData[0] && yearsData[0].arBatteryRating && yearsData[0].arBatteryRating.length) {
+            origRating = yearsData[0].arBatteryRating[0];
         }
 
-        // ── H2 chart ─────────────────────────────────────────────────────
+        // ── Chart 1: H₂ Production (cumulative) ──────────────────────────
         if (d.arTotalH2 && d.arTotalH2.length) {
             Plotly.newPlot('chart-h2-' + idx, [{
                 x: xvals(d.arTotalH2, cumHours), y: d.arTotalH2,
                 type: 'scatter', mode: 'lines', fill: 'tozeroy',
                 fillcolor: 'rgba(39,174,96,0.10)',
                 line: { color: GREEN, width: 1.5 },
-                name: 'Cumulative H₂ (kg)',
+                name: 'Cumulative H₂',
+                hovertemplate: '%{y:.0f} kg<extra></extra>',
             }],
             Object.assign({}, LAYOUT_DEFAULTS, {
                 yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'kg H₂' }),
@@ -721,59 +710,140 @@
                 '<div class="no-data-notice">No H₂ production data.</div>';
         }
 
-        // ── Electrolyser chart ────────────────────────────────────────────
-        var elecTraces = [];
-        if (d.arElecOnAv) {
-            elecTraces.push({ x: xvals(d.arElecOnAv, cumHours), y: d.arElecOnAv,
-                type: 'scatter', mode: 'lines',
-                line: { color: AMBER, width: 1.2 }, name: 'Elec. availability' });
+        // ── Chart 2: Electrolyser peak efficiency % of original ───────────
+        var effTraces = [];
+        var degUnits = d.arDegradationPerUnit;   // [[unit0], [unit1], ...]
+        if (degUnits && degUnits.length) {
+            degUnits.forEach(function(unitDeg, ui) {
+                var effPct = unitDeg.map(function(v) { return (1 - v) * 100; });
+                effTraces.push({
+                    x: xvals(effPct, cumHours), y: effPct,
+                    type: 'scatter', mode: 'lines',
+                    line: { color: UNIT_PALETTE[ui % UNIT_PALETTE.length], width: 1.3 },
+                    name: degUnits.length === 1 ? 'Efficiency' : 'Unit ' + (ui + 1),
+                    hovertemplate: '%{y:.4f}%<extra>' + (degUnits.length === 1 ? 'Efficiency' : 'Unit ' + (ui + 1)) + '</extra>',
+                });
+            });
         }
-        if (d.arHourlyDegradation) {
-            elecTraces.push({ x: xvals(d.arHourlyDegradation, cumHours), y: d.arHourlyDegradation,
-                type: 'scatter', mode: 'lines',
-                line: { color: GREY, width: 1, dash: 'dot' }, name: 'Degradation (avg)' });
-        }
-        if (elecTraces.length) {
-            Plotly.newPlot('chart-elec-' + idx, elecTraces,
+        if (effTraces.length) {
+            Plotly.newPlot('chart-eff-' + idx, effTraces,
                 Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Fraction', range: [0, 1.05] }),
+                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
+                           { title: '% of original', tickformat: '.4f' }),
                     xaxis: xaxisLayout('Hour'),
+                    showlegend: effTraces.length > 1,
                 }), { responsive: true, displayModeBar: false, scrollZoom: true });
+        } else {
+            document.getElementById('chart-eff-' + idx).innerHTML =
+                '<div class="no-data-notice">No electrolyser degradation data.</div>';
+        }
+
+        // ── Chart 3: Normalised SoC + rated capacity (fraction of original) ─
+        var socTraces = [];
+        if (d.arSoc && origRating && origRating > 0) {
+            var socFrac = d.arSoc.map(function(v) { return v / origRating; });
+            socTraces.push({
+                x: xvals(socFrac, cumHours), y: socFrac,
+                type: 'scatter', mode: 'lines',
+                line: { color: TEAL, width: 1.2 }, name: 'SoC / original rating',
+                hovertemplate: '%{y:.4f}<extra>SoC fraction</extra>',
+            });
+        } else if (d.arSoc) {
+            socTraces.push({
+                x: xvals(d.arSoc, cumHours), y: d.arSoc,
+                type: 'scatter', mode: 'lines',
+                line: { color: TEAL, width: 1.2 }, name: 'SoC (MWh)',
+            });
+        }
+        if (d.arBatteryRating && origRating && origRating > 0) {
+            var ratingFrac = d.arBatteryRating.map(function(v) { return v / origRating; });
+            socTraces.push({
+                x: xvals(ratingFrac, cumHours), y: ratingFrac,
+                type: 'scatter', mode: 'lines',
+                line: { color: AMBER, width: 1.4, dash: 'dash' }, name: 'Rated capacity / original',
+                hovertemplate: '%{y:.4f}<extra>Rated capacity fraction</extra>',
+            });
+        }
+        if (socTraces.length) {
+            Plotly.newPlot('chart-soc-' + idx, socTraces,
+                Object.assign({}, LAYOUT_DEFAULTS, {
+                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
+                           { title: 'Fraction of original', tickformat: '.4f' }),
+                    xaxis: xaxisLayout('Hour'),
+                    showlegend: true,
+                }), { responsive: true, displayModeBar: false, scrollZoom: true });
+        } else {
+            document.getElementById('chart-soc-' + idx).innerHTML =
+                '<div class="no-data-notice">No battery SoC data.</div>';
+        }
+
+        // ── Chart 4: Mean % electrolysers switched on ─────────────────────
+        if (d.arElecOnAv && d.arElecOnAv.length) {
+            var onPct = d.arElecOnAv.map(function(v) { return v * 100; });
+            Plotly.newPlot('chart-elec-' + idx, [{
+                x: xvals(onPct, cumHours), y: onPct,
+                type: 'scatter', mode: 'lines',
+                line: { color: AMBER, width: 1.2 }, fill: 'tozeroy',
+                fillcolor: 'rgba(240,165,0,0.08)',
+                name: '% units on',
+                hovertemplate: '%{y:.1f}%<extra></extra>',
+            }],
+            Object.assign({}, LAYOUT_DEFAULTS, {
+                yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
+                       { title: '% units on', range: [0, 105] }),
+                xaxis: xaxisLayout('Hour'),
+            }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-elec-' + idx).innerHTML =
-                '<div class="no-data-notice">No electrolyser data.</div>';
+                '<div class="no-data-notice">No electrolyser availability data.</div>';
         }
 
-        // ── RCD / Battery rating chart ────────────────────────────────────
-        var rcdTraces = [];
-        if (d.arRCD) {
-            rcdTraces.push({ x: xvals(d.arRCD, cumHours), y: d.arRCD,
+        // ── Chart 5: Power — wind, electrolyser, battery ──────────────────
+        var pwrTraces = [];
+        if (d.arWindPower && d.arWindPower.length) {
+            pwrTraces.push({
+                x: xvals(d.arWindPower, cumHours), y: d.arWindPower,
                 type: 'scatter', mode: 'lines',
-                line: { color: TEAL, width: 1.2 }, name: 'RCD' });
+                line: { color: '#7ecbcf', width: 1.2 }, name: 'Wind power',
+                hovertemplate: '%{y:.3s}W<extra>Wind</extra>',
+            });
         }
-        if (d.arBatteryRating) {
-            rcdTraces.push({ x: xvals(d.arBatteryRating, cumHours), y: d.arBatteryRating,
+        if (d.arElectroPower && d.arElectroPower.length) {
+            pwrTraces.push({
+                x: xvals(d.arElectroPower, cumHours), y: d.arElectroPower,
                 type: 'scatter', mode: 'lines',
-                line: { color: TEAL2, width: 1.2, dash: 'dash' }, name: 'Battery rating' });
+                line: { color: AMBER, width: 1.2 }, name: 'Electrolyser power',
+                hovertemplate: '%{y:.3s}W<extra>Electrolyser</extra>',
+            });
         }
-        if (rcdTraces.length) {
-            Plotly.newPlot('chart-rcd-' + idx, rcdTraces,
+        if (d.arRCD && d.arRCD.length) {
+            pwrTraces.push({
+                x: xvals(d.arRCD, cumHours), y: d.arRCD,
+                type: 'scatter', mode: 'lines',
+                line: { color: TEAL2, width: 1.2 }, name: 'Battery power (RCD)',
+                hovertemplate: '%{y:.3s}W<extra>Battery</extra>',
+            });
+        }
+        if (pwrTraces.length) {
+            Plotly.newPlot('chart-power-' + idx, pwrTraces,
                 Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Power (MW)' }),
+                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Power (W)' }),
                     xaxis: xaxisLayout('Hour'),
+                    showlegend: true,
                 }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
-            document.getElementById('chart-rcd-' + idx).innerHTML =
-                '<div class="no-data-notice">No RCD / battery rating data.</div>';
+            document.getElementById('chart-power-' + idx).innerHTML =
+                '<div class="no-data-notice">No power data available.</div>';
         }
 
-        // ── Wind speed chart ──────────────────────────────────────────────
+        // ── Chart 6: Wind speed ───────────────────────────────────────────
         if (d.arWindSpeed && d.arWindSpeed.length) {
             Plotly.newPlot('chart-wind-' + idx, [{
                 x: xvals(d.arWindSpeed, cumHours), y: d.arWindSpeed,
                 type: 'scatter', mode: 'lines',
                 line: { color: '#7ecbcf', width: 1 },
-                name: 'Wind speed (m/s)',
+                name: 'Wind speed',
+                hovertemplate: '%{y:.2f} m/s<extra></extra>',
             }],
             Object.assign({}, LAYOUT_DEFAULTS, {
                 yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'm/s' }),
@@ -786,18 +856,25 @@
 
         // ── Summary stats ─────────────────────────────────────────────────
         var stats = [];
-        if (d.arSoc && d.arSoc.length) {
-            stats.push({ v: fmtNum(Math.max.apply(null, d.arSoc), 2), label: 'Peak SoC (MWh)' });
-            stats.push({ v: fmtNum(Math.min.apply(null, d.arSoc), 2), label: 'Min SoC (MWh)' });
-        }
         if (d.arTotalH2 && d.arTotalH2.length) {
             stats.push({ v: fmtH2(d.arTotalH2[d.arTotalH2.length - 1]),
                          label: 'Total H₂ produced' });
         }
+        if (d.arDegradationPerUnit && d.arDegradationPerUnit.length) {
+            var finalDeg = d.arDegradationPerUnit.map(function(u) { return u[u.length - 1]; });
+            var meanFinalDeg = finalDeg.reduce(function(a, b) { return a + b; }, 0) / finalDeg.length;
+            stats.push({ v: fmtNum((1 - meanFinalDeg) * 100, 3) + '%',
+                         label: 'Mean end-of-year efficiency' });
+        }
+        if (d.arBatteryRating && origRating && origRating > 0 && d.arBatteryRating.length) {
+            var lastRating = d.arBatteryRating[d.arBatteryRating.length - 1];
+            stats.push({ v: fmtNum(lastRating / origRating * 100, 2) + '%',
+                         label: 'End-of-year rated capacity' });
+        }
         if (d.arElecOnAv && d.arElecOnAv.length) {
             var sum = d.arElecOnAv.reduce(function(a, b) { return a + b; }, 0);
             stats.push({ v: fmtNum(sum / d.arElecOnAv.length * 100, 1) + '%',
-                         label: 'Avg electrolyser availability' });
+                         label: 'Avg electrolysers on' });
         }
         var row = document.getElementById('summary-row-' + idx);
         if (row) {
@@ -811,7 +888,7 @@
     }
 
     // ── Linked x-axis zoom ────────────────────────────────────────────────
-    var CHART_PREFIXES = ['chart-soc-', 'chart-h2-', 'chart-elec-', 'chart-rcd-', 'chart-wind-'];
+    var CHART_PREFIXES = ['chart-h2-', 'chart-eff-', 'chart-soc-', 'chart-elec-', 'chart-power-', 'chart-wind-'];
     var _syncPending = 0;  // counts in-flight programmatic relayouts
 
     function linkXaxes(idx) {
@@ -845,7 +922,7 @@
 
     // Clear and re-render all previously rendered year panels
     function reRenderAll() {
-        var chartIds = ['chart-soc-', 'chart-h2-', 'chart-elec-', 'chart-rcd-', 'chart-wind-'];
+        var chartIds = ['chart-h2-', 'chart-eff-', 'chart-soc-', 'chart-elec-', 'chart-power-', 'chart-wind-'];
         Object.keys(renderedYears).forEach(function(idx) {
             chartIds.forEach(function(prefix) {
                 var el = document.getElementById(prefix + idx);

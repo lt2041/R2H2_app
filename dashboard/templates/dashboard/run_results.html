@@ -357,7 +357,7 @@
             <div class="chart-card">
                 <div class="chart-card-header">
                     <span class="material-symbols-outlined">battery_charging_full</span>
-                    Battery SoC &amp; Rated Capacity (fraction of original)
+                    Battery SoC &amp; Rated Capacity (0–1 fraction)
                 </div>
                 <div class="chart-body">
                     <div id="chart-soc-{{ i }}" style="height:280px;"></div>
@@ -740,23 +740,24 @@
 
         // ── Chart 3: Normalised SoC + rated capacity (fraction of original) ─
         var socTraces = [];
-        if (d.arSoc && origRating && origRating > 0) {
-            var socFrac = d.arSoc.map(function(v) { return v / origRating; });
+        var ratingFrac = null;
+        if (d.arBatteryRating && origRating && origRating > 0) {
+            ratingFrac = d.arBatteryRating.map(function(v) { return v / origRating; });
+        }
+        if (d.arSoc && d.arSoc.length) {
+            // arSoc is 0–1 fraction of *current* rated capacity;
+            // rescale by ratingFrac so it is bounded by the yellow capacity curve
+            var socScaled = (ratingFrac && ratingFrac.length === d.arSoc.length)
+                ? d.arSoc.map(function(v, i) { return v * ratingFrac[i]; })
+                : d.arSoc;
             socTraces.push({
-                x: xvals(socFrac, cumHours), y: socFrac,
+                x: xvals(socScaled, cumHours), y: socScaled,
                 type: 'scatter', mode: 'lines',
-                line: { color: TEAL, width: 1.2 }, name: 'SoC / original rating',
-                hovertemplate: '%{y:.4f}<extra>SoC fraction</extra>',
-            });
-        } else if (d.arSoc) {
-            socTraces.push({
-                x: xvals(d.arSoc, cumHours), y: d.arSoc,
-                type: 'scatter', mode: 'lines',
-                line: { color: TEAL, width: 1.2 }, name: 'SoC (MWh)',
+                line: { color: TEAL, width: 1.2 }, name: 'SoC (fraction of original)',
+                hovertemplate: '%{y:.4f}<extra>SoC</extra>',
             });
         }
-        if (d.arBatteryRating && origRating && origRating > 0) {
-            var ratingFrac = d.arBatteryRating.map(function(v) { return v / origRating; });
+        if (ratingFrac) {
             socTraces.push({
                 x: xvals(ratingFrac, cumHours), y: ratingFrac,
                 type: 'scatter', mode: 'lines',
@@ -768,7 +769,7 @@
             Plotly.newPlot('chart-soc-' + idx, socTraces,
                 Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                           { title: 'Fraction of original', tickformat: '.4f' }),
+                           { title: 'Fraction (0–1)', tickformat: '.3f' }),
                     xaxis: xaxisLayout('Hour'),
                     showlegend: true,
                 }), { responsive: true, displayModeBar: false, scrollZoom: true });

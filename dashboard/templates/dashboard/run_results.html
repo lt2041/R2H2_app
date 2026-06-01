@@ -780,7 +780,8 @@
 
         // ── Chart 4: Mean % electrolysers switched on ─────────────────────
         if (d.arElecOnAv && d.arElecOnAv.length) {
-            var onPct = d.arElecOnAv.map(function(v) { return v * 100; });
+            var numUnits = d.iNumUnits || 1;
+            var onPct = d.arElecOnAv.map(function(v) { return v / numUnits * 100; });
             Plotly.newPlot('chart-elec-' + idx, [{
                 x: xvals(onPct, cumHours), y: onPct,
                 type: 'scatter', mode: 'lines',
@@ -791,7 +792,7 @@
             }],
             Object.assign({}, LAYOUT_DEFAULTS, {
                 yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                       { title: '% units on', range: [0, 105] }),
+                       { title: '% units on', range: [0, 100] }),
                 xaxis: xaxisLayout('Hour'),
             }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
@@ -865,16 +866,17 @@
             var finalDeg = d.arDegradationPerUnit.map(function(u) { return u[u.length - 1]; });
             var meanFinalDeg = finalDeg.reduce(function(a, b) { return a + b; }, 0) / finalDeg.length;
             stats.push({ v: fmtNum((1 - meanFinalDeg) * 100, 3) + '%',
-                         label: 'Mean end-of-year efficiency' });
+                         label: 'Mean end-of-simulation efficiency' });
         }
         if (d.arBatteryRating && origRating && origRating > 0 && d.arBatteryRating.length) {
             var lastRating = d.arBatteryRating[d.arBatteryRating.length - 1];
             stats.push({ v: fmtNum(lastRating / origRating * 100, 2) + '%',
-                         label: 'End-of-year rated capacity' });
+                         label: 'End-of-simulation rated capacity' });
         }
         if (d.arElecOnAv && d.arElecOnAv.length) {
+            var numUnits = d.iNumUnits || 1;
             var sum = d.arElecOnAv.reduce(function(a, b) { return a + b; }, 0);
-            stats.push({ v: fmtNum(sum / d.arElecOnAv.length * 100, 1) + '%',
+            stats.push({ v: fmtNum(sum / d.arElecOnAv.length / numUnits * 100, 1) + '%',
                          label: 'Avg electrolysers on' });
         }
         var row = document.getElementById('summary-row-' + idx);

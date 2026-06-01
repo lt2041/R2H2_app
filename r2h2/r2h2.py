@@ -1483,7 +1483,8 @@ class R2H2():
                 zLogOut["arSocAv"][h]          = battery.rSocAv
                 zLogOut["arRCD"][h]            = battery.rRCD
                 zLogOut["arBatteryRating"][h]  = battery.rBatteryRating
-                zLogOut["arElecOnAv"][h]       = float(np.nanmean(t_out.arTotalElectroOn))
+                _skip = int(settings.rTransientSteps)
+                zLogOut["arElecOnAv"][h]       = float(np.nanmean(t_out.arTotalElectroOn[_skip:]))
                 for i in range(units[0].iNumUnits):
                     zLogOut["arHourlyDegradation"][i, h] = units[i].rSummedDegradation
 

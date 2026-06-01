@@ -593,6 +593,9 @@ def _save_run_outputs(run, results: dict) -> str:
 
             # Electrolyser time-series
             elec = grp.create_group('electrolyser')
+            eu_list = yr.get('ElectrolyserUnit', [])
+            i_num_units = eu_list[0].iNumUnits if eu_list else 0
+            elec.attrs['iNumUnits'] = int(i_num_units)
             for key in ('arElecOnAv',):
                 arr = log.get(key)
                 if arr is not None:
@@ -901,6 +904,7 @@ def view_run_results(request, sim_id, run_id):
                 if len(arr) > 8760:
                     arr = arr[:8760]
                 ydata['arElecOnAv'] = arr.tolist()
+                ydata['iNumUnits'] = int(elec.attrs.get('iNumUnits', 0))
             if 'arHourlyDegradation' in elec:
                 deg = elec['arHourlyDegradation'][:]
                 if deg.ndim == 1:

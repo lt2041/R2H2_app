@@ -1442,6 +1442,9 @@ class R2H2():
                 "arBatteryRating":   np.zeros(num_hours),
                 "arElecOnAv":        np.zeros(num_hours),
                 "arHourlyDegradation": np.zeros((units[0].iNumUnits, num_hours)),
+                "arWindPowerFilt":        np.zeros(num_hours),
+                "arAvailablePower":       np.zeros(num_hours),
+                "arTotalElectroDemand":   np.zeros(num_hours),
             }
 
             # Lagged cooling predictor: use previous hour's cooling output as
@@ -1486,6 +1489,9 @@ class R2H2():
                 zLogOut["arBatteryRating"][h]  = battery.rBatteryRating
                 _skip = int(settings.rTransientSteps)
                 zLogOut["arElecOnAv"][h]       = float(np.nanmean(t_out.arTotalElectroOn[_skip:]))
+                zLogOut["arWindPowerFilt"][h]      = float(np.nanmean(t_out.arWindPowerFilt[_skip:]))
+                zLogOut["arAvailablePower"][h]     = float(np.nanmean(t_out.arAvailablePower[_skip:]))
+                zLogOut["arTotalElectroDemand"][h] = float(np.nanmean(t_out.arTotalElectroDemand[_skip:]))
                 for i in range(units[0].iNumUnits):
                     zLogOut["arHourlyDegradation"][i, h] = units[i].rSummedDegradation
 

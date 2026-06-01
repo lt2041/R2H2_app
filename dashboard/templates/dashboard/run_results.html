@@ -818,12 +818,14 @@
                 hovertemplate: '%{y:.3s}W<extra>Electrolyser</extra>',
             });
         }
-        if (d.arRCD && d.arRCD.length) {
+        if (d.arWindPower && d.arElectroPower &&
+                d.arWindPower.length === d.arElectroPower.length) {
+            var battPwr = d.arWindPower.map(function(v, i) { return v - d.arElectroPower[i]; });
             pwrTraces.push({
-                x: xvals(d.arRCD, cumHours), y: d.arRCD,
+                x: xvals(battPwr, cumHours), y: battPwr,
                 type: 'scatter', mode: 'lines',
-                line: { color: TEAL2, width: 1.2 }, name: 'Battery power (RCD)',
-                hovertemplate: '%{y:.3s}W<extra>Battery</extra>',
+                line: { color: TEAL2, width: 1.2 }, name: 'Battery power (W–E)',
+                hovertemplate: '%{y:.3s}W<extra>Battery (charge+/discharge−)</extra>',
             });
         }
         if (pwrTraces.length) {

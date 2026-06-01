@@ -19,7 +19,7 @@ operational:
     rInitialBatteryRating: 0.0
     rBatteryRating: 0.0
     rRCD: 1.0
-    rControlMinSoC: 0.5
+    rControlTargetSoC: 0.5
     rBatteryProportionalGain: 0.0
 
 replacements:

@@ -24,7 +24,7 @@ class Battery(ComponentBase):
         self.rInitialBatteryRating  = 0.0
         self.rBatteryRating         = 0.0
         self.rRCD                   = 1.0
-        self.rControlMinSoC         = 0.5
+        self.rControlTargetSoC      = 0.5
         self.rBatteryProportionalGain = 0.0
         # Replacements
         self.iNumReplacements  = 0

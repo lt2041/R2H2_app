@@ -509,7 +509,7 @@
                     <td>{{ item.name }}</td>
                     {% if section.field == 'batteries' %}
                     <td>{{ item.rBatteryMWh }}</td><td>{{ item.rBatteryRating }}</td>
-                    <td>{{ item.arInitialSoC }}</td><td>{{ item.rControlMinSoC }}</td><td>{{ item.rRCD }}</td>
+                    <td>{{ item.arInitialSoC }}</td><td>{{ item.rControlTargetSoC }}</td><td>{{ item.rRCD }}</td>
                     {% elif section.field == 'electro_cells' %}
                     <td>{{ item.rA_cell }}</td><td>{{ item.rI_rated }}</td>
                     <td>{{ item.rT_0 }}</td><td>{{ item.rE_min0 }}</td>

@@ -100,7 +100,7 @@ class Battery(models.Model):
     name = models.CharField(max_length=100, default='Battery')
     # GENERAL
     rBatteryMWh = models.FloatField(default=15, help_text="Size of the battery (MWh)")
-    rControlMinSoC = models.FloatField(default=0.5, help_text="The target state of charge of the battery for the controller")
+    rControlTargetSoC = models.FloatField(default=0.5, help_text="Target state of charge for the battery controller. The proportional controller drives SoC toward this value (can be above or below the current SoC).")
     rBatteryProportionalGain = models.FloatField(default=0.0, help_text="Proportional gain of controller in bringing charge back to target")
     rTcRef = models.FloatField(default=55.0, help_text="Tc Ref (°C)")
     rSoCRef = models.FloatField(default=0.5, help_text="SoC Ref")
@@ -161,7 +161,7 @@ class Battery(models.Model):
             'rInitialBatteryRating':     'Initial Rating (J)',
             'rBatteryRating':            'Rating (J)',
             'rRCD':                      'RCD',
-            'rControlMinSoC':            'Ctrl Min SoC',
+            'rControlTargetSoC':          'Target SoC',
             'rBatteryProportionalGain':  'Batt. Prop. Gain',
             'iNumReplacements':          'Replacements',
             'aiReplacementHour':         'Replacement Hours',
@@ -178,7 +178,7 @@ class Battery(models.Model):
             'Battery': ['name'],
             'General': [
                 'rBatteryMWh',
-                'rControlMinSoC',
+                'rControlTargetSoC',
                 'rBatteryProportionalGain',
                 'rTcRef',
                 'rSoCRef',

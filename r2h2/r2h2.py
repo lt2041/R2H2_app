@@ -449,10 +449,11 @@ def dynamicControl(units, battery, t_out, settings):
     damage = np.array([u.rSummedDegradation for u in units], dtype=float)
     battery.arBatteryDemand = np.zeros_like(t_out.arAvailablePower)
 
+    soc_target = battery.rControlTargetSoC   # user-specified target SoC (0–1)
     rBatteryProportion = np.clip(
-        battery.rSoCRef - battery.arInitialSoC,
-        -(1.0 - battery.rSoCRef),
-        battery.rSoCRef,
+        soc_target - battery.arInitialSoC,
+        -(1.0 - soc_target),
+        soc_target,
     )
     battery.arBatteryDemand = (
         t_out.arAvailablePower * rBatteryProportion

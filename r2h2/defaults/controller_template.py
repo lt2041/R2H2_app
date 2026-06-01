@@ -30,7 +30,8 @@ battery : Battery-like object
     Key attributes (read / write):
 
     ``arInitialSoC``              – current state-of-charge [0–1]
-    ``rSoCRef``                   – target SoC [0–1]
+    ``rControlTargetSoC``         – target SoC for the controller [0–1] (can drive above or below this value)
+    ``rSoCRef``                   – SoC reference used by degradation model [0–1] (do not use for control target)
     ``rBatteryRating``            – energy capacity [J]
     ``rBatteryProportionalGain``  – proportional gain for SoC controller
     ``arBatteryDemand``           – 1-D array (shape T) written by this fn [W]
@@ -118,10 +119,14 @@ def control(units, battery, t_out, settings):
     # ── 1. Battery SoC proportional control ─────────────────────────────────
     battery.arBatteryDemand = np.zeros_like(t_out.arAvailablePower)
 
+    # rControlTargetSoC is the user-configured target SoC (0–1). The proportional
+    # controller adds power to the battery when SoC is above target (positive
+    # error → charge) and draws from it when below (negative error → discharge).
+    soc_target = battery.rControlTargetSoC
     soc_error = np.clip(
-        battery.rSoCRef - battery.arInitialSoC,
-        -(1.0 - battery.rSoCRef),
-        battery.rSoCRef,
+        soc_target - battery.arInitialSoC,
+        -(1.0 - soc_target),
+        soc_target,
     )
     battery.arBatteryDemand = (
         t_out.arAvailablePower * soc_error * battery.rBatteryProportionalGain

@@ -98,38 +98,40 @@ class Simulation(models.Model):
 # DB TABLE DEFINITION FOR BATTERY MODEL
 class Battery(models.Model):
     name = models.CharField(max_length=100, default='Battery')
+    # GENERAL
+    rBatteryMWh = models.FloatField(default=15, help_text="Size of the battery (MWh)")
+    rControlMinSoC = models.FloatField(default=0.5, help_text="The target state of charge of the battery for the controller")
+    rBatteryProportionalGain = models.FloatField(default=0.0, help_text="Proportional gain of controller in bringing charge back to target")
+    rTcRef = models.FloatField(default=55.0, help_text="Tc Ref (°C)")
+    rSoCRef = models.FloatField(default=0.5, help_text="SoC Ref")
+    arInitialSoC = models.FloatField(default=0.5, help_text="Initial SoC")
     # DEGRADATION
-    rKt_lc = models.FloatField(default=4.14e-10)
-    rKs = models.FloatField(default=1.04)
-    rKT_uc = models.FloatField(default=6.93e-2)
-    rAlphaSei = models.FloatField(default=5.75e-2)
-    rKd1 = models.FloatField(default=1.4e5)
-    rKd2 = models.FloatField(default=-5.01e-1)
-    rKd3 = models.FloatField(default=-1.23e5)
-    rBetaSei = models.FloatField(default=121.0)
-    rTcRef = models.FloatField(default=55.0)
-    rSoCRef = models.FloatField(default=0.5)
-    # OPERATIONAL
-    arInitialSoC = models.FloatField(default=0.5)
-    rFt = models.FloatField(default=0.0)
-    rFc = models.FloatField(default=0.0)
-    rBatteryMWh = models.FloatField(default=15)
-    rInitialBatteryRating = models.FloatField(default=0.0)
-    rBatteryRating = models.FloatField(default=0.0)
-    rRCD = models.FloatField(default=1.0)
-    rControlMinSoC = models.FloatField(default=0.5)
-    rBatteryProportionalGain = models.FloatField(default=0.0)
-    # REPLACEMENTS
-    iNumReplacements = models.PositiveIntegerField(default=0)
-    aiReplacementHour = models.JSONField(default=None, blank=True, null=True)
+    rKt_lc = models.FloatField(default=4.14e-10, help_text="Elapsed time degradation factor (1/s)")
+    rKs = models.FloatField(default=1.04, help_text="State of charge degradation factor")
+    KTemp = models.FloatField(default=6.93e-2, help_text="Temperature degradation factor (°C)")
+    rKd1 = models.FloatField(default=1.4e5, help_text="Depth of discharge degradation factor 1")
+    rKd2 = models.FloatField(default=-5.01e-1, help_text="Depth of discharge degradation factor 2")
+    rKd3 = models.FloatField(default=-1.23e5, help_text="Depth of discharge degradation factor 3")
+    # SEI FILM
+    rAlphaSei = models.FloatField(default=5.75e-2, help_text="Portion of the normalised energy capacity related to the solid electrolyte interphase (SEI) film")
+    rBetaSei = models.FloatField(default=121.0, help_text="Part of the exponential component of normalised energy capture due to SEI film")
+    # HIDDEN
+    rFt = models.FloatField(default=0.0, help_text="Fatigue on battery due to temperature")                 # Found-by-code: should be nullable or removed
+    rFc = models.FloatField(default=0.0, help_text="Fatigue on battery due to cycles")                      # Found-by-code: should be nullable or removed
+    rInitialBatteryRating = models.FloatField(default=0.0, help_text="Initial size of the Battery (MW)")    # Found-by-code: should be nullable or removed
+    rRCD = models.FloatField(default=1.0, help_text="Rated energy capacity (J)")
+    iNumReplacements = models.PositiveIntegerField(default=0, help_text="Number of times the battery has been replaced")
+    aiReplacementHour = models.JSONField(default=None, blank=True, null=True, help_text="Vector of the hours at which the battery was replaced (H)")
     # RUNTIME
-    rSocAv = models.FloatField(default=0.0)
-    rSocMax = models.FloatField(default=0.0)
-    rSocMin = models.FloatField(default=0.0)
-    rDodAv = models.FloatField(default=0.0)
-    arBatteryPower = models.JSONField(default=None, blank=True, null=True)
-    arSoC = models.JSONField(default=None, blank=True, null=True)
-    arDoD = models.JSONField(default=None, blank=True, null=True)
+    rSocAv = models.FloatField(default=0.0, help_text="Average State of Charge")
+    rSocMax = models.FloatField(default=0.0, help_text="Max State of Charge")
+    rSocMin = models.FloatField(default=0.0, help_text="Min State of Charge")
+    rDodAv = models.FloatField(default=0.0, help_text="Average Depth of Discharge")
+    arBatteryPower = models.JSONField(default=None, blank=True, null=True, help_text="Battery power flow in and out (W)")
+    arSoC = models.JSONField(default=None, blank=True, null=True, help_text="State of Charge of Battery")
+    arDoD = models.JSONField(default=None, blank=True, null=True, help_text="Depth of Discharge of Battery")
+    # OBSOLETE?
+    rBatteryRating = models.FloatField(default=0.0, help_text="Rating (MW)")
     # CONTROL
     arBatteryDemand = models.JSONField(default=None, blank=True, null=True)
 
@@ -144,7 +146,7 @@ class Battery(models.Model):
             'name':                      'Name',
             'rKt_lc':                    'Kt lc',
             'rKs':                       'Ks',
-            'rKT_uc':                    'KT uc',
+            'KTemp':                     'KTemp',
             'rAlphaSei':                 'Alpha SEI',
             'rKd1':                      'Kd1',
             'rKd2':                      'Kd2',
@@ -159,8 +161,8 @@ class Battery(models.Model):
             'rInitialBatteryRating':     'Initial Rating (MW)',
             'rBatteryRating':            'Rating (MW)',
             'rRCD':                      'RCD',
-            'rControlMinSoC':            'Min SoC',
-            'rBatteryProportionalGain':  'Prop. Gain',
+            'rControlMinSoC':            'Ctrl Min SoC',
+            'rBatteryProportionalGain':  'Batt. Prop. Gain',
             'iNumReplacements':          'Replacements',
             'aiReplacementHour':         'Replacement Hours',
             'rSocAv':                    'SoC Avg',
@@ -171,6 +173,28 @@ class Battery(models.Model):
             'arSoC':                     'SoC',
             'arDoD':                     'DoD',
             'arBatteryDemand':           'Battery Demand',
+        }
+        editable_groups = {
+            'General': [
+                'rBatteryMWh',
+                'rControlMinSoC',
+                'rBatteryProportionalGain'
+                'rTcRef',
+                'rSoCRef'
+                'rFt'
+            ],
+            'Degradation': [
+                'rKt_lc',
+                'rKs',
+                'KTemp',
+                'rKd1',
+                'rKd2',
+                'rKd3',
+            ],
+            'SEI_Film': [
+                'rAlphaSei',
+                'rBetaSei',
+            ],
         }
 
 
@@ -312,7 +336,7 @@ class ElectrolyserUnit(models.Model):
             'iN_cell':                   'Cells / Stack',
             'iControlLevel':             'Control Level',
             'rTimeConst':                'Time Constant (s)',
-            'rDegradation':              'Degradation',
+            # 'rDegradation':              'Degradation',
             'rTurnDownRatio':            'Turn-Down Ratio',
             'r_s':                       'r_s',
             'r_f':                       'r_f',

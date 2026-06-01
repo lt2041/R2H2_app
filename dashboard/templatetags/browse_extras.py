@@ -15,3 +15,10 @@ def split_csv(value):
     if not value:
         return []
     return [v.strip() for v in value.split(',') if v.strip()]
+
+
+@register.filter
+def zip(a, b):
+    """Zip two iterables together for parallel iteration in templates."""
+    import builtins
+    return builtins.zip(a, b)

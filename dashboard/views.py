@@ -1357,7 +1357,19 @@ def _modal_fields_for(model_class):
             'choices': list(f.choices) if (hasattr(f, 'choices') and f.choices) else [],
             'help_text': getattr(f, 'help_text', '') or '',
             'null': getattr(f, 'null', False),
+            'group': '',
         })
+
+    # Annotate each field with its editable_groups membership
+    editable_groups = getattr(metainfo, 'editable_groups', None)
+    if editable_groups:
+        field_to_group = {}
+        for gname, fnames in editable_groups.items():
+            for fname in fnames:
+                field_to_group[fname] = gname
+        for f in fields:
+            f['group'] = field_to_group.get(f['name'], '')
+
     return fields
 
 
@@ -1586,33 +1598,116 @@ def browse(request, table_name=None):
     if fk_fields:
         qs = qs.select_related(*fk_fields)
 
-    rows = []
-    for obj in qs:
-        row = {'row_pk': obj.pk}
-        for col in columns:
-            val = getattr(obj, col, '')
-            if col in fk_fields:
-                related = val
-                row[col] = str(related) if related is not None else '—'
+    _modal_fields = _modal_fields_for(model_class)
+
+    # Build grouped structure for modals
+    _metainfo = getattr(model_class, 'MetaInfo', None)
+    _editable_groups = getattr(_metainfo, 'editable_groups', None)
+    if _editable_groups:
+        _field_to_group = {}
+        for _gname, _fnames in _editable_groups.items():
+            for _fname in _fnames:
+                _field_to_group[_fname] = _gname
+        _grouped = {gname: [] for gname in _editable_groups}
+        _ungrouped = []
+        for _f in _modal_fields:
+            _g = _f.get('group', '')
+            if _g and _g in _grouped:
+                _grouped[_g].append(_f)
             else:
-                row[col] = format_cell_value(val)
-        # Linked simulations
-        linked_sims = []
-        if hasattr(obj, 'simulation_set'):
-            linked_sims = list(obj.simulation_set.values_list('name', flat=True).order_by('name'))
-        row['sim_count'] = len(linked_sims)
-        row['sim_names'] = ', '.join(linked_sims)
-        rows.append(row)
+                _ungrouped.append(_f)
+        modal_fields_grouped = []
+        for _gname in _editable_groups:
+            if _grouped[_gname]:
+                modal_fields_grouped.append({'name': _gname, 'fields': _grouped[_gname]})
+    else:
+        modal_fields_grouped = [{'name': '', 'fields': _modal_fields}]
+
+    # ── Rebuild columns/rows using editable_groups for the main table ─────
+    _ui_labels = getattr(_metainfo, 'ui_display_fields', {})
+    _all_field_map = {f.name: f for f in model_class._meta.get_fields() if hasattr(f, 'column')}
+
+    if _editable_groups:
+        # Build group_col_fields: gname → [(fname, label), ...]
+        _group_col_fields = {}
+        _all_grouped_fnames = set()
+        for _gname, _fnames in _editable_groups.items():
+            _group_col_fields[_gname] = []
+            for _fname in _fnames:
+                if _fname in _all_field_map:
+                    _label = _ui_labels.get(_fname, _fname)
+                    _group_col_fields[_gname].append((_fname, _label))
+                    _all_grouped_fnames.add(_fname)
+
+        # Columns: name first (always), then one per group
+        columns = []
+        headers = []
+        if 'name' in _all_field_map:
+            columns.append('name')
+            headers.append(_ui_labels.get('name', 'Name'))
+        for _gname in _editable_groups:
+            columns.append(_gname)
+            headers.append(_gname.replace('_', ' '))
+        group_column_names = set(_editable_groups.keys())
+
+        rows = []
+        for obj in qs:
+            row = {'row_pk': obj.pk}
+            if 'name' in _all_field_map:
+                row['name'] = format_cell_value(getattr(obj, 'name', ''))
+            for _gname, _field_pairs in _group_col_fields.items():
+                _badges = []
+                for _fname, _flabel in _field_pairs:
+                    _val = getattr(obj, _fname, None)
+                    if _val is not None and _val != '':
+                        try:
+                            _fval = f'{float(_val):.4g}'
+                        except (TypeError, ValueError):
+                            _fval = str(_val)
+                        _badges.append(
+                            f'<span class="param-badge">'
+                            f'<span class="param-badge-name">{_flabel}</span>'
+                            f'<span class="param-badge-val">{_fval}</span>'
+                            f'</span>'
+                        )
+                row[_gname] = mark_safe(''.join(_badges)) if _badges else '—'
+            linked_sims = []
+            if hasattr(obj, 'simulation_set'):
+                linked_sims = list(obj.simulation_set.values_list('name', flat=True).order_by('name'))
+            row['sim_count'] = len(linked_sims)
+            row['sim_names'] = ', '.join(linked_sims)
+            rows.append(row)
+    else:
+        group_column_names = set()
+        rows = []
+        for obj in qs:
+            row = {'row_pk': obj.pk}
+            for col in columns:
+                val = getattr(obj, col, '')
+                if col in fk_fields:
+                    related = val
+                    row[col] = str(related) if related is not None else '—'
+                else:
+                    row[col] = format_cell_value(val)
+            linked_sims = []
+            if hasattr(obj, 'simulation_set'):
+                linked_sims = list(obj.simulation_set.values_list('name', flat=True).order_by('name'))
+            row['sim_count'] = len(linked_sims)
+            row['sim_names'] = ', '.join(linked_sims)
+            rows.append(row)
 
     context = {
         'columns': columns,
         'headers': headers,
         'rows': rows,
+        'group_column_names': list(group_column_names),
         'total_count': model_class.objects.count(),
         'ui_nice_name': ui_nice_name,
         'table_name': table_name,
-        'modal_fields': _modal_fields_for(model_class),
-        'modal_fields_json': json.dumps(_modal_fields_for(model_class)),
+        'modal_fields': [f for f in _modal_fields if f.get('group')] if _editable_groups else _modal_fields,
+        'modal_fields_json': json.dumps([f for f in _modal_fields if f.get('group')] if _editable_groups else _modal_fields),
+        'modal_fields_grouped': modal_fields_grouped,
+        'modal_fields_grouped_json': json.dumps(modal_fields_grouped),
     }
 
     return render(request, "dashboard/browse.html", context)

@@ -131,6 +131,32 @@
     white-space: nowrap;
     cursor: help;
 }
+.param-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0;
+    margin: 2px 3px 2px 0;
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    border: 1px solid #b2dde4;
+}
+.param-badge-name {
+    background: #d4eef1;
+    color: #1a4f56;
+    padding: 1px 5px;
+    font-family: 'Ubuntu', sans-serif;
+    font-weight: 500;
+}
+.param-badge-val {
+    background: #f4fafb;
+    color: #1a2e30;
+    padding: 1px 6px;
+    font-family: 'Azeret Mono', monospace;
+    font-weight: 400;
+}
 #array-tooltip {
     position: fixed;
     z-index: 9999;
@@ -190,8 +216,12 @@
                 <tr>
                     <th style="width:2.2rem; padding:0.7rem 0.5rem; text-align:center;"></th>
                     <th style="width:3.5rem; padding:0.7rem 0.4rem; text-align:center; color:#4a7a80; font-size:0.78rem;">Linked<br>Models</th>
-                    {% for header in headers %}
+                    {% for col, header in columns|zip:headers %}
+                    {% if col in group_column_names %}
+                    <th style="background:#0d4f58; letter-spacing:0.06em; text-transform:uppercase; font-size:0.72rem;">{{ header }}</th>
+                    {% else %}
                     <th>{{ header|safe }}</th>
+                    {% endif %}
                     {% endfor %}
                 </tr>
             </thead>
@@ -221,7 +251,11 @@
                         {% endif %}
                     </td>
                     {% for col in columns %}
+                    {% if col in group_column_names %}
+                    <td style="vertical-align:top; padding:0.4rem 0.6rem; min-width:14rem; max-width:32rem; white-space:normal;">{{ row|dict_get:col|safe }}</td>
+                    {% else %}
                     <td>{{ row|dict_get:col|safe }}</td>
+                    {% endif %}
                     {% endfor %}
                 </tr>
                 {% empty %}
@@ -264,13 +298,24 @@
             <div style="overflow-y:auto; padding:1rem 1.25rem; flex:1; min-height:0;">
                 <table style="width:100%; border-collapse:collapse; font-size:0.84rem;">
                     <tbody>
-                    {% for f in modal_fields %}
+                    {% for group in modal_fields_grouped %}
+                    {% if group.name %}
+                    <tr>
+                        <td colspan="2" style="padding:0.55rem 0 0.2rem; font-family:'Ubuntu',sans-serif;
+                                               font-size:0.7rem; font-weight:600; letter-spacing:0.07em;
+                                               text-transform:uppercase; color:#22a6b3;
+                                               border-bottom:1.5px solid #e0f4f6;">
+                            {{ group.name }}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% for f in group.fields %}
                     <tr style="border-bottom:1px solid #f0f8f9;">
                         <td style="padding:0.45rem 0.5rem 0.45rem 0; width:44%;
                                    color:#4a7a80; font-weight:500; vertical-align:middle;">
                             {{ f.label }}
                             {% if f.help_text %}
-                            <div style="font-size:0.7rem; color:#b2e0e4; font-weight:400;">{{ f.help_text }}</div>
+                            <div style="font-size:0.7rem; color:#546e7a; font-weight:400;">{{ f.help_text }}</div>
                             {% endif %}
                         </td>
                         <td style="padding:0.45rem 0;">
@@ -306,6 +351,7 @@
                             {% endif %}
                         </td>
                     </tr>
+                    {% endfor %}
                     {% endfor %}
                     </tbody>
                 </table>
@@ -521,9 +567,10 @@ document.addEventListener('DOMContentLoaded', function() {
     let _editPk = null;
     let _linkedSims = [];
 
-    const MODAL_FIELDS = {{ modal_fields_json|safe }};
-    const TABLE_NAME   = '{{ table_name }}';
-    const CSRF_TOKEN   = '{{ csrf_token }}';
+    const MODAL_FIELDS  = {{ modal_fields_json|safe }};
+    const MODAL_GROUPS  = {{ modal_fields_grouped_json|safe }};
+    const TABLE_NAME    = '{{ table_name }}';
+    const CSRF_TOKEN    = '{{ csrf_token }}';
 
     // Build and show/hide the copy sim checkboxes on radio change
     [modeDirectRadio, modeCopyRadio].forEach(function(r) {
@@ -561,11 +608,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    function buildEditForm(values) {
-        let html = '<table style="width:100%;border-collapse:collapse;font-size:0.84rem;"><tbody>';
-        MODAL_FIELDS.forEach(function(f) {
-            const val = (values[f.name] !== undefined && values[f.name] !== null) ? values[f.name] : '';
-            let input = '';
+    function _buildFieldRow(f, val) {
+        let input = '';
+        val = (val !== undefined && val !== null) ? val : '';
             if (f.ftype === 'checkbox') {
                 const chk = (String(val).toLowerCase() === 'true' || val === true) ? 'checked' : '';
                 input = '<input type="hidden" name="' + f.name + '" value="false">'
@@ -592,12 +637,28 @@ document.addEventListener('DOMContentLoaded', function() {
                       + 'font-size:0.82rem;color:#1a2e30;background:#f4fafb;'
                       + 'box-shadow:none;height:auto;box-sizing:border-box;">';
             }
-            const help = f.help_text
-                ? '<div style="font-size:0.7rem;color:#b2e0e4;font-weight:400;">' + f.help_text + '</div>' : '';
-            html += '<tr style="border-bottom:1px solid #f0f8f9;">'
-                  + '<td style="padding:0.45rem 0.5rem 0.45rem 0;width:44%;color:#4a7a80;'
-                  + 'font-weight:500;vertical-align:middle;">' + f.label + help + '</td>'
-                  + '<td style="padding:0.45rem 0;">' + input + '</td></tr>';
+        const help = f.help_text
+            ? '<div style="font-size:0.7rem;color:#546e7a;font-weight:400;">' + f.help_text + '</div>' : '';
+        return '<tr style="border-bottom:1px solid #f0f8f9;">'
+             + '<td style="padding:0.45rem 0.5rem 0.45rem 0;width:44%;color:#4a7a80;'
+             + 'font-weight:500;vertical-align:middle;">' + f.label + help + '</td>'
+             + '<td style="padding:0.45rem 0;">' + input + '</td></tr>';
+    }
+
+    function buildEditForm(values) {
+        let html = '<table style="width:100%;border-collapse:collapse;font-size:0.84rem;"><tbody>';
+        MODAL_GROUPS.forEach(function(group) {
+            if (group.name) {
+                html += '<tr><td colspan="2" style="padding:0.55rem 0 0.2rem;'
+                      + 'font-family:\'Ubuntu\',sans-serif;font-size:0.7rem;font-weight:600;'
+                      + 'letter-spacing:0.07em;text-transform:uppercase;color:#22a6b3;'
+                      + 'border-bottom:1.5px solid #e0f4f6;">'
+                      + group.name + '</td></tr>';
+            }
+            group.fields.forEach(function(f) {
+                const val = values[f.name];
+                html += _buildFieldRow(f, val);
+            });
         });
         html += '</tbody></table>';
         editBody.innerHTML = html;

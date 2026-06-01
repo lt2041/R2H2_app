@@ -45,7 +45,7 @@ MODEL_MAP = {
 FIELD_REMAP = {
     Battery: {
         "rKt":  "rKt_lc",   # Battery YAML uses rKt; model uses rKt_lc
-        "rKT":  "rKT_uc",   # Battery YAML uses rKT; model uses rKT_uc
+        "rKT":  "KTemp",    # Battery YAML uses rKT; model uses KTemp
     },
 }
 

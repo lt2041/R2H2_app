@@ -326,7 +326,43 @@ def simulation_detail(request, sim_id):
     def component_detail(obj):
         scalar, arrays = _model_to_sections(obj)
         scalar_rows = [scalar[i:i+2] for i in range(0, len(scalar), 2)]
-        return {'obj': obj, 'scalar': scalar, 'scalar_rows': scalar_rows, 'arrays': arrays}
+
+        meta = getattr(obj.__class__, 'MetaInfo', None)
+        editable_groups = getattr(meta, 'editable_groups', {})
+        ui_map = getattr(meta, 'ui_display_fields', {})
+        all_fields_meta = {f.name: f for f in obj._meta.get_fields() if hasattr(f, 'column')}
+
+        grouped_in_eg = set()
+        for fnames in editable_groups.values():
+            grouped_in_eg.update(fnames)
+
+        def field_badge(name):
+            label = ui_map.get(name, name)
+            value = getattr(obj, name, None)
+            field_obj = all_fields_meta.get(name)
+            help_text = str(getattr(field_obj, 'help_text', '') or '')
+            is_array = isinstance(value, list)
+            if is_array:
+                display = f'array [{len(value)}]' if value else 'empty'
+            elif value is None:
+                display = '—'
+            else:
+                display = str(value)
+            return {'name': name, 'label': label, 'display': display,
+                    'is_array': is_array, 'help_text': help_text}
+
+        field_groups = [
+            {'group': gname, 'fields': [field_badge(n) for n in fnames
+                                        if n in all_fields_meta]}
+            for gname, fnames in editable_groups.items()
+        ]
+        hidden_fields = [
+            field_badge(name) for name in ui_map
+            if name not in grouped_in_eg and name in all_fields_meta
+        ]
+
+        return {'obj': obj, 'scalar': scalar, 'scalar_rows': scalar_rows, 'arrays': arrays,
+                'field_groups': field_groups, 'hidden_fields': hidden_fields}
 
     groups = [
         {'label': 'Battery',           'icon': 'battery_charging_full', 'items': [component_detail(o) for o in sim.batteries.all()]},

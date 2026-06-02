@@ -594,6 +594,69 @@
         word-break: break-word;
     }
 
+    /* ── Badge groups ── */
+    .badge-groups-wrap { padding: 0.65rem 1.1rem 0.5rem; display: flex; flex-direction: column; gap: 0.55rem; }
+    .badge-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .badge-group-name {
+        font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.09em; color: #4a7a80; padding: 0 0 0.1rem;
+    }
+    .badge-group-fields { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .param-badge {
+        display: inline-flex; align-items: baseline; gap: 0;
+        border-radius: 4px;
+        border: 1px solid #b2dde4;
+        font-size: 0.76rem; line-height: 1.5;
+        white-space: nowrap; cursor: default;
+        position: relative;
+        margin: 2px 0;
+    }
+    .param-badge .pb-label {
+        background: #d4eef1; color: #1a4f56;
+        padding: 1px 5px;
+        font-family: 'Ubuntu', sans-serif; font-weight: 500;
+        border-radius: 3px 0 0 3px;
+    }
+    .param-badge .pb-val {
+        background: #f4fafb; color: #1a2e30;
+        padding: 1px 7px;
+        font-family: 'Azeret Mono', 'Ubuntu Mono', monospace; font-weight: 400;
+        max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+        border-radius: 0 3px 3px 0;
+    }
+    .param-badge .pb-val.pb-array {
+        color: #9acdd2; font-style: italic;
+    }
+    /* Tooltip */
+    .param-badge[data-tip]:hover::after {
+        content: attr(data-tip);
+        position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+        background: #1a2332; color: #e8edf2; font-size: 0.73rem; white-space: pre-wrap;
+        max-width: 320px; width: max-content; padding: 0.35rem 0.7rem; border-radius: 5px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.28); z-index: 200; pointer-events: none;
+        font-family: 'Ubuntu', sans-serif; line-height: 1.5;
+    }
+    /* Hidden fields sub-panel */
+    .hidden-fields-wrap { border-top: 1px solid #e8f8f9; }
+    .hidden-fields-toggle {
+        display: flex; align-items: center; gap: 0.45rem;
+        padding: 0.35rem 1.1rem; cursor: pointer; user-select: none;
+        font-size: 0.72rem; color: #9acdd2; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .hidden-fields-toggle:hover { color: #4a7a80; }
+    .hidden-fields-toggle .hf-chev {
+        font-size: 0.85rem; transition: transform 0.2s; padding: 0 !important;
+    }
+    .hidden-fields-toggle.open .hf-chev { transform: rotate(180deg); }
+    .hidden-fields-body { display: none; padding: 0 1.1rem 0.6rem; }
+    .hidden-fields-body.open { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .param-badge.pb-hidden {
+        border-color: #dde8e9;
+    }
+    .param-badge.pb-hidden .pb-label { background: #eaeaea; color: #999; }
+    .param-badge.pb-hidden .pb-val { background: #f7f7f7; color: #bbb; }
+
     /* ── Array section within instance ── */
     .array-section-title {
         font-size: 0.7rem;
@@ -1493,7 +1556,27 @@
                 <!-- Settings -->
                 <div class="instance-body">
 
-                    <!-- Scalar fields -->
+                    <!-- Badge groups (from editable_groups) -->
+                    {% if detail.field_groups %}
+                    <div class="badge-groups-wrap">
+                        {% for grp in detail.field_groups %}
+                        {% if grp.fields %}
+                        <div class="badge-group">
+                            <div class="badge-group-name">{{ grp.group }}</div>
+                            <div class="badge-group-fields">
+                                {% for f in grp.fields %}
+                                <span class="param-badge" {% if f.help_text %}data-tip="{{ f.help_text }}"{% endif %}>
+                                    <span class="pb-label">{{ f.label }}</span>
+                                    <span class="pb-val{% if f.is_array %} pb-array{% endif %}">{{ f.display }}</span>
+                                </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <!-- Fallback: flat scalar table if no editable_groups defined -->
                     <table class="settings-table">
                         <tbody>
                         {% for row in detail.scalar_rows %}
@@ -1507,26 +1590,24 @@
                         {% endfor %}
                         </tbody>
                     </table>
+                    {% endif %}
 
-                    <!-- Array fields -->
-                    {% if detail.arrays %}
-                    <div class="array-section-title">Array fields</div>
-                    <table class="settings-table">
-                        <tbody>
-                        {% for field in detail.arrays %}
-                        <tr class="array-row">
-                            <td>{{ field.name }}</td>
-                            <td>
-                                {% if field.value %}
-                                    array&nbsp;[{{ field.value|length }}]
-                                {% else %}
-                                    <span style="color:#b2e0e4;">empty</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
+                    <!-- Hidden fields (in ui_display_fields but not in any editable_group) -->
+                    {% if detail.hidden_fields %}
+                    <div class="hidden-fields-wrap">
+                        <div class="hidden-fields-toggle" onclick="toggleHiddenFields(this)">
+                            <span class="material-symbols-outlined hf-chev">expand_more</span>
+                            Other fields ({{ detail.hidden_fields|length }})
+                        </div>
+                        <div class="hidden-fields-body">
+                            {% for f in detail.hidden_fields %}
+                            <span class="param-badge pb-hidden" {% if f.help_text %}data-tip="{{ f.help_text }}"{% endif %}>
+                                <span class="pb-label">{{ f.label }}</span>
+                                <span class="pb-val{% if f.is_array %} pb-array{% endif %}">{{ f.display }}</span>
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
                     {% endif %}
 
                 </div>
@@ -2090,6 +2171,11 @@
     function toggleInstance(header) {
         header.classList.toggle('open');
         header.nextElementSibling.classList.toggle('open');
+    }
+
+    function toggleHiddenFields(toggle) {
+        toggle.classList.toggle('open');
+        toggle.nextElementSibling.classList.toggle('open');
     }
 
     document.addEventListener('DOMContentLoaded', function () {

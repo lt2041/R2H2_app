@@ -127,3 +127,5 @@ STATIC_URL = 'static/'
 # Media files (user-uploaded content – HDF5 wind data etc.)
 MEDIA_ROOT = config.data_root
 MEDIA_URL = '/media/'
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

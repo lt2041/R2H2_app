@@ -216,3 +216,4 @@ __marimo__/
 data/*
 *.ipynb
 *reference_data*
+*prototype*

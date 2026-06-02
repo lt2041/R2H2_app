@@ -8,11 +8,18 @@ R2H2 is a desktop simulation tool for renewable hydrogen systems.
 
 Requires **Python 3.11+**. The recommended install method is [`pipx`](https://pipx.pypa.io), which isolates the app in its own environment and puts the `r2h2` command on your PATH automatically.
 
-As a prerequisite, you'll need `pipx` installed. To make sure you can get started, paste the following into a terminal:
+As a prerequisite, you'll need `pip` and `pipx` installed. To make sure you can get started, paste the following into a terminal:
 
 ```
 pip install pipx
 pipx ensurepath
+```
+
+If your using a new system that doesn't currently have access to Git or PIP, you may need to install these first. For Ubuntu, these instructions are as follow:
+
+```
+sudo apt install git
+sudo apt install pip
 ```
 
 ### 1 — Install as a general user (pipx)

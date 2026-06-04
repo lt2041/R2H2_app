@@ -282,7 +282,7 @@ Return value structure:
             "ElectrolyserUnit": [<unit_0>, <unit_1>],
             "Battery":          <battery>,
             "ThermalBanks":     [<bank_0>, <bank_1>],
-            "TotalH2":          np.ndarray,  # cumulative H₂ per hour [g/s·s]
+            "TotalH2":          np.ndarray,  # cumulative H₂ per hour [g]
             "Log": {
                 "arSoc":               np.ndarray,  # SoC at end of each hour
                 "arSocMax":            np.ndarray,
@@ -360,7 +360,7 @@ Battery rating     : 15 MWh → 54.00 GJ
 iN_stacks=4  iN_banks=2  iControlLevel=2
 
 Simulation runtime : 4.46 s
-Total H₂ produced  : 1,472,102 g/s·s  (≈ 1.47 kg·s cumulative)
+Total H₂ produced  : 1,472,102 g  (≈ 1.47 t cumulative)
 Battery replacements: 0
 ```
 
@@ -405,7 +405,7 @@ sim = R2H2(wind_h5_path="data/wind_Test_1_Turbine_.h5", kind="PEM")
 out = sim.run()
 
 yr0 = out["YearResults"][0]
-print("Total H2 [g/s·s]:", yr0["TotalH2"][-1])
+print("Total H2 [g]:", yr0["TotalH2"][-1])
 print("Runtime [s]:      ", out["Runtime_s"])
 ```
 

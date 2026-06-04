@@ -536,7 +536,7 @@ def _save_run_outputs(run, results: dict) -> str:
             arElecOnAv          (1-D float64)
             arHourlyDegradation (2-D float64, shape [n_units, n_hours])
         h2/
-            arTotalH2           (1-D float64, cumulative kg/s per hour)
+            arTotalH2           (1-D float64, cumulative H₂ [g])
     """
     import h5py
     import numpy as np

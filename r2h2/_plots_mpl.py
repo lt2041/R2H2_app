@@ -64,7 +64,7 @@ def plot_hourly_overview(sim, out, year=0, title=None, save_path=None):
     axes[0].set_title("Available wind power")
 
     axes[1].plot(hours, total_h2 / 1e6, color="forestgreen", linewidth=1.5)
-    axes[1].set_ylabel("Cumulative H₂\n[kg·s]")
+    axes[1].set_ylabel("Cumulative H₂\n[t]")
     axes[1].grid(True, alpha=0.4)
     axes[1].set_title("Cumulative hydrogen production")
 
@@ -261,7 +261,7 @@ def plot_multi_year_summary(out, title=None, save_path=None):
 
     axes[0].bar(x, total_h2_per_year / 1e6, color="forestgreen", alpha=0.8)
     axes[0].set_xlabel("Year")
-    axes[0].set_ylabel("Total H₂ [kg·s]")
+    axes[0].set_ylabel("Total H₂ [t]")
     axes[0].set_title("Annual H₂ production")
     axes[0].grid(True, alpha=0.4, axis="y")
     axes[0].set_xticks(x)

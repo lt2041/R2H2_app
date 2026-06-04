@@ -133,7 +133,7 @@ def plot_hourly_overview(
         x=hours, y=log["arSoc"] * 100,
         mode="lines", name="Battery SoC",
         line=dict(color=_C["orange"], width=2),
-    ), row=3, col=1)
+        ), row=3, col=1)
     # SoC reference line
     fig.add_hline(y=50, line=dict(color=_C["gray"], dash="dash", width=1),
                   annotation_text="SoC ref 50 %", annotation_position="top right",
@@ -146,7 +146,7 @@ def plot_hourly_overview(
     ), row=4, col=1)
 
     fig.update_yaxes(title_text="Wind power [MW]",   row=1, col=1)
-    fig.update_yaxes(title_text="Cumulative H₂ [kg·s]", row=2, col=1)
+    fig.update_yaxes(title_text="Cumulative H₂ [t]", row=2, col=1)
     fig.update_yaxes(title_text="Battery SoC [%]", range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text="Units on [%]",    range=[0, 105], row=4, col=1)
     fig.update_xaxes(title_text="Hour", row=4, col=1)
@@ -440,7 +440,7 @@ def plot_multi_year_summary(
     fig.update_xaxes(title_text="Year", tickvals=x, row=1, col=1)
     fig.update_xaxes(title_text="Year", tickvals=x, row=1, col=2)
     fig.update_xaxes(title_text="Year", tickvals=x, row=1, col=3)
-    fig.update_yaxes(title_text="Total H₂ [kg·s]",       row=1, col=1)
+    fig.update_yaxes(title_text="Total H₂ [t]",       row=1, col=1)
     fig.update_yaxes(title_text="RCD", range=[0, 1.05],   row=1, col=2)
     fig.update_yaxes(title_text="Mean degradation [mV]",  row=1, col=3)
 

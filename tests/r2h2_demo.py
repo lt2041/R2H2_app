@@ -64,8 +64,8 @@ yr0  = out["YearResults"][0]
 log  = yr0["Log"]
 
 print(f"Simulation runtime : {out['Runtime_s']:.2f} s")
-print(f"Total H2 produced  : {yr0['TotalH2'][-1]:.0f} g/s·s  "
-      f"({yr0['TotalH2'][-1]/1e6:.3f} kg·s)")
+print(f"Total H2 produced  : {yr0['TotalH2'][-1]:.0f} g  "
+      f"({yr0['TotalH2'][-1]/1e3:.3f} kg)")
 print(f"Battery replacements: {yr0['Battery'].iNumReplacements}")
 
 # %% [markdown]

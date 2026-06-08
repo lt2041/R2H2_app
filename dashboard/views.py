@@ -620,8 +620,14 @@ def _save_run_outputs(run, results: dict) -> str:
 
             # Battery time-series
             bat = grp.create_group('battery')
+            # Store scalar metadata as attributes
+            if 'iNumReplacements' in log:
+                bat.attrs['iNumReplacements'] = int(log['iNumReplacements'])
+            if 'rFinalBatteryRating' in log:
+                bat.attrs['rFinalBatteryRating'] = float(log['rFinalBatteryRating'])
+            
             for key in ('arSoc', 'arSocMax', 'arSocMin', 'arSocAv',
-                        'arRCD', 'arBatteryRating'):
+                        'arRCD', 'arBatteryRating', 'arSpillPower'):
                 arr = log.get(key)
                 if arr is not None:
                     bat.create_dataset(key, data=np.asarray(arr, dtype=np.float64),
@@ -924,6 +930,14 @@ def view_run_results(request, sim_id, run_id):
 
             # Battery
             bat = yr_grp.get('battery', {})
+            
+            # Extract scalar attributes
+            if bat:
+                if 'iNumReplacements' in bat.attrs:
+                    ydata['iNumReplacements'] = int(bat.attrs['iNumReplacements'])
+                if 'rFinalBatteryRating' in bat.attrs:
+                    ydata['rFinalBatteryRating'] = float(bat.attrs['rFinalBatteryRating'])
+            
             for key in ('arSoc', 'arSocMax', 'arSocMin', 'arSocAv', 'arRCD', 'arBatteryRating'):
                 if key in bat:
                     arr = bat[key][:]
@@ -932,6 +946,16 @@ def view_run_results(request, sim_id, run_id):
                         step = len(arr) // 8760
                         arr = arr[::step]
                     ydata[key] = arr.tolist()
+            
+            # Spill power (keep full resolution for integration)
+            if 'arSpillPower' in bat:
+                arr = bat['arSpillPower'][:]
+                ydata['arSpillPowerFull'] = arr.tolist()  # full resolution for total calculation
+                # Also add downsampled for optional charting
+                if len(arr) > 8760:
+                    step = len(arr) // 8760
+                    arr = arr[::step]
+                ydata['arSpillPower'] = arr.tolist()
 
             # Electrolyser
             elec = yr_grp.get('electrolyser', {})

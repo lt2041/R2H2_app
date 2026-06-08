@@ -694,17 +694,17 @@
 
         // ── Chart 1: H₂ Production (cumulative) ──────────────────────────
         if (d.arTotalH2 && d.arTotalH2.length) {
-            var h2kg = d.arTotalH2.map(function(v) { return v / 1e3; });
+            var h2t = d.arTotalH2.map(function(v) { return v / 1e6; });
             Plotly.newPlot('chart-h2-' + idx, [{
-                x: xvals(d.arTotalH2, cumHours), y: h2kg,
+                x: xvals(d.arTotalH2, cumHours), y: h2t,
                 type: 'scatter', mode: 'lines', fill: 'tozeroy',
                 fillcolor: 'rgba(39,174,96,0.10)',
                 line: { color: GREEN, width: 1.5 },
                 name: 'Cumulative H₂',
-                hovertemplate: '%{y:.0f} kg<extra></extra>',
+                hovertemplate: '%{y:.3f} t<extra></extra>',
             }],
             Object.assign({}, LAYOUT_DEFAULTS, {
-                yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'kg H₂' }),
+                yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 't H₂' }),
                 xaxis: xaxisLayout('Hour'),
             }), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
@@ -874,22 +874,21 @@
             stats.push({ v: fmtH2(d.arTotalH2[d.arTotalH2.length - 1]),
                          label: 'Total H₂ produced' });
         }
-        if (d.arDegradationPerUnit && d.arDegradationPerUnit.length) {
-            var finalDeg = d.arDegradationPerUnit.map(function(u) { return u[u.length - 1]; });
-            var meanFinalDeg = finalDeg.reduce(function(a, b) { return a + b; }, 0) / finalDeg.length;
-            stats.push({ v: fmtNum((1 - meanFinalDeg) * 100, 3) + '%',
-                         label: 'Mean end-of-simulation efficiency' });
+        if (d.rFinalBatteryRating !== undefined && origRating && origRating > 0) {
+            var battCapacityFrac = d.rFinalBatteryRating / origRating * 100;
+            stats.push({ v: fmtNum(d.rFinalBatteryRating / 3.6e6, 1) + ' kWh',
+                         label: 'Battery rated capacity (end)' });
         }
-        if (d.arBatteryRating && origRating && origRating > 0 && d.arBatteryRating.length) {
-            var lastRating = d.arBatteryRating[d.arBatteryRating.length - 1];
-            stats.push({ v: fmtNum(lastRating / origRating * 100, 2) + '%',
-                         label: 'End-of-simulation rated capacity' });
+        if (d.arSpillPowerFull && d.arSpillPowerFull.length) {
+            // Integrate spill power over time: sum of hourly average power
+            var totalSpillEnergy = d.arSpillPowerFull.reduce(function(a, b) { return a + b; }, 0);
+            // Power in watts, time in hours: result is watt-hours
+            stats.push({ v: fmtNum(totalSpillEnergy / 1e3, 1) + ' kWh',
+                         label: 'Total spill energy' });
         }
-        if (d.arElecOnAv && d.arElecOnAv.length) {
-            var numUnits = d.iNumUnits || 1;
-            var sum = d.arElecOnAv.reduce(function(a, b) { return a + b; }, 0);
-            stats.push({ v: fmtNum(sum / d.arElecOnAv.length / numUnits * 100, 1) + '%',
-                         label: 'Avg electrolysers on' });
+        if (d.iNumReplacements !== undefined) {
+            stats.push({ v: fmtNum(d.iNumReplacements, 0),
+                         label: 'Battery replacements' });
         }
         var row = document.getElementById('summary-row-' + idx);
         if (row) {

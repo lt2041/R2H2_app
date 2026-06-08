@@ -1442,6 +1442,7 @@ class R2H2():
                 "arSocAv":           np.zeros(num_hours),
                 "arRCD":             np.zeros(num_hours),
                 "arBatteryRating":   np.zeros(num_hours),
+                "arSpillPower":      np.zeros(num_hours),
                 "arElecOnAv":        np.zeros(num_hours),
                 "arHourlyDegradation": np.zeros((units[0].iNumUnits, num_hours)),
                 "arWindPowerFilt":        np.zeros(num_hours),
@@ -1489,6 +1490,9 @@ class R2H2():
                 zLogOut["arSocAv"][h]          = battery.rSocAv
                 zLogOut["arRCD"][h]            = battery.rRCD
                 zLogOut["arBatteryRating"][h]  = battery.rBatteryRating
+                # Spill power is the mean over the transient-skipped portion
+                _skip = int(settings.rTransientSteps)
+                zLogOut["arSpillPower"][h]     = float(np.mean(battery.arSpillPower[_skip:])) if len(battery.arSpillPower) > _skip else 0.0
                 _skip = int(settings.rTransientSteps)
                 zLogOut["arElecOnAv"][h]       = float(np.nanmean(t_out.arTotalElectroOn[_skip:]))
                 zLogOut["arWindPowerFilt"][h]      = float(np.nanmean(t_out.arWindPowerFilt[_skip:]))
@@ -1505,6 +1509,10 @@ class R2H2():
                     print(f"  year {y+1}/{settings.iNumYears}  hour {h+1}/{num_hours}  "
                           f"H2={produced_h2:.3f} g/s  SoC={battery.arInitialSoC:.3f}",
                           flush=True)
+
+            # Add end-of-year metadata to Log
+            zLogOut['iNumReplacements'] = int(battery.iNumReplacements)
+            zLogOut['rFinalBatteryRating'] = float(battery.rBatteryRating)
 
             zYearResults.append({
                 "ElectrolyserUnit": copy.deepcopy(units),

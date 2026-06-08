@@ -50,6 +50,7 @@ _BATTERY_DEFAULTS = dict(
     rRCD=1.0,
     rControlTargetSoC=0.5,
     rBatteryProportionalGain=15.0 * 3.6e9 / 3600.0 / 10e6,  # matches initialise_simulation
+    rReplacementThreshold=0.7,
     iNumReplacements=0,
     aiReplacementHour=None,
 )

@@ -102,6 +102,7 @@ class Battery(models.Model):
     rBatteryMWh = models.FloatField(default=15, help_text="Size of the battery (MWh)")
     rControlTargetSoC = models.FloatField(default=0.5, help_text="Target state of charge for the battery controller. The proportional controller drives SoC toward this value (can be above or below the current SoC).")
     rBatteryProportionalGain = models.FloatField(default=0.0, help_text="Proportional gain of controller in bringing charge back to target")
+    rReplacementThreshold = models.FloatField(default=0.7, help_text="Replacement threshold fraction of initial battery capacity (0-1)")
     rTcRef = models.FloatField(default=55.0, help_text="Tc Ref (°C)")
     rSoCRef = models.FloatField(default=0.5, help_text="SoC Ref")
     arInitialSoC = models.FloatField(default=0.5, help_text="Initial SoC")
@@ -163,6 +164,7 @@ class Battery(models.Model):
             'rRCD':                      'RCD',
             'rControlTargetSoC':          'Target SoC',
             'rBatteryProportionalGain':  'Batt. Prop. Gain',
+            'rReplacementThreshold':     'Replacement Threshold',
             'iNumReplacements':          'Replacements',
             'aiReplacementHour':         'Replacement Hours',
             'rSocAv':                    'SoC Avg',
@@ -180,6 +182,7 @@ class Battery(models.Model):
                 'rBatteryMWh',
                 'rControlTargetSoC',
                 'rBatteryProportionalGain',
+                'rReplacementThreshold',
                 'rTcRef',
                 'rSoCRef',
                 'arInitialSoC',

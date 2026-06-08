@@ -209,6 +209,23 @@ def update_simulation(request, sim_id):
     return JsonResponse({'id': sim.id, 'name': sim.name})
 
 
+@require_POST
+def delete_simulation(request, sim_id):
+    """POST: delete a Simulation model and its associated runs."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    active = sim.runs.filter(status__in=('pending', 'running')).exists()
+    if active:
+        return JsonResponse({
+            'error': 'Cannot delete a model while a run is pending or running. Cancel active runs first.'
+        }, status=400)
+
+    sim.delete()
+    return JsonResponse({'deleted': sim_id})
+
+
 def simulations(request):
     """Hierarchical view of Simulation models with M2M component relations."""
     try:
@@ -401,8 +418,10 @@ def simulation_detail(request, sim_id):
         {'name': 'Datum date',           'value': datum_display,            'unit': '',     'editable': 'datum_date',
          'raw': sim.datum_date.isoformat() if sim.datum_date else ''},
         {'name': 'Number of years',      'value': sim.iNumYears,            'unit': 'yr'},
-        {'name': 'Total time',           'value': sim.rTotalTime,           'unit': 's'},
         {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
+    ]
+    sim_hidden_settings = [
+        {'name': 'Total time',           'value': sim.rTotalTime,           'unit': 's'},
         {'name': 'Transient steps',      'value': sim.rTransientSteps,      'unit': ''},
         {'name': 'Single turbine',       'value': sim.bSingleTurb,          'unit': ''},
         {'name': 'Lateral distances',    'value': sim.arLateralDistances,   'unit': 'm'},
@@ -441,6 +460,7 @@ def simulation_detail(request, sim_id):
         'sim': sim,
         'sim_settings': sim_settings,
         'sim_settings_pairs': sim_settings_pairs,
+        'sim_hidden_settings': sim_hidden_settings,
         'controller_files': controller_files,
         'controller_files_json': controller_files_json,
         'controller_objects': controller_objects,

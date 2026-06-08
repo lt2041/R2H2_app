@@ -766,10 +766,14 @@
             <span class="sim-info-label">Created by</span>
             <span class="sim-info-value">{{ sim.created_by }}</span>
         </div>
-        <div style="margin-left:auto;display:flex;align-items:center;">
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.65rem;">
             <button onclick="openEditSim()" style="display:inline-flex;align-items:center;gap:0.35rem;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:7px;padding:0.45rem 1rem;font-size:0.85rem;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">
                 <span class="material-symbols-outlined" style="font-size:1rem;padding:0 !important;">edit</span>
                 Edit Model
+            </button>
+            <button id="sim-delete-btn" data-url="{% url 'dashboard-delete-simulation' sim_id=sim.id %}" data-csrf="{{ csrf_token }}" style="display:inline-flex;align-items:center;gap:0.35rem;background:#e53935;border:1px solid rgba(229,57,53,0.45);color:#fff;border-radius:7px;padding:0.45rem 1rem;font-size:0.85rem;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">
+                <span class="material-symbols-outlined" style="font-size:1rem;padding:0 !important;">delete</span>
+                Delete Model
             </button>
         </div>
     </div>
@@ -1058,6 +1062,34 @@
         document.querySelectorAll('.run-delete-btn').forEach(function(btn) {
             btn.addEventListener('click', deleteRunHandler);
         });
+
+        var deleteSimBtn = document.getElementById('sim-delete-btn');
+        if (deleteSimBtn) {
+            var deleteSimName = '{{ sim.name|escapejs }}';
+            deleteSimBtn.addEventListener('click', function() {
+                if (!confirm('Delete model "' + deleteSimName + '" and all its runs? This cannot be undone.')) {
+                    return;
+                }
+                deleteSimBtn.disabled = true;
+                fetch(deleteSimBtn.dataset.url, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': deleteSimBtn.dataset.csrf},
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.deleted !== undefined) {
+                        window.location.href = '{% url "dashboard-simulations" %}';
+                    } else {
+                        deleteSimBtn.disabled = false;
+                        alert(data.error || 'Could not delete model.');
+                    }
+                })
+                .catch(function() {
+                    deleteSimBtn.disabled = false;
+                    alert('Network error — model not deleted.');
+                });
+            });
+        }
     </script>
 
     <!-- Clickable row → results page -->
@@ -1218,6 +1250,33 @@
                 {% endfor %}
                 </tbody>
             </table>
+            {% if sim_hidden_settings %}
+            <div class="hidden-fields-wrap" style="margin-top:0.75rem;">
+                <div class="hidden-fields-toggle" onclick="toggleHiddenFields(this)">
+                    <span class="material-symbols-outlined hf-chev">expand_more</span>
+                    Other fields ({{ sim_hidden_settings|length }})
+                </div>
+                <div class="hidden-fields-body">
+                    {% for s in sim_hidden_settings %}
+                    <span class="param-badge pb-hidden">
+                        <span class="pb-label">{{ s.name }}</span>
+                        <span class="pb-val">
+                            {% if s.value is None %}
+                                —
+                            {% elif s.value == True %}
+                                True
+                            {% elif s.value == False %}
+                                False
+                            {% else %}
+                                {{ s.value|fmt_float }}
+                            {% endif %}
+                            {% if s.unit %} <span style="color:#bbb;font-size:0.75rem;">{{ s.unit }}</span>{% endif %}
+                        </span>
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 

@@ -671,11 +671,12 @@
         return v.toFixed(dec != null ? dec : 2);
     }
 
-    function fmtH2(kg) {
-        if (kg == null || isNaN(kg)) return '—';
-        if (kg >= 1e6)  return (kg / 1e6).toFixed(2)  + ' kt';
-        if (kg >= 1000) return (kg / 1000).toFixed(2) + ' t';
-        return kg.toFixed(0) + ' kg';
+    function fmtH2(g) {
+        if (g == null || isNaN(g)) return '—';
+        if (g >= 1e9)  return (g / 1e9).toFixed(2)  + ' kt';
+        if (g >= 1e6)  return (g / 1e6).toFixed(2)  + ' t';
+        if (g >= 1000) return (g / 1e3).toFixed(0) + ' kg';
+        return g.toFixed(0) + ' g';
     }
 
     function renderYear(idx) {
@@ -693,8 +694,9 @@
 
         // ── Chart 1: H₂ Production (cumulative) ──────────────────────────
         if (d.arTotalH2 && d.arTotalH2.length) {
+            var h2kg = d.arTotalH2.map(function(v) { return v / 1e3; });
             Plotly.newPlot('chart-h2-' + idx, [{
-                x: xvals(d.arTotalH2, cumHours), y: d.arTotalH2,
+                x: xvals(d.arTotalH2, cumHours), y: h2kg,
                 type: 'scatter', mode: 'lines', fill: 'tozeroy',
                 fillcolor: 'rgba(39,174,96,0.10)',
                 line: { color: GREEN, width: 1.5 },

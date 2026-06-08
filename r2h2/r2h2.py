@@ -444,6 +444,11 @@ def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
 
 # Dynamic control (on/off dispatch + proportional sharing)
 # ---------------------------------------------------------------------------
+# The controller receives the full time series arrays, but it must act causally.
+# For any output element k, the decision must only depend on input data from
+# indices 0..k (and internal state carried from previous steps), not on future
+# samples beyond k. In other words, if there are ~3600 samples, the output at
+# sample 153 may only rely on the first 153 input values.
 
 def dynamicControl(units, battery, t_out, settings):
     damage = np.array([u.rSummedDegradation for u in units], dtype=float)

@@ -26,6 +26,7 @@ class Battery(ComponentBase):
         self.rRCD                   = 1.0
         self.rControlTargetSoC      = 0.5
         self.rBatteryProportionalGain = 0.0
+        self.rReplacementThreshold  = 0.7
         # Replacements
         self.iNumReplacements  = 0
         self.aiReplacementHour = None
@@ -35,6 +36,7 @@ class Battery(ComponentBase):
         self.rSocMin       = 0.0
         self.rDodAv        = 0.0
         self.arBatteryPower = None
+        self.arSpillPower   = None
         self.arSoC          = None
         self.arDoD          = None
         # Control

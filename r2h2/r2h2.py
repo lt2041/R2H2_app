@@ -918,6 +918,8 @@ def runBattery1(t_out, battery, settings) -> "Battery":
     battery.arSoC          = SoC
     battery.arDoD          = 1.0 - SoC
     battery.arBatteryPower = effective_power
+    battery.arSpillPower  = np.zeros_like(P_batt)
+    battery.arSpillPower[:] = P_batt - effective_power
 
     cycles = rainflow(battery.arSoC, dt=dt)
 
@@ -947,8 +949,8 @@ def runBattery1(t_out, battery, settings) -> "Battery":
 
     battery.rBatteryRating = battery.rBatteryRating * battery.rRCD
 
-    if np.any(battery.arSoC > 1.0) or np.any(battery.arSoC < 0.0):
-        battery.rBatteryRating  = battery.rInitialBatteryRating
+    if battery.rBatteryRating < battery.rReplacementThreshold * battery.rInitialBatteryRating:
+        battery.rBatteryRating = battery.rInitialBatteryRating
         battery.iNumReplacements += 1
 
     battery.arInitialSoC = float(battery.arSoC[-1])

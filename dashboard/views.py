@@ -168,7 +168,6 @@ def create_simulation(request):
         'electro_cells':      (sim.electro_cells,      ElectroCellPEM),
         'electrolyser_units': (sim.electrolyser_units, ElectrolyserUnit),
         'thermal_properties': (sim.thermal_properties, ThermalProperties),
-        'time_outputs':       (sim.time_outputs,       TimeOutput),
         'wind_inputs':        (sim.wind_inputs,        WindInput),
     }
     for field_name, (manager, model_cls) in m2m_map.items():
@@ -200,7 +199,6 @@ def update_simulation(request, sim_id):
         'electro_cells':      (sim.electro_cells,      ElectroCellPEM),
         'electrolyser_units': (sim.electrolyser_units, ElectrolyserUnit),
         'thermal_properties': (sim.thermal_properties, ThermalProperties),
-        'time_outputs':       (sim.time_outputs,       TimeOutput),
         'wind_inputs':        (sim.wind_inputs,        WindInput),
     }
     for field_name, (manager, model_cls) in m2m_map.items():
@@ -223,7 +221,6 @@ def simulations(request):
         'electro_cells',
         'electrolyser_units',
         'thermal_properties',
-        'time_outputs',
         'wind_inputs',
     ).order_by('-id')
 
@@ -257,12 +254,6 @@ def simulations(request):
                     'items': list(sim.thermal_properties.all()),
                 },
                 {
-                    'label': 'TimeOutput',
-                    'icon': 'timeline',
-                    'table': 'TimeOutput',
-                    'items': list(sim.time_outputs.all()),
-                },
-                {
                     'label': 'WindInput',
                     'icon': 'air',
                     'table': 'WindInput',
@@ -276,7 +267,6 @@ def simulations(request):
         {'field': 'electro_cells',      'label': 'ElectroCellPEM',    'icon': 'developer_board',       'table': 'ElectroCellPEM',    'items': list(ElectroCellPEM.objects.order_by('name'))},
         {'field': 'electrolyser_units', 'label': 'ElectrolyserUnit',  'icon': 'water_do',              'table': 'ElectrolyserUnit',  'items': list(ElectrolyserUnit.objects.order_by('name'))},
         {'field': 'thermal_properties', 'label': 'ThermalProperties', 'icon': 'thermostat',            'table': 'ThermalProperties', 'items': list(ThermalProperties.objects.order_by('name'))},
-        {'field': 'time_outputs',       'label': 'TimeOutput',        'icon': 'timeline',              'table': 'TimeOutput',        'items': list(TimeOutput.objects.order_by('name'))},
         {'field': 'wind_inputs',        'label': 'WindInput',         'icon': 'air',                   'table': 'WindInput',         'items': list(WindInput.objects.order_by('name'))},
     ]
     return render(request, 'dashboard/simulations.html', {
@@ -369,7 +359,6 @@ def simulation_detail(request, sim_id):
         {'label': 'ElectroCellPEM',    'icon': 'developer_board',       'items': [component_detail(o) for o in sim.electro_cells.all()]},
         {'label': 'ElectrolyserUnit',  'icon': 'water_do',               'items': [component_detail(o) for o in sim.electrolyser_units.all()]},
         {'label': 'ThermalProperties', 'icon': 'thermostat',             'items': [component_detail(o) for o in sim.thermal_properties.all()]},
-        {'label': 'TimeOutput',        'icon': 'timeline',               'items': [component_detail(o) for o in sim.time_outputs.all()]},
         {'label': 'WindInput',         'icon': 'air',                    'items': [component_detail(o) for o in sim.wind_inputs.all()]},
     ]
 
@@ -378,7 +367,6 @@ def simulation_detail(request, sim_id):
         'ElectroCellPEM':    set(sim.electro_cells.values_list('id', flat=True)),
         'ElectrolyserUnit':  set(sim.electrolyser_units.values_list('id', flat=True)),
         'ThermalProperties': set(sim.thermal_properties.values_list('id', flat=True)),
-        'TimeOutput':        set(sim.time_outputs.values_list('id', flat=True)),
         'WindInput':         set(sim.wind_inputs.values_list('id', flat=True)),
     }
 
@@ -431,7 +419,6 @@ def simulation_detail(request, sim_id):
         {'field': 'electro_cells',      'label': 'ElectroCellPEM',    'icon': 'developer_board',       'table': 'ElectroCellPEM',    'items': list(ElectroCellPEM.objects.order_by('name'))},
         {'field': 'electrolyser_units', 'label': 'ElectrolyserUnit',  'icon': 'water_do',              'table': 'ElectrolyserUnit',  'items': list(ElectrolyserUnit.objects.order_by('name'))},
         {'field': 'thermal_properties', 'label': 'ThermalProperties', 'icon': 'thermostat',            'table': 'ThermalProperties', 'items': list(ThermalProperties.objects.order_by('name'))},
-        {'field': 'time_outputs',       'label': 'TimeOutput',        'icon': 'timeline',              'table': 'TimeOutput',        'items': list(TimeOutput.objects.order_by('name'))},
         {'field': 'wind_inputs',        'label': 'WindInput',         'icon': 'air',                   'table': 'WindInput',         'items': list(WindInput.objects.order_by('name'))},
     ]
     current_ids = {
@@ -439,7 +426,6 @@ def simulation_detail(request, sim_id):
         'electro_cells':      list(sim.electro_cells.values_list('id', flat=True)),
         'electrolyser_units': list(sim.electrolyser_units.values_list('id', flat=True)),
         'thermal_properties': list(sim.thermal_properties.values_list('id', flat=True)),
-        'time_outputs':       list(sim.time_outputs.values_list('id', flat=True)),
         'wind_inputs':        list(sim.wind_inputs.values_list('id', flat=True)),
     }
     current_ids_json = json.dumps(current_ids)

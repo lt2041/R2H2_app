@@ -492,8 +492,6 @@
                     <th>Stacks/Bank</th><th>Banks/Unit</th><th>Cells/Stack</th><th>Time Const (s)</th><th>Turn-Down</th>
                     {% elif section.field == 'thermal_properties' %}
                     <th>Ambient (°C)</th><th>Target (°C)</th><th>Min (°C)</th><th>Heat τ (s)</th><th>Cool τ (s)</th>
-                    {% elif section.field == 'time_outputs' %}
-                    <th>Time Steps</th>
                     {% elif section.field == 'wind_inputs' %}
                     <th>Wind File</th><th>Start (s)</th><th>End (s)</th><th>Δt (s)</th><th>N Hours</th>
                     {% endif %}
@@ -519,8 +517,6 @@
                     {% elif section.field == 'thermal_properties' %}
                     <td>{{ item.rAmbientTemp }}</td><td>{{ item.rTargetTemp }}</td>
                     <td>{{ item.rMinTemp }}</td><td>{{ item.rTauHeating }}</td><td>{{ item.rTauCooling }}</td>
-                    {% elif section.field == 'time_outputs' %}
-                    <td>{{ item.arTime|length|default:"—" }}</td>
                     {% elif section.field == 'wind_inputs' %}
                     <td>{{ item.wind_file|default:"—" }}</td><td>{{ item.ts_start|default:"—" }}</td>
                     <td>{{ item.ts_end|default:"—" }}</td><td>{{ item.ts_resolution|default:"—" }}</td>
@@ -619,7 +615,7 @@ function submitNewSim() {
     fd.append('description', document.getElementById('nsm-desc').value.trim());
 
     var fields = ['batteries','electro_cells','electrolyser_units',
-                  'thermal_properties','time_outputs','wind_inputs'];
+                  'thermal_properties','wind_inputs'];
     fields.forEach(function(f) {
         document.querySelectorAll('.nsm-cb-' + f + ':checked').forEach(function(cb) {
             fd.append(f, cb.value);

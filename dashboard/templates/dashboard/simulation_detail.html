@@ -2397,7 +2397,7 @@ function submitEditSim() {
     fd.append('name', name);
     fd.append('description', document.getElementById('esm-desc').value.trim());
 
-    ['batteries','electro_cells','electrolyser_units','thermal_properties','time_outputs','wind_inputs'].forEach(function(f) {
+    ['batteries','electro_cells','electrolyser_units','thermal_properties','wind_inputs'].forEach(function(f) {
         document.querySelectorAll('.esm-cb-' + f + ':checked').forEach(function(cb) {
             fd.append(f, cb.value);
         });

@@ -171,6 +171,10 @@
             <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">warning</span> Controller timeouts</div>
             <p>If a custom controller takes longer than 30 s for a single hourly call, it is automatically cancelled and the built-in <span class="kbd">dynamicControl</span> is used as a fallback. A warning is raised in the run log.</p>
         </div>
+        <div class="tip-card">
+            <div class="tip-title"><span class="material-symbols-outlined" style="font-size:1.1rem;">timeline</span> Controller causality</div>
+            <p>Custom controllers must be causal: for output sample <strong>k</strong>, only input data from indices <strong>0..k</strong> and prior internal state may be used. Do not use future samples beyond the current time step when making a decision.</p>
+        </div>
 
     </div>
 

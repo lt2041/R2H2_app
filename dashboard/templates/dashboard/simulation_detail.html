@@ -2281,10 +2281,10 @@
 
         var overlay = document.getElementById('link-overlay');
 
-        // ── Pill click via event delegation ──
-        var pillRow = document.querySelector('.empty-groups-row');
-        if (pillRow) {
-          pillRow.addEventListener('click', function(e) {
+        // ── Pill click via event delegation on detail-page (works for dynamically-added pills too) ──
+        var detailPageEl = document.querySelector('.detail-page');
+        if (detailPageEl) {
+          detailPageEl.addEventListener('click', function(e) {
             var pill = e.target.closest('.empty-pill:not(.disabled)');
             if (!pill) return;
             var label = pill.dataset.groupLabel;
@@ -2330,7 +2330,7 @@
 
             overlay.style.display = 'flex';
           });
-        } // end if (pillRow)
+        }
 
         // Close button
         document.getElementById('link-close-btn').addEventListener('click', function() {

@@ -12,6 +12,7 @@ urlpatterns = [
     path('simulations/<int:sim_id>/', views.simulation_detail, name='dashboard-simulation-detail'),
     path('simulations/<int:sim_id>/link/', views.link_components, name='dashboard-link-components'),
     path('simulations/<int:sim_id>/unlink/', views.unlink_component, name='dashboard-unlink-component'),
+    path('simulations/<int:sim_id>/wind-reorder/', views.reorder_wind_inputs, name='dashboard-wind-reorder'),
     path('simulations/<int:sim_id>/duration/', views.update_sim_duration, name='dashboard-update-sim-duration'),
     path('simulations/<int:sim_id>/datum/',    views.update_sim_datum,    name='dashboard-update-sim-datum'),
     path('simulations/<int:sim_id>/controller/', views.update_sim_controller, name='dashboard-update-sim-controller'),

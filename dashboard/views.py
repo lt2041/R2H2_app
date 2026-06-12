@@ -559,7 +559,28 @@ def unlink_component(request, sim_id):
     return JsonResponse({'unlinked': int(obj_id), 'label': label})
 
 
-def _resolve_wind_h5_path(sim):
+def reorder_wind_inputs(request, sim_id):
+    """POST: update sequence numbers for WindInput through-table entries.
+    Expects JSON body: {"order": [wi_id, wi_id, ...]}
+    """
+    from django.shortcuts import get_object_or_404
+    from django.http import JsonResponse
+    import json as _json
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    try:
+        data = _json.loads(request.body)
+        order = [int(x) for x in data.get('order', [])]
+    except (ValueError, TypeError, _json.JSONDecodeError):
+        return JsonResponse({'error': 'Invalid payload'}, status=400)
+    entries = {e.wind_input_id: e for e in sim.wind_input_entries.all()}
+    for seq, wi_id in enumerate(order, start=1):
+        entry = entries.get(wi_id)
+        if entry and entry.sequence != seq:
+            entry.sequence = seq
+            entry.save(update_fields=['sequence'])
+    return JsonResponse({'reordered': order})
     """Return the absolute Path to the HDF5 file from the first linked WindInput
     that has a wind_file set.  Raises ValueError if none is found."""
     from django.conf import settings as _settings

@@ -456,13 +456,13 @@
         align-items: center;
         gap: 0.6rem;
         padding: 0.7rem 1.25rem;
-        background: #e8f8f9;
-        border-bottom: 1.5px solid #b2e0e4;
+        background: #b8e8ed;
+        border-bottom: 1.5px solid #85cdd4;
         cursor: pointer;
         user-select: none;
     }
 
-    .group-card-header:hover { background: #d0f0f3; }
+    .group-card-header:hover { background: #a4dde3; }
 
     .group-card-header .gc-title {
         font-size: 0.95rem;
@@ -509,13 +509,13 @@
         align-items: center;
         gap: 0.5rem;
         padding: 0.55rem 1.25rem;
-        background: #f4fafb;
-        border-bottom: 1px solid #e8f8f9;
+        background: #daf2f4;
+        border-bottom: 1px solid #b8e8ed;
         cursor: pointer;
         user-select: none;
     }
 
-    .instance-header:hover { background: #e8f8f9; }
+    .instance-header:hover { background: #ccedf0; }
 
     .instance-header .inst-name {
         font-size: 0.88rem;
@@ -531,6 +531,23 @@
         border-radius: 4px;
         padding: 1px 6px;
     }
+
+    .inst-unlink-btn {
+        background: none; border: none; padding: 0 4px;
+        cursor: pointer; color: #22a6b3; line-height: 1; transition: color 0.15s;
+        flex-shrink: 0;
+    }
+    .inst-unlink-btn:hover { color: #e53935; }
+    .inst-unlink-btn .material-symbols-outlined { font-size: 0.95rem !important; padding: 0 !important; pointer-events: none; vertical-align: middle; }
+
+    .gc-add-btn {
+        background: none; border: none; padding: 0 4px;
+        cursor: pointer; color: #22a6b3; line-height: 1; transition: color 0.15s;
+        flex-shrink: 0;
+    }
+    .gc-add-btn:hover { color: #136b75; }
+    .gc-add-btn.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+    .gc-add-btn .material-symbols-outlined { font-size: 1.05rem !important; padding: 0 !important; pointer-events: none; vertical-align: middle; }
 
     .instance-header .inst-toggle {
         color: #4a7a80;
@@ -637,12 +654,13 @@
         font-family: 'Ubuntu', sans-serif; line-height: 1.5;
     }
     /* Hidden fields sub-panel */
-    .hidden-fields-wrap { border-top: 1px solid #e8f8f9; }
+    .hidden-fields-wrap { border-top: 1px solid #daf2f4; background: #f4fafb; }
     .hidden-fields-toggle {
         display: flex; align-items: center; gap: 0.45rem;
         padding: 0.35rem 1.1rem; cursor: pointer; user-select: none;
         font-size: 0.72rem; color: #9acdd2; font-weight: 600;
         text-transform: uppercase; letter-spacing: 0.08em;
+        background: #f4fafb;
     }
     .hidden-fields-toggle:hover { color: #4a7a80; }
     .hidden-fields-toggle .hf-chev {
@@ -708,20 +726,22 @@
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
-        border: 1.5px solid #d4eef0;
+        border: 1.5px solid #22a6b3;
         border-radius: 999px;
         padding: 0.25rem 1.1rem;
-        background: #f4fafb;
-        color: #9acdd2;
+        background: #e8f8f9;
+        color: #136b75;
         font-size: 0.8rem;
+        font-weight: 600;
         cursor: pointer;
         user-select: none;
-        transition: border-color 0.15s, color 0.15s;
+        transition: border-color 0.15s, color 0.15s, background 0.15s;
     }
 
     .empty-pill:hover {
-        border-color: #22a6b3;
-        color: #22a6b3;
+        border-color: #136b75;
+        background: #d0f0f3;
+        color: #136b75;
     }
 
     .empty-pill.disabled {
@@ -1592,10 +1612,19 @@
     <div class="group-card">
 
         <!-- Group header -->
+        <!-- avail JSON for JS (components not yet linked) -->
+        <script type="application/json" id="avail-{{ group.label }}">{{ group.available_json|safe }}</script>
         <div class="group-card-header" onclick="toggleCard(this)">
             <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">{{ group.icon }}</span>
             <span class="gc-title">{{ group.label }}</span>
             <span class="gc-count">{{ group.items|length }}</span>
+            <button class="gc-add-btn{% if not group.available_json or group.available_json == '[]' %} disabled{% endif %}"
+                    data-group-label="{{ group.label }}"
+                    data-group-icon="{{ group.icon }}"
+                    title="Add {{ group.label }} to this simulation"
+                    onclick="event.stopPropagation(); openAddComponentModal(this);">
+                <span class="material-symbols-outlined">add_circle</span>
+            </button>
             <span class="material-symbols-outlined gc-toggle">expand_more</span>
         </div>
 
@@ -1609,6 +1638,15 @@
                     <span class="material-symbols-outlined" style="color:#b2e0e4; font-size:1rem; font-variation-settings:'wght' 300;">circle</span>
                     <span class="inst-name">{{ detail.obj }}</span>
                     <span class="inst-id">ID {{ detail.obj.id }}</span>
+                    <button class="inst-unlink-btn"
+                            data-unlink-url="{% url 'dashboard-unlink-component' sim_id=sim.id %}"
+                            data-group-label="{{ group.label }}"
+                            data-obj-id="{{ detail.obj.id }}"
+                            data-csrf="{{ csrf_token }}"
+                            title="Remove {{ detail.obj }} from this simulation"
+                            onclick="event.stopPropagation();">
+                        <span class="material-symbols-outlined">link_off</span>
+                    </button>
                     <span class="material-symbols-outlined inst-toggle">expand_more</span>
                 </div>
 
@@ -2266,12 +2304,16 @@
             items.forEach(function(item) {
                 var row = document.createElement('label');
                 row.style.cssText = 'display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0.3rem;' +
-                                    'border-bottom:1px solid #f0f8f9; cursor:pointer; font-size:0.85rem; color:#1a2e30;';
+                                    'border-bottom:1px solid #f0f8f9; cursor:pointer; font-size:0.85rem; color:#1a2e30;' +
+                                    'border-radius:4px; transition:background 0.1s;';
                 var cb = document.createElement('input');
                 cb.type  = 'checkbox';
                 cb.name  = 'component_ids';
                 cb.value = item.id;
                 cb.style.cssText = 'accent-color:#22a6b3; width:1rem; height:1rem; flex-shrink:0;';
+                cb.addEventListener('change', function() {
+                    row.style.background = cb.checked ? '#d6f4f7' : '';
+                });
                 row.appendChild(cb);
                 row.appendChild(document.createTextNode(item.label));
                 list.appendChild(row);
@@ -2280,7 +2322,10 @@
             var selAll = document.getElementById('link-select-all');
             selAll.checked = false;
             selAll.onchange = function() {
-                list.querySelectorAll('input[type=checkbox]').forEach(function(c) { c.checked = selAll.checked; });
+                list.querySelectorAll('input[type=checkbox]').forEach(function(c) {
+                    c.checked = selAll.checked;
+                    c.closest('label').style.background = selAll.checked ? '#d6f4f7' : '';
+                });
             };
 
             overlay.style.display = 'flex';
@@ -2309,6 +2354,195 @@
     function closeLinkModal() {
         document.getElementById('link-overlay').style.display = 'none';
     }
+
+    // ── Add component to an already-populated group ──
+    function openAddComponentModal(btn) {
+        var label = btn.dataset.groupLabel;
+        var icon  = btn.dataset.groupIcon;
+        var dataEl = document.getElementById('avail-' + label);
+        var items  = dataEl ? JSON.parse(dataEl.textContent) : [];
+        if (items.length === 0) return;
+
+        document.getElementById('link-modal-icon').textContent  = icon;
+        document.getElementById('link-modal-title').textContent = 'Add ' + label;
+        document.getElementById('link-group-label').value       = label;
+
+        var list = document.getElementById('link-checklist');
+        list.innerHTML = '';
+        items.forEach(function(item) {
+            var row = document.createElement('label');
+            row.style.cssText = 'display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0.3rem;border-radius:4px;transition:background 0.1s;cursor:pointer;';
+            var cb = document.createElement('input');
+            cb.type  = 'checkbox';
+            cb.name  = 'component_ids';
+            cb.value = item.id;
+            cb.style.cssText = 'accent-color:#22a6b3;width:1rem;height:1rem;flex-shrink:0;';
+            cb.addEventListener('change', function() {
+                row.style.background = cb.checked ? '#d6f4f7' : '';
+            });
+            row.appendChild(cb);
+            row.appendChild(document.createTextNode(item.label));
+            list.appendChild(row);
+        });
+
+        var selAll = document.getElementById('link-select-all');
+        selAll.checked = false;
+        selAll.onchange = function() {
+            list.querySelectorAll('input[type=checkbox]').forEach(function(c) {
+                c.checked = selAll.checked;
+                c.closest('label').style.background = selAll.checked ? '#d6f4f7' : '';
+            });
+        };
+
+        document.getElementById('link-overlay').style.display = 'flex';
+    }
+
+    // ── Unlink (remove) a component from the simulation ──
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.inst-unlink-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var label = btn.dataset.groupLabel;
+                var objId = btn.dataset.objId;
+                if (!confirm('Remove this ' + label + ' from the simulation? The component itself will not be deleted.')) return;
+                btn.disabled = true;
+                var fd = new FormData();
+                fd.append('csrfmiddlewaretoken', btn.dataset.csrf);
+                fd.append('group_label', label);
+                fd.append('obj_id', objId);
+                fetch(btn.dataset.unlinkUrl, { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.unlinked !== undefined) {
+                            var instance = btn.closest('.component-instance');
+                            if (instance) {
+                                var groupCard = instance.closest('.group-card');
+                                var groupBody = instance.closest('.group-card-body');
+                                // Capture instance label before removing
+                                var instName = instance.querySelector('.inst-name') ? instance.querySelector('.inst-name').textContent.trim() : 'ID ' + objId;
+                                instance.remove();
+
+                                // Update counter badge
+                                if (groupCard) {
+                                    var countEl = groupCard.querySelector('.group-card-header .gc-count');
+                                    if (countEl) {
+                                        var n = parseInt(countEl.textContent, 10);
+                                        if (!isNaN(n)) countEl.textContent = Math.max(0, n - 1);
+                                    }
+                                }
+
+                                // If no instances remain, hide the group card and add a 'not linked' pill
+                                if (groupBody && groupBody.querySelectorAll('.component-instance').length === 0) {
+                                    // Hide the group card
+                                    if (groupCard) groupCard.style.display = 'none';
+
+                                    // Add the unlinked item to the avail- JSON so the modal can show it
+                                    var availEl = document.getElementById('avail-' + label);
+                                    if (availEl) {
+                                        try {
+                                            var items = JSON.parse(availEl.textContent);
+                                            if (!items.find(function(x) { return String(x.id) === String(objId); })) {
+                                                items.push({ id: parseInt(objId), label: instName });
+                                                availEl.textContent = JSON.stringify(items);
+                                            }
+                                        } catch(e) {}
+                                    }
+
+                                    // Ensure the 'not linked' section exists
+                                    var detailPage = document.querySelector('.detail-page');
+                                    var divider = detailPage && detailPage.querySelector('.section-divider');
+                                    var pillRow = detailPage && detailPage.querySelector('.empty-groups-row');
+
+                                    if (!divider) {
+                                        divider = document.createElement('div');
+                                        divider.className = 'section-divider';
+                                        divider.innerHTML = '<hr><span>not linked</span><hr>';
+                                        if (groupCard && groupCard.nextSibling) {
+                                            detailPage.insertBefore(divider, groupCard.nextSibling);
+                                        } else {
+                                            detailPage.appendChild(divider);
+                                        }
+                                    }
+                                    if (!pillRow) {
+                                        pillRow = document.createElement('div');
+                                        pillRow.className = 'empty-groups-row';
+                                        divider.insertAdjacentElement('afterend', pillRow);
+                                    }
+
+                                    // Add pill for this group if not already present
+                                    var existingPill = pillRow.querySelector('[data-group-label="' + label + '"]');
+                                    var icon = groupCard ? (groupCard.querySelector('.group-card-header .material-symbols-outlined') || {}).textContent || '' : '';
+                                    icon = icon.trim();
+                                    if (!existingPill) {
+                                        // Inject avail JSON element if missing
+                                        if (!availEl) {
+                                            availEl = document.createElement('script');
+                                            availEl.type = 'application/json';
+                                            availEl.id = 'avail-' + label;
+                                            availEl.textContent = JSON.stringify([{ id: parseInt(objId), label: instName }]);
+                                            pillRow.appendChild(availEl);
+                                        }
+                                        var pill = document.createElement('div');
+                                        pill.className = 'empty-pill';
+                                        pill.dataset.groupLabel = label;
+                                        pill.dataset.groupIcon  = icon;
+                                        pill.dataset.groupCount = '1';
+                                        pill.innerHTML = '<span class="material-symbols-outlined" style="font-size:0.9rem;font-variation-settings:\'wght\' 300;">' + icon + '</span>'
+                                            + label
+                                            + ' <span style="font-size:0.72rem;color:#4a7a80;margin-left:0.2rem;">(1)</span>';
+                                        pillRow.appendChild(pill);
+                                    } else {
+                                        // Update existing pill count
+                                        var countSpan = existingPill.querySelector('span[style*="0.72rem"]');
+                                        var curCount = existingPill.dataset.groupCount ? parseInt(existingPill.dataset.groupCount, 10) : 0;
+                                        curCount += 1;
+                                        existingPill.dataset.groupCount = curCount;
+                                        if (countSpan) {
+                                            countSpan.textContent = '(' + curCount + ')';
+                                        }
+                                        existingPill.classList.remove('disabled');
+                                        existingPill.removeAttribute('title');
+                                        // Add unlinked item to avail JSON
+                                        if (availEl) {
+                                            try {
+                                                var items2 = JSON.parse(availEl.textContent);
+                                                if (!items2.find(function(x) { return String(x.id) === String(objId); })) {
+                                                    items2.push({ id: parseInt(objId), label: instName });
+                                                    availEl.textContent = JSON.stringify(items2);
+                                                }
+                                            } catch(e) {}
+                                        }
+                                    }
+                                } else {
+                                    // Group still has items — update avail JSON in case pill exists
+                                    var availEl2 = document.getElementById('avail-' + label);
+                                    if (availEl2) {
+                                        try {
+                                            var items3 = JSON.parse(availEl2.textContent);
+                                            if (!items3.find(function(x) { return String(x.id) === String(objId); })) {
+                                                items3.push({ id: parseInt(objId), label: instName });
+                                                availEl2.textContent = JSON.stringify(items3);
+                                            }
+                                        } catch(e) {}
+                                    }
+                                    var existingPill2 = document.querySelector('.empty-groups-row [data-group-label="' + label + '"]');
+                                    if (existingPill2) {
+                                        var curCount2 = existingPill2.dataset.groupCount ? parseInt(existingPill2.dataset.groupCount, 10) : 0;
+                                        curCount2 += 1;
+                                        existingPill2.dataset.groupCount = curCount2;
+                                        var countSpan2 = existingPill2.querySelector('span[style*="0.72rem"]');
+                                        if (countSpan2) countSpan2.textContent = '(' + curCount2 + ')';
+                                    }
+                                }
+                            }
+                        } else {
+                            btn.disabled = false;
+                            alert(data.error || 'Could not unlink component.');
+                        }
+                    })
+                    .catch(function() { btn.disabled = false; });
+            });
+        });
+    });
 </script>
 
 <!-- ── Edit Model Modal (reuses New Model modal pattern) ─────────────────── -->

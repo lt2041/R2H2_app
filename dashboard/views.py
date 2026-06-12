@@ -387,7 +387,18 @@ def simulation_detail(request, sim_id):
         'WindInput':         set(sim.wind_inputs.values_list('id', flat=True)),
     }
 
-    groups_with_items = [g for g in groups if g['items']]
+    groups_with_items = [
+        {
+            **g,
+            'available_json': json.dumps([
+                {'id': o.pk, 'label': str(o)}
+                for o in _GROUP_M2M[g['label']][0].objects.exclude(
+                    pk__in=linked_ids[g['label']]
+                ).order_by('id')
+            ]),
+        }
+        for g in groups if g['items']
+    ]
     groups_empty = [
         {
             **g,
@@ -497,6 +508,26 @@ def link_components(request, sim_id):
             objs = model_class.objects.filter(pk__in=ids)
             getattr(sim, manager_name).add(*objs)
     return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+
+def unlink_component(request, sim_id):
+    """POST: remove a single component from a simulation M2M relation."""
+    from django.shortcuts import get_object_or_404
+    from django.http import JsonResponse
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    label = request.POST.get('group_label', '')
+    obj_id = request.POST.get('obj_id', '')
+    if label not in _GROUP_M2M or not obj_id:
+        return JsonResponse({'error': 'Invalid parameters'}, status=400)
+    model_class, manager_name = _GROUP_M2M[label]
+    try:
+        obj = model_class.objects.get(pk=obj_id)
+        getattr(sim, manager_name).remove(obj)
+    except model_class.DoesNotExist:
+        return JsonResponse({'error': 'Object not found'}, status=404)
+    return JsonResponse({'unlinked': int(obj_id), 'label': label})
 
 
 def _resolve_wind_h5_path(sim):

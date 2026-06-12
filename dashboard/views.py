@@ -13,6 +13,7 @@ import re
 from django.utils.html import escape
 
 # Django models
+from django.db import models as _db_models
 from .models import *
 from .models import SimulationRun
 
@@ -376,7 +377,10 @@ def simulation_detail(request, sim_id):
         {'label': 'ElectroCellPEM',    'icon': 'developer_board',       'items': [component_detail(o) for o in sim.electro_cells.all()]},
         {'label': 'ElectrolyserUnit',  'icon': 'water_do',               'items': [component_detail(o) for o in sim.electrolyser_units.all()]},
         {'label': 'ThermalProperties', 'icon': 'thermostat',             'items': [component_detail(o) for o in sim.thermal_properties.all()]},
-        {'label': 'WindInput',         'icon': 'air',                    'items': [component_detail(o) for o in sim.wind_inputs.all()]},
+        {'label': 'WindInput',         'icon': 'air',                    'items': [
+            component_detail(entry.wind_input)
+            for entry in sim.wind_input_entries.select_related('wind_input').order_by('sequence', 'year')
+        ]},
     ]
 
     linked_ids = {
@@ -505,8 +509,25 @@ def link_components(request, sim_id):
         ids = request.POST.getlist('component_ids')
         if label in _GROUP_M2M and ids:
             model_class, manager_name = _GROUP_M2M[label]
-            objs = model_class.objects.filter(pk__in=ids)
-            getattr(sim, manager_name).add(*objs)
+            objs = list(model_class.objects.filter(pk__in=ids))
+            if label == 'WindInput':
+                # Sort new objects alphabetically by string representation
+                objs_sorted = sorted(objs, key=lambda o: str(o).lower())
+                # Find next sequence number after any existing entries
+                existing_max = sim.wind_input_entries.aggregate(
+                    m=_db_models.Max('sequence')
+                )['m']
+                next_seq = (existing_max + 1) if existing_max is not None else 1
+                for obj in objs_sorted:
+                    SimulationWindInput.objects.get_or_create(
+                        simulation=sim,
+                        wind_input=obj,
+                        year=1,
+                        defaults={'sequence': next_seq},
+                    )
+                    next_seq += 1
+            else:
+                getattr(sim, manager_name).add(*objs)
     return redirect('dashboard-simulation-detail', sim_id=sim_id)
 
 
@@ -527,6 +548,14 @@ def unlink_component(request, sim_id):
         getattr(sim, manager_name).remove(obj)
     except model_class.DoesNotExist:
         return JsonResponse({'error': 'Object not found'}, status=404)
+    # Re-sequence WindInput through-table entries to close any gaps
+    if label == 'WindInput':
+        for new_seq, entry in enumerate(
+            sim.wind_input_entries.order_by('sequence', 'year'), start=1
+        ):
+            if entry.sequence != new_seq:
+                entry.sequence = new_seq
+                entry.save(update_fields=['sequence'])
     return JsonResponse({'unlinked': int(obj_id), 'label': label})
 
 

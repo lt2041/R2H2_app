@@ -1,5 +1,6 @@
 from django.db import models
 import datetime
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 def _controller_storage():
@@ -62,7 +63,7 @@ class Simulation(models.Model):
     electrolyser_units = models.ManyToManyField('ElectrolyserUnit', blank=True)
     thermal_properties = models.ManyToManyField('ThermalProperties', blank=True)
     time_outputs = models.ManyToManyField('TimeOutput', blank=True)
-    wind_inputs = models.ManyToManyField('WindInput', blank=True)
+    wind_inputs = models.ManyToManyField('WindInput', through='SimulationWindInput', blank=True)
     # SIMULATION SETTINGS
     iWindType = models.PositiveIntegerField(default=0, choices=[(0, '1 sec'), (1, '1 min'), (2, '10 min'), (3, 'hourly')])
     iNumYears = models.PositiveIntegerField(default=1)
@@ -91,6 +92,22 @@ class Simulation(models.Model):
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"
+
+
+#### ---------------------- SIMULATION <-> WIND INPUT THROUGH TABLE ---------------------- ####
+
+class SimulationWindInput(models.Model):
+    simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name='wind_input_entries')
+    wind_input = models.ForeignKey('WindInput', on_delete=models.CASCADE, related_name='simulation_entries')
+    sequence = models.PositiveIntegerField(default=0, help_text='Order/sequence of this wind input within the simulation.')
+    year = models.PositiveIntegerField(default=2026, validators=[MinValueValidator(1900), MaxValueValidator(2300)], help_text='Simulation year this wind input applies to (1900–2300).')
+
+    class Meta:
+        ordering = ['year', 'sequence']
+        unique_together = [('simulation', 'wind_input', 'year')]
+
+    def __str__(self):
+        return f"Sim {self.simulation_id} – WindInput {self.wind_input_id} (year={self.year}, seq={self.sequence})"
 
 
 #### ---------------------- BATTERY MODEL ---------------------- ####

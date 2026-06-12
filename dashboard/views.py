@@ -1329,7 +1329,6 @@ def home(request):
         ('ElectroCellPEM',    ElectroCellPEM),
         ('ElectrolyserUnit',  ElectrolyserUnit),
         ('ThermalProperties', ThermalProperties),
-        ('WindInput',         WindInput),
     ]
     components = []
     for table_name, model_cls in _component_models:

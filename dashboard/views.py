@@ -437,7 +437,6 @@ def simulation_detail(request, sim_id):
         {'name': 'Duration',             'value': sim.duration_days,        'unit': 'days', 'editable': 'duration_days'},
         {'name': 'Datum date',           'value': datum_display,            'unit': '',     'editable': 'datum_date',
          'raw': sim.datum_date.isoformat() if sim.datum_date else ''},
-        {'name': 'Number of years',      'value': sim.iNumYears,            'unit': 'yr'},
         {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
     ]
     sim_hidden_settings = [
@@ -528,7 +527,6 @@ def link_components(request, sim_id):
                     SimulationWindInput.objects.get_or_create(
                         simulation=sim,
                         wind_input=obj,
-                        year=1,
                         defaults={'sequence': next_seq},
                     )
                     next_seq += 1
@@ -557,7 +555,7 @@ def unlink_component(request, sim_id):
     # Re-sequence WindInput through-table entries to close any gaps
     if label == 'WindInput':
         for new_seq, entry in enumerate(
-            sim.wind_input_entries.order_by('sequence', 'year'), start=1
+            sim.wind_input_entries.order_by('sequence'), start=1
         ):
             if entry.sequence != new_seq:
                 entry.sequence = new_seq
@@ -652,6 +650,52 @@ def _resolve_wind_h5_path(sim):
         f"Simulation '{sim.name}' has no linked WindInput with a valid wind file. "
         "Upload an HDF5 file on the Wind Data page and link it via a WindInput component."
     )
+
+
+def _resolve_wind_h5_paths(sim):
+    """Return ordered list of (wind_input, abs_path) for all linked WindInputs
+    that have a valid wind_file, ordered by sequence.
+    Raises ValueError if none found."""
+    from django.conf import settings as _settings
+    entries = (
+        sim.wind_input_entries
+        .select_related('wind_input')
+        .exclude(wind_input__wind_file='')
+        .exclude(wind_input__wind_file__isnull=True)
+        .order_by('sequence')
+    )
+    paths = []
+    for entry in entries:
+        abs_path = _Path(_settings.MEDIA_ROOT) / entry.wind_input.wind_file.name
+        if abs_path.exists():
+            paths.append(abs_path)
+    if not paths:
+        raise ValueError(
+            f"Simulation '{sim.name}' has no linked WindInput with a valid wind file. "
+            "Upload an HDF5 file on the Wind Data page and link it via a WindInput component."
+        )
+    return paths
+
+
+def _load_concatenated_wind(paths):
+    """Load and concatenate wind data from multiple HDF5 paths in order.
+    arPowerInput is concatenated along the hours axis (axis 1).
+    arTime is kept as the single-hour time axis from the first file.
+    Returns a WindInputs instance.
+    """
+    from r2h2.r2h2 import load_wind_h5
+    from r2h2.components.WindInputs import WindInputs
+    import numpy as np
+    if len(paths) == 1:
+        return load_wind_h5(str(paths[0]))
+    segments = [load_wind_h5(str(p)) for p in paths]
+    combined = WindInputs()
+    combined.arPowerInput = np.concatenate(
+        [s.arPowerInput for s in segments], axis=1
+    )
+    # arTime is the within-hour time axis — identical across files; keep first
+    combined.arTime = segments[0].arTime
+    return combined
 
 
 def _save_run_outputs(run, results: dict) -> str:
@@ -826,12 +870,16 @@ def _run_simulation_thread(run_id):
         run.save(update_fields=['status', 'started_at'])
 
         from r2h2.r2h2 import R2H2
-        wind_path = _resolve_wind_h5_path(run.simulation)
-        sim_engine = R2H2(run.simulation, wind_h5_path=str(wind_path))
+        wind_paths = _resolve_wind_h5_paths(run.simulation)
+        sim_engine = R2H2(run.simulation)
+        sim_engine.windinputs = _load_concatenated_wind(wind_paths)
 
-        # If user set a duration override, truncate wind data to requested hours
+        # If user set a duration override AND only a single wind file is linked,
+        # truncate wind data to requested hours.  When multiple files are linked
+        # their concatenated length is the intended multi-year duration; in that
+        # case duration_days is ignored so all linked years are simulated.
         duration_days = run.simulation.duration_days
-        if duration_days:
+        if duration_days and len(wind_paths) == 1:
             import numpy as np
             max_hours = duration_days * 24
             wi = sim_engine.windinputs
@@ -861,7 +909,12 @@ def _run_simulation_thread(run_id):
                                f', done ~{finish_at.strftime("%H:%M:%S")}]')
                 else:
                     eta_str = ''
-                msg = (f'Year {year+1}/{total_years} \u2014 hour {hour+1}/{total_hours} \u2014 {pct}\u00a0%{eta_str}')
+                year_str = f'Year {year+1}/{total_years} \u2014 ' if total_years > 1 else ''
+                if total_years > 1:
+                    hour_str = f'hour {done_steps+1}/{total_steps}'
+                else:
+                    hour_str = f'hour {hour+1}/{total_hours}'
+                msg = (f'{year_str}{hour_str} \u2014 {pct}\u00a0%{eta_str}')
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
 
         results = sim_engine.run(run_id=run.pk, progress_callback=_on_progress)

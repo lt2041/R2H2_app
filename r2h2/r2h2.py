@@ -1412,42 +1412,37 @@ class R2H2():
         if int(settings.rTransientSteps) > max_transient:
             settings.rTransientSteps = max_transient
 
-        # Auto-derive iNumYears from the wind data length when the stored value
-        # is the default (1) and the data covers more than one year.
-        # A "year" here is 8760 hours; the wind data may cover fewer (e.g. 360
-        # days = 8640 h).  We floor to at least 1.
+        # Always derive number of years from the total wind data length.
+        # A "year" is 8760 hours; floor to at least 1.
         implied_years = max(1, round(num_hours / 8760))
-        if int(settings.iNumYears) == 1 and implied_years > 1:
-            settings.iNumYears = implied_years
-            if self.verbose:
-                print(f"  [run] iNumYears auto-set to {implied_years} "
-                      f"based on wind data ({num_hours} hours)", flush=True)
-        elif self.verbose and int(settings.iNumYears) != implied_years:
-            print(f"  [run] Note: iNumYears={settings.iNumYears} but wind data "
-                  f"covers ~{implied_years} year(s) ({num_hours} hours). "
-                  f"Using iNumYears={settings.iNumYears} (multi-year replay).",
-                  flush=True)
+        settings.iNumYears = implied_years
+        # Hours in each yearly slice of the (possibly concatenated) wind data.
+        hours_per_year = num_hours // implied_years
+        if self.verbose:
+            print(f"  [run] iNumYears set to {implied_years} "
+                  f"based on wind data ({num_hours} hours, {hours_per_year} h/yr)", flush=True)
 
-        arTotalH2 = np.zeros(num_hours)
         zYearResults = []
         t_out_prev = None
 
         sim_start = time.perf_counter()
 
         for y in range(settings.iNumYears):
+            _y_offset = y * hours_per_year
+            arTotalH2 = np.zeros(hours_per_year)
             zLogOut = {
-                "arSoc":             np.zeros(num_hours),
-                "arSocMax":          np.zeros(num_hours),
-                "arSocMin":          np.zeros(num_hours),
-                "arSocAv":           np.zeros(num_hours),
-                "arRCD":             np.zeros(num_hours),
-                "arBatteryRating":   np.zeros(num_hours),
-                "arSpillPower":      np.zeros(num_hours),
-                "arElecOnAv":        np.zeros(num_hours),
-                "arHourlyDegradation": np.zeros((units[0].iNumUnits, num_hours)),
-                "arWindPowerFilt":        np.zeros(num_hours),
-                "arAvailablePower":       np.zeros(num_hours),
-                "arTotalElectroDemand":   np.zeros(num_hours),
+                "arSoc":             np.zeros(hours_per_year),
+                "arSocMax":          np.zeros(hours_per_year),
+                "arSocMin":          np.zeros(hours_per_year),
+                "arSocAv":           np.zeros(hours_per_year),
+                "arRCD":             np.zeros(hours_per_year),
+                "arBatteryRating":   np.zeros(hours_per_year),
+                "arSpillPower":      np.zeros(hours_per_year),
+                "arElecOnAv":        np.zeros(hours_per_year),
+                "arHourlyDegradation": np.zeros((units[0].iNumUnits, hours_per_year)),
+                "arWindPowerFilt":        np.zeros(hours_per_year),
+                "arAvailablePower":       np.zeros(hours_per_year),
+                "arTotalElectroDemand":   np.zeros(hours_per_year),
             }
 
             # Lagged cooling predictor: use previous hour's cooling output as
@@ -1458,7 +1453,7 @@ class R2H2():
             # first hour always starts unconstrained.
             _cooling_feedback_prev: Optional[np.ndarray] = None
 
-            for h in range(num_hours):
+            for h in range(hours_per_year):
                 # Check for user cancellation every hour
                 if h % 10 == 0 and _is_cancelled():
                     raise InterruptedError('Simulation cancelled by user.')
@@ -1466,11 +1461,11 @@ class R2H2():
                 # Emit progress
                 if progress_callback is not None:
                     try:
-                        progress_callback(y, int(settings.iNumYears), h, num_hours)
+                        progress_callback(y, int(settings.iNumYears), h, hours_per_year)
                     except Exception:
                         pass
 
-                P_hour = wind.arPowerInput[:, h]
+                P_hour = wind.arPowerInput[:, _y_offset + h]
 
                 units, t_out, battery, th_banks = runElectroStackStep1(
                     ec_curves, th_banks, battery, P_hour,
@@ -1506,7 +1501,7 @@ class R2H2():
                 t_out_prev    = t_out
 
                 if self.verbose:
-                    print(f"  year {y+1}/{settings.iNumYears}  hour {h+1}/{num_hours}  "
+                    print(f"  year {y+1}/{settings.iNumYears}  hour {h+1}/{hours_per_year}  "
                           f"H2={produced_h2:.3f} g/s  SoC={battery.arInitialSoC:.3f}",
                           flush=True)
 

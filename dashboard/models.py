@@ -66,7 +66,6 @@ class Simulation(models.Model):
     wind_inputs = models.ManyToManyField('WindInput', through='SimulationWindInput', blank=True)
     # SIMULATION SETTINGS
     iWindType = models.PositiveIntegerField(default=0, choices=[(0, '1 sec'), (1, '1 min'), (2, '10 min'), (3, 'hourly')])
-    iNumYears = models.PositiveIntegerField(default=1)
     rTotalTime = models.FloatField(default=3700.0, help_text="Total simulation time in seconds")
     rTimeStep = models.FloatField(default=1.0, help_text="Time step in seconds")
     rTransientSteps = models.PositiveIntegerField(default=101, help_text="Number of initial transient steps to discard in analysis")
@@ -100,14 +99,13 @@ class SimulationWindInput(models.Model):
     simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name='wind_input_entries')
     wind_input = models.ForeignKey('WindInput', on_delete=models.CASCADE, related_name='simulation_entries')
     sequence = models.PositiveIntegerField(default=0, help_text='Order/sequence of this wind input within the simulation.')
-    year = models.PositiveIntegerField(default=2026, validators=[MinValueValidator(1900), MaxValueValidator(2300)], help_text='Simulation year this wind input applies to (1900–2300).')
 
     class Meta:
-        ordering = ['year', 'sequence']
-        unique_together = [('simulation', 'wind_input', 'year')]
+        ordering = ['sequence']
+        unique_together = [('simulation', 'wind_input')]
 
     def __str__(self):
-        return f"Sim {self.simulation_id} – WindInput {self.wind_input_id} (year={self.year}, seq={self.sequence})"
+        return f"Sim {self.simulation_id} – WindInput {self.wind_input_id} (seq={self.sequence})"
 
 
 #### ---------------------- BATTERY MODEL ---------------------- ####

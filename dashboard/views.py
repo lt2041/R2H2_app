@@ -372,14 +372,19 @@ def simulation_detail(request, sim_id):
         return {'obj': obj, 'scalar': scalar, 'scalar_rows': scalar_rows, 'arrays': arrays,
                 'field_groups': field_groups, 'hidden_fields': hidden_fields}
 
+    from datetime import date as _today
+    _first_wind_year = sim.datum_date.year if sim.datum_date else _today.today().year
+
     groups = [
         {'label': 'Battery',           'icon': 'battery_charging_full', 'items': [component_detail(o) for o in sim.batteries.all()]},
         {'label': 'ElectroCellPEM',    'icon': 'developer_board',       'items': [component_detail(o) for o in sim.electro_cells.all()]},
         {'label': 'ElectrolyserUnit',  'icon': 'water_do',               'items': [component_detail(o) for o in sim.electrolyser_units.all()]},
         {'label': 'ThermalProperties', 'icon': 'thermostat',             'items': [component_detail(o) for o in sim.thermal_properties.all()]},
         {'label': 'WindInput',         'icon': 'air',                    'items': [
-            component_detail(entry.wind_input)
-            for entry in sim.wind_input_entries.select_related('wind_input').order_by('sequence', 'year')
+            {**component_detail(entry.wind_input), 'wind_year': _first_wind_year + idx}
+            for idx, entry in enumerate(
+                sim.wind_input_entries.select_related('wind_input').order_by('sequence')
+            )
         ]},
     ]
 
@@ -481,6 +486,7 @@ def simulation_detail(request, sim_id):
         'controller_objects': controller_objects,
         'groups': groups_with_items,
         'groups_empty': groups_empty,
+        'first_wind_year': _first_wind_year,
         'latest_run': latest_run,
         'sim_runs': sim_runs,
         'nsm_sections': nsm_sections,
@@ -581,6 +587,60 @@ def reorder_wind_inputs(request, sim_id):
             entry.sequence = seq
             entry.save(update_fields=['sequence'])
     return JsonResponse({'reordered': order})
+
+
+def update_wind_year(request, sim_id):
+    """POST: update the year field on a SimulationWindInput through-table entry.
+    Expects form fields: wind_input_id, year
+    """
+    from django.shortcuts import get_object_or_404
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    try:
+        wi_id = int(request.POST.get('wind_input_id', ''))
+        year  = int(request.POST.get('year', ''))
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Invalid payload'}, status=400)
+    if year < 1900 or year > 2300:
+        return JsonResponse({'error': 'Year must be between 1900 and 2300'}, status=400)
+    try:
+        entry = sim.wind_input_entries.get(wind_input_id=wi_id)
+    except SimulationWindInput.DoesNotExist:
+        return JsonResponse({'error': 'Entry not found'}, status=404)
+    entry.year = year
+    entry.save(update_fields=['year'])
+    return JsonResponse({'updated': wi_id, 'year': year})
+
+
+def update_first_wind_year(request, sim_id):
+    """POST: update datum_date year, keeping existing month/day (or Jan 1 if not set).
+    Expects form field: year
+    """
+    from django.shortcuts import get_object_or_404
+    import datetime as _dt
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    try:
+        year = int(request.POST.get('year', ''))
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Invalid year'}, status=400)
+    if year < 1900 or year > 2300:
+        return JsonResponse({'error': 'Year must be between 1900 and 2300'}, status=400)
+    if sim.datum_date:
+        try:
+            new_date = sim.datum_date.replace(year=year)
+        except ValueError:  # e.g. Feb 29 in non-leap year
+            new_date = _dt.date(year, sim.datum_date.month, 1)
+    else:
+        new_date = _dt.date(year, 1, 1)
+    sim.datum_date = new_date
+    sim.save(update_fields=['datum_date'])
+    return JsonResponse({'year': year, 'datum_date': new_date.isoformat()})
+
+
+def _resolve_wind_h5_path(sim):
     """Return the absolute Path to the HDF5 file from the first linked WindInput
     that has a wind_file set.  Raises ValueError if none is found."""
     from django.conf import settings as _settings

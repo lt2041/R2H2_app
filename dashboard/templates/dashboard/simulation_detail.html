@@ -540,6 +540,51 @@
     .inst-unlink-btn:hover { color: #e53935; }
     .inst-unlink-btn .material-symbols-outlined { font-size: 0.95rem !important; padding: 0 !important; pointer-events: none; vertical-align: middle; }
 
+    .gc-year-wrap {
+        display: none; align-items: center; gap: 0.35rem;
+        flex-shrink: 0; margin-right: 0.2rem;
+    }
+    .group-card-header.open .gc-year-wrap { display: inline-flex; }
+    .gc-year-label {
+        font-size: 0.72rem; color: #136b75; white-space: nowrap; font-weight: 600;
+    }
+    .inst-year-badge {
+        font-size: 0.75rem; color: #4a7a80; background: #e8f8f9;
+        border-radius: 4px; padding: 1px 7px; font-family: 'Ubuntu Mono', monospace;
+        flex-shrink: 0; white-space: nowrap;
+    }
+
+    .inst-year-wrap {
+        display: inline-flex; align-items: center; gap: 0.2rem;
+        flex-shrink: 0; margin-right: 0.15rem;
+    }
+    .inst-year-label {
+        font-size: 0.72rem; color: #4a7a80; white-space: nowrap;
+    }
+    .inst-year-input {
+        width: 68px !important; height: 22px !important; line-height: 20px !important;
+        border: 1px solid #b2e0e4 !important; border-radius: 4px !important;
+        border-bottom: 1px solid #b2e0e4 !important;
+        background: #f4fafb !important; color: #1a2e30 !important;
+        font-size: 0.82rem !important; font-family: 'Ubuntu Mono', monospace !important;
+        padding: 0 4px !important; text-align: center !important;
+        box-shadow: none !important; box-sizing: border-box !important;
+        margin: 0 !important; display: inline-block !important;
+        -webkit-appearance: textfield !important; appearance: textfield !important;
+        transition: border-color 0.15s;
+    }
+    .inst-year-input:focus {
+        border: 1px solid #22a6b3 !important; border-bottom: 1px solid #22a6b3 !important;
+        outline: none !important; background: #fff !important;
+        box-shadow: none !important;
+    }
+    .inst-year-input::-webkit-inner-spin-button { opacity: 1; cursor: pointer; }
+    .inst-year-disabled, .inst-year-disabled:focus {
+        background: #e8e8e8 !important; color: #aaa !important;
+        border-color: #ccc !important; border-bottom-color: #ccc !important;
+        cursor: not-allowed !important; pointer-events: none !important;
+    }
+
     .inst-drag-handle {
         background: none; border: none; padding: 0 2px;
         cursor: grab; color: #b2e0e4; line-height: 1; flex-shrink: 0;
@@ -1627,6 +1672,17 @@
         <div class="group-card-header" onclick="toggleCard(this)">
             <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">{{ group.icon }}</span>
             <span class="gc-title">{{ group.label }}</span>
+            {% if group.label == 'WindInput' %}
+            <span class="gc-year-wrap" onclick="event.stopPropagation();" title="Start year (from datum date)">
+                <span class="gc-year-label">Start year</span>
+                <input type="number" id="wind-master-year"
+                       class="inst-year-input"
+                       value="{{ first_wind_year }}"
+                       min="1900" max="2300" step="1"
+                       data-year-url="{% url 'dashboard-wind-first-year' sim_id=sim.id %}"
+                       data-csrf="{{ csrf_token }}">
+            </span>
+            {% endif %}
             <span class="gc-count">{{ group.items|length }}</span>
             <button class="gc-add-btn{% if not group.available_json or group.available_json == '[]' %} disabled{% endif %}"
                     data-group-label="{{ group.label }}"
@@ -1651,6 +1707,9 @@
                     </span>
                     {% endif %}
                     <span class="inst-name">{{ detail.obj }}</span>
+                    {% if group.label == 'WindInput' %}
+                    <span class="inst-year-badge">{{ detail.wind_year }}</span>
+                    {% endif %}
                     <span class="inst-id">ID {{ detail.obj.id }}</span>
                     <button class="inst-unlink-btn"
                             data-unlink-url="{% url 'dashboard-unlink-component' sim_id=sim.id %}"
@@ -2423,7 +2482,14 @@
                 .filter(function(id) { return !isNaN(id); });
         }
 
+        function refreshYearInputs(body) {
+            var masterInp = document.getElementById('wind-master-year');
+            var firstYear = masterInp ? parseInt(masterInp.value, 10) : NaN;
+            if (!isNaN(firstYear)) _updateYearBadges(firstYear);
+        }
+
         function saveOrder(body) {
+            refreshYearInputs(body);
             var order = getOrderedIds(body);
             fetch(_reorderUrl, {
                 method: 'POST',
@@ -2493,6 +2559,63 @@
         window._attachWindInputDrag = attachDrag;
     })();
 
+    // ── WindInput master year input ──
+    function _updateYearBadges(firstYear) {
+        document.querySelectorAll(
+            '.group-card-body[data-group-label="WindInput"] .component-instance'
+        ).forEach(function(inst, idx) {
+            var badge = inst.querySelector('.inst-year-badge');
+            if (badge) badge.textContent = firstYear + idx;
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var masterInp = document.getElementById('wind-master-year');
+        if (!masterInp) return;
+        var _lastVal = masterInp.value;
+        function saveYear() {
+            var val = parseInt(masterInp.value, 10);
+            if (isNaN(val) || val < 1900 || val > 2300) { masterInp.value = _lastVal; return; }
+            if (String(val) === _lastVal) return;
+            var fd = new FormData();
+            fd.append('csrfmiddlewaretoken', masterInp.dataset.csrf);
+            fd.append('year', val);
+            fetch(masterInp.dataset.yearUrl, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d.year !== undefined) {
+                        _lastVal = String(d.year);
+                        masterInp.value = d.year;
+                        _updateYearBadges(d.year);
+                        // Update datum date display in Simulation Settings
+                        if (d.datum_date) {
+                            var datumValEl = document.getElementById('ss-datum-val');
+                            if (datumValEl) {
+                                var parts = d.datum_date.split('-');
+                                var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                                datumValEl.innerHTML = parseInt(parts[2],10) + ' ' + months[parseInt(parts[1],10)-1] + ' ' + parts[0];
+                            }
+                            var datumInp = document.getElementById('ss-datum-input');
+                            if (datumInp) datumInp.value = d.datum_date;
+                        }
+                    } else { masterInp.value = _lastVal; }
+                })
+                .catch(function() { masterInp.value = _lastVal; });
+        }
+        masterInp.addEventListener('input', function() {
+            var newVal = parseInt(masterInp.value, 10);
+            var oldVal = parseInt(_lastVal, 10);
+            if (!isNaN(newVal) && !isNaN(oldVal) && newVal !== oldVal) {
+                masterInp.value = oldVal - (newVal - oldVal);
+            }
+        });
+        masterInp.addEventListener('change', saveYear);
+        masterInp.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter')  { masterInp.blur(); }
+            if (e.key === 'Escape') { masterInp.value = _lastVal; masterInp.blur(); }
+        });
+    });
+
     // ── Unlink (remove) a component from the simulation ──
     document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.inst-unlink-btn').forEach(function(btn) {
@@ -2524,6 +2647,13 @@
                                         var n = parseInt(countEl.textContent, 10);
                                         if (!isNaN(n)) countEl.textContent = Math.max(0, n - 1);
                                     }
+                                }
+
+                                // If WindInput, refresh year badges for remaining rows
+                                if (label === 'WindInput') {
+                                    var masterInp = document.getElementById('wind-master-year');
+                                    var fy = masterInp ? parseInt(masterInp.value, 10) : NaN;
+                                    if (!isNaN(fy)) _updateYearBadges(fy);
                                 }
 
                                 // If no instances remain, hide the group card and add a 'not linked' pill

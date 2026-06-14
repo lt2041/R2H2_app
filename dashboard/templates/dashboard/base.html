@@ -93,6 +93,19 @@
         {% endblock %}
     </main>
 
+    <!-- Reformat UTC datetimes to browser local timezone (handles BST etc.) -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const fmtLong  = new Intl.DateTimeFormat(undefined, {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+        const fmtShort = new Intl.DateTimeFormat(undefined, {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false});
+        document.querySelectorAll('time.local-dt').forEach(function (el) {
+            const dt = new Date(el.getAttribute('datetime'));
+            if (isNaN(dt)) return;
+            const hasSec = el.textContent.split(':').length === 3;
+            el.textContent = (hasSec ? fmtLong : fmtShort).format(dt).replace(/,/g, '');
+        });
+    });
+    </script>
     <!-- Materialize JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
     <script>

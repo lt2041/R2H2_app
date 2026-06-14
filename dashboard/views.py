@@ -786,6 +786,8 @@ def _save_run_outputs(run, results: dict) -> str:
         meta.attrs['runtime_s']            = float(results.get('Runtime_s', 0.0))
         meta.attrs['use_cooling_feedback'] = bool(results.get('UseCoolingFeedback', False))
         meta.attrs['insulated']            = bool(results.get('Insulated', False))
+        meta.attrs['app_version']          = run.app_version or ''
+        meta.attrs['git_hash']             = run.git_hash or ''
 
         # ── /inputs ──────────────────────────────────────────────────────────
         inp = f.create_group('inputs')
@@ -860,6 +862,32 @@ def _save_run_outputs(run, results: dict) -> str:
     return str(abs_path.relative_to(media_root))
 
 
+def _get_app_version():
+    """Return the installed r2h2 package version string, or 'dev'."""
+    try:
+        from importlib.metadata import version as _pkg_version
+        return _pkg_version('r2h2')
+    except Exception:
+        return 'dev'
+
+
+def _get_git_hash():
+    """Return the short git commit hash of HEAD, or empty string if unavailable."""
+    import subprocess
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        result = subprocess.run(
+            ['git', '-C', str(repo_root), 'rev-parse', '--short', 'HEAD'],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return ''
+
+
 def _run_simulation_thread(run_id):
     """Background worker: update SimulationRun status while running."""
     from django.utils import timezone
@@ -867,7 +895,9 @@ def _run_simulation_thread(run_id):
         run = SimulationRun.objects.select_related('simulation').get(pk=run_id)
         run.status = SimulationRun.RUNNING
         run.started_at = timezone.now()
-        run.save(update_fields=['status', 'started_at'])
+        run.app_version = _get_app_version()
+        run.git_hash = _get_git_hash()
+        run.save(update_fields=['status', 'started_at', 'app_version', 'git_hash'])
 
         from r2h2.r2h2 import R2H2
         wind_paths = _resolve_wind_h5_paths(run.simulation)
@@ -902,11 +932,10 @@ def _run_simulation_thread(run_id):
                 elapsed = (timezone.now() - _progress_start).total_seconds()
                 if done_steps > 0 and elapsed > 0:
                     total_s   = elapsed / done_steps * total_steps
-                    finish_at = timezone.localtime(
-                        _progress_start + timezone.timedelta(seconds=total_s)
-                    )
-                    eta_str = (f' [est. {_fmt_duration(total_s)}'
-                               f', done ~{finish_at.strftime("%H:%M:%S")}]')
+                    finish_at = _progress_start + timezone.timedelta(seconds=total_s)
+                    # Encode ETA as ISO UTC so the browser can convert to local time
+                    finish_iso = finish_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    eta_str = (f' [est. {_fmt_duration(total_s)}, done ~[{finish_iso}]]')
                 else:
                     eta_str = ''
                 year_str = f'Year {year+1}/{total_years} \u2014 ' if total_years > 1 else ''
@@ -2090,10 +2119,15 @@ def wind_data(request):
     wi_qs = WindInput.objects.exclude(wind_file='').exclude(wind_file__isnull=True)
     wi_by_name = {_Path(wi.wind_file.name).name: wi for wi in wi_qs}
 
-    # Backfill metadata for records that were uploaded before the new fields existed
+    # Backfill metadata for records that were uploaded before the new fields existed,
+    # and re-introspect any that used the old comma separator (no '|' in h5_datasets).
     needs_save = []
     for wi in wi_by_name.values():
-        if wi.h5_datasets == '' and wi.ts_start is None:
+        needs_reintrospect = (
+            (wi.h5_datasets == '' and wi.ts_start is None)
+            or (wi.h5_datasets and '|' not in wi.h5_datasets)
+        )
+        if needs_reintrospect:
             full_path = media_root / wi.wind_file.name
             if full_path.exists():
                 meta = _introspect_wind_h5(full_path)
@@ -2105,17 +2139,30 @@ def wind_data(request):
         for wi in needs_save:
             wi.save(update_fields=fields)
 
-    files = sorted(
-        [
-            {
-                'name': f.name,
-                'size_mb': round(f.stat().st_size / 1e6, 2),
-                'modified': _pd.Timestamp(f.stat().st_mtime, unit='s').strftime('%Y-%m-%d %H:%M'),
-                'wind_input': wi_by_name.get(f.name),
+    def _file_meta(f):
+        wi = wi_by_name.get(f.name)
+        if wi is not None:
+            meta = {
+                'h5_datasets': wi.h5_datasets or '',
+                'ts_n_hours':  wi.ts_n_hours,
+                'ts_resolution': wi.ts_resolution,
+                'ts_start': wi.ts_start,
+                'ts_end':   wi.ts_end,
             }
-            for f in wind_dir.iterdir()
-            if f.suffix.lower() in ('.h5', '.hdf5', '.hdf')
-        ],
+        else:
+            # Introspect unlinked files on the fly (read-only, not saved)
+            meta = _introspect_wind_h5(f)
+        return {
+            'name': f.name,
+            'size_mb': round(f.stat().st_size / 1e6, 2),
+            'modified': _pd.Timestamp(f.stat().st_mtime, unit='s').strftime('%Y-%m-%d %H:%M'),
+            'wind_input': wi,
+            **meta,
+        }
+
+    files = sorted(
+        [_file_meta(f) for f in wind_dir.iterdir()
+         if f.suffix.lower() in ('.h5', '.hdf5', '.hdf')],
         key=lambda x: x['name'],
     )
     cfg = load_config() or {}
@@ -2142,7 +2189,7 @@ def _introspect_wind_h5(path):
                 if isinstance(obj, h5py.Dataset):
                     datasets.append(f'/{name} {list(obj.shape)} {obj.dtype}')
             f.visititems(_collect)
-            meta['h5_datasets'] = ', '.join(datasets)
+            meta['h5_datasets'] = '|'.join(datasets)
             # Time axis
             if '/Time' in f:
                 t = f['/Time'][:].ravel()

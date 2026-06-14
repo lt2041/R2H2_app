@@ -138,7 +138,36 @@
     </div>
 </div>
 
-<!-- ── File list card ───────────────────────────────────────────────────── -->
+<!-- ── File list card ───────────────────────────────────────────────────────── -->
+<style>
+    .wi-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: #e0f4f6; color: #136b75;
+        border-radius: 4px; padding: 2px 7px;
+        font-size: 0.74rem; font-family: monospace; white-space: nowrap;
+    }
+    .wi-badge-label {
+        font-family: sans-serif; font-size: 0.68rem;
+        color: #4a9aa5; font-weight: 600;
+    }
+    .ds-badge {
+        display: inline-flex; align-items: baseline; gap: 5px;
+        background: #f0f9fa; color: #2a7a84;
+        border: 1px solid #b2dde2; border-radius: 4px;
+        padding: 2px 8px; font-size: 0.72rem; font-family: monospace;
+        white-space: nowrap; margin-bottom: 3px;
+    }
+    .ds-name  { font-weight: 600; color: #1a5f68; }
+    .ds-shape { color: #4a9aa5; }
+    .ds-dtype { color: #80aaae; font-size: 0.66rem; }
+    .wi-row-meta { display: flex; flex-direction: column; gap: 3px; }
+    .wi-years-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: #136b75; color: #fff;
+        border-radius: 4px; padding: 1px 7px;
+        font-size: 0.74rem; font-family: monospace;
+    }
+</style>
 <div style="margin-bottom:1.1rem;">
     <div class="card z-depth-1" style="margin:0;">
       <div class="card-content" style="padding-bottom:8px;">
@@ -159,60 +188,86 @@
               <th style="text-align:right; width:80px;">Size (MB)</th>
               <th style="width:150px;">Last modified</th>
               <th style="width:110px;">WindInput</th>
-              <th style="width:160px;">Time info</th>
-              <th>Datasets</th>
+              <th style="width:180px;">Duration</th>
+              <th>HDF5 datasets</th>
             </tr>
           </thead>
           <tbody id="file-table-body">
             {% for f in files %}
             <tr data-name="{{ f.name }}">
+
+              {# ── filename ── #}
               <td>
                 <span class="material-symbols-outlined"
                       style="font-size:1rem; vertical-align:middle; color:#80CBC4; margin-right:4px;">data_object</span>
                 {{ f.name }}
               </td>
+
+              {# ── size ── #}
               <td style="text-align:right;">{{ f.size_mb }}</td>
+
+              {# ── modified ── #}
               <td class="grey-text">{{ f.modified }}</td>
+
+              {# ── WindInput link ── #}
               <td>
                 {% if f.wind_input %}
                 <a href="{% url 'dashboard-browse' 'WindInput' %}?id={{ f.wind_input.id }}"
                    class="chip teal lighten-4" style="font-size:0.78rem; cursor:pointer;">
                   <span class="material-symbols-outlined" style="font-size:0.9rem; vertical-align:middle;">link</span>
-                  #{{ f.wind_input.id }}
+                  #{{ f.wind_input.id }} {{ f.wind_input.name }}
                 </a>
+                {% else %}
+                <span class="grey-text" style="font-size:0.8rem;">not linked</span>
+                {% endif %}
+              </td>
+
+              {# ── duration / resolution ── #}
+              <td>
+                {% if f.ts_n_hours %}
+                <div class="wi-row-meta">
+                  {# implied years #}
+                  {% with years=f.ts_n_hours|floatformat:"-2" %}
+                  <span class="wi-years-badge">
+                    <span class="material-symbols-outlined" style="font-size:0.8rem;">calendar_month</span>
+                    {{ f.ts_n_hours }} h
+                    {% if f.ts_n_hours >= 8760 %}
+                    &nbsp;(~{% widthratio f.ts_n_hours 8760 1 %} yr)
+                    {% endif %}
+                  </span>
+                  {% endwith %}
+                  {# resolution #}
+                  {% if f.ts_resolution %}
+                  <span class="wi-badge">
+                    <span class="wi-badge-label">step</span>
+                    {% if f.ts_resolution < 60 %}{{ f.ts_resolution|floatformat:1 }} s
+                    {% elif f.ts_resolution < 3600 %}{% widthratio f.ts_resolution 60 1 %} min
+                    {% else %}hourly{% endif %}
+                  </span>
+                  {% endif %}
+                </div>
                 {% else %}
                 <span class="grey-text" style="font-size:0.8rem;">—</span>
                 {% endif %}
               </td>
+
+              {# ── HDF5 datasets ── #}
               <td>
-                {% if f.wind_input %}
-                <div style="display:flex; flex-direction:column; gap:3px;">
-                  <span style="display:inline-flex; align-items:center; gap:4px; background:#e0f4f6; color:#136b75; border-radius:4px; padding:1px 7px; font-size:0.74rem; font-family:monospace; white-space:nowrap;">
-                    <span style="font-family:sans-serif; font-size:0.68rem; color:#4a9aa5; font-weight:600;">hours</span>
-                    {{ f.wind_input.ts_n_hours|default:"—" }}
-                  </span>
-                  <span style="display:inline-flex; align-items:center; gap:4px; background:#e0f4f6; color:#136b75; border-radius:4px; padding:1px 7px; font-size:0.74rem; font-family:monospace; white-space:nowrap;">
-                    <span style="font-family:sans-serif; font-size:0.68rem; color:#4a9aa5; font-weight:600;">step</span>
-                    {{ f.wind_input.ts_resolution|default:"—" }}
-                  </span>
-                  <span style="display:inline-flex; align-items:center; gap:4px; background:#e0f4f6; color:#136b75; border-radius:4px; padding:1px 7px; font-size:0.74rem; font-family:monospace; white-space:nowrap;">
-                    <span style="font-family:sans-serif; font-size:0.68rem; color:#4a9aa5; font-weight:600;">range</span>
-                    {% if f.wind_input.ts_start is not None and f.wind_input.ts_end is not None %}{{ f.wind_input.ts_start|floatformat:0 }}–{{ f.wind_input.ts_end|floatformat:0 }}{% else %}—{% endif %}
-                  </span>
-                </div>
-                {% else %}<span class="grey-text">—</span>{% endif %}
-              </td>
-              <td>
-                {% if f.wind_input and f.wind_input.h5_datasets %}
-                <div style="display:flex; flex-direction:column; gap:3px;">
-                  {% for ds in f.wind_input.h5_datasets|split_csv %}
-                  <span style="display:inline-flex; align-items:center; background:#f0f9fa; color:#2a7a84; border:1px solid #b2dde2; border-radius:4px; padding:1px 7px; font-size:0.72rem; font-family:monospace; white-space:nowrap;">
-                    {{ ds }}
+                {% if f.h5_datasets %}
+                <div style="display:flex; flex-direction:column; align-items:flex-start;">
+                  {% for ds in f.h5_datasets|parse_h5_datasets %}
+                  <span class="ds-badge">
+                    <span class="ds-name">{{ ds.path }}</span>
+                    {% if ds.shape %}<span class="ds-shape">{{ ds.shape }}</span>{% endif %}
+                    {% if ds.dtype %}<span class="ds-dtype">{{ ds.dtype }}</span>{% endif %}
                   </span>
                   {% endfor %}
                 </div>
-                {% else %}<span class="grey-text">—</span>{% endif %}
+                {% else %}
+                <span class="grey-text">—</span>
+                {% endif %}
               </td>
+
             </tr>
             {% endfor %}
           </tbody>

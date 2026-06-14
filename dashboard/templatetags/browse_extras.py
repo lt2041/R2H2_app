@@ -18,6 +18,32 @@ def split_csv(value):
 
 
 @register.filter
+def parse_h5_datasets(value):
+    """Parse h5_datasets string into a list of dicts with path, shape, dtype.
+
+    Entries are separated by '|'.  Each entry has the form '/Name [d, d] dtype'.
+    Returns [{'path': '/Name', 'shape': 'd × d', 'dtype': 'dtype'}, ...]
+    """
+    import re
+    if not value:
+        return []
+    result = []
+    for entry in value.split('|'):
+        entry = entry.strip()
+        if not entry:
+            continue
+        m = re.match(r'^(\S+)\s+\[([^\]]*)\]\s+(\S+)$', entry)
+        if m:
+            path, shape_raw, dtype = m.group(1), m.group(2), m.group(3)
+            dims = [d.strip() for d in shape_raw.split(',') if d.strip()]
+            shape = ' \u00d7 '.join(dims)
+        else:
+            path, shape, dtype = entry, '', ''
+        result.append({'path': path, 'shape': shape, 'dtype': dtype})
+    return result
+
+
+@register.filter
 def zip(a, b):
     """Zip two iterables together for parallel iteration in templates."""
     import builtins

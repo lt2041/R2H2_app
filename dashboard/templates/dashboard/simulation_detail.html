@@ -863,7 +863,7 @@
 
             {% if messages %}
                 {% for message in messages %}
-                <div class="sim-message {{ message.tags }}" style="margin-right:0.5rem;">
+                <div class="sim-message {{ message.tags }}" id="sim-flash-msg-{{ forloop.counter }}" style="margin-right:0.5rem;">
                     <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">
                         {% if message.tags == 'success' %}check_circle{% else %}error{% endif %}
                     </span>
@@ -871,6 +871,10 @@
                 </div>
                 {% endfor %}
             {% endif %}
+            <div id="sim-cancel-notice" style="display:none; margin-right:0.5rem; background:#fff3e0; color:#e65100; border:1px solid #ffe082; border-radius:6px; padding:0.3rem 0.8rem; font-size:0.82rem; align-items:center; gap:0.45rem;">
+                <span class="material-symbols-outlined" style="font-size:1rem; padding:0 !important;">cancel</span>
+                Simulation cancelled
+            </div>
 
             <form method="post" action="{% url 'dashboard-run-simulation' sim_id=sim.id %}" style="margin:0;">
                 {% csrf_token %}
@@ -940,7 +944,7 @@
                             {% endif %}
                         </span>
                     </td>
-                    <td class="run-mono" style="text-align:center;">{{ run.started_at|date:"d M Y, H:i:s" }}</td>
+                    <td class="run-mono" style="text-align:center;"><time class="local-dt" datetime="{{ run.started_at|date:"c" }}">{{ run.started_at|date:"d M Y, H:i:s" }}</time></td>
                     <td class="run-mono" id="run-dur-{{ run.id }}" style="text-align:center;">
                         {% if run.duration_hms %}
                             {{ run.duration_hms }}
@@ -1006,6 +1010,14 @@
             if (runBtn)  runBtn.disabled = true;
             if (stopBtn) stopBtn.classList.add('visible');
 
+            function localiseEta(text) {
+                if (!text) return text;
+                return text.replace(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\]/g, function(_, iso) {
+                    var d = new Date(iso);
+                    return isNaN(d) ? iso : d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}) + ']';
+                });
+            }
+
             function markDone(data) {
                 var runId = '{{ latest_run.id }}';
                 var badge = document.getElementById('run-badge-' + runId);
@@ -1019,9 +1031,9 @@
                     badge.innerHTML = '<span class="material-symbols-outlined">' + icon + '</span>' + data.status;
                 }
                 if (dur) dur.textContent = data.duration || '';
-                if (msg) msg.textContent = data.message  || '—';
+                if (msg) msg.textContent = localiseEta(data.message  || '—');
                 if (runBtn)  runBtn.disabled = false;
-                if (stopBtn) stopBtn.classList.remove('visible');
+                if (stopBtn) { stopBtn.disabled = false; stopBtn.classList.remove('visible'); }
                 // Inject pencil + delete buttons into the actions cell
                 var actRow = document.getElementById('run-row-' + runId);
                 if (actRow) {
@@ -1083,7 +1095,7 @@
                     .then(function(data) {
                         // Update live progress message even while still running
                         var msg = document.getElementById('run-msg-' + '{{ latest_run.id }}');
-                        if (msg && data.message) { msg.textContent = data.message; }
+                        if (msg && data.message) { msg.textContent = localiseEta(data.message); }
                         var dur = document.getElementById('run-dur-' + '{{ latest_run.id }}');
                         if (dur && data.duration) { dur.textContent = data.duration; }
                         if (data.done) { markDone(data); }
@@ -1102,7 +1114,21 @@
                         headers: {'X-CSRFToken': stopBtn.dataset.csrf},
                     })
                     .then(function(r) { return r.json(); })
-                    .then(function(data) { markDone(data); })
+                    .then(function(data) {
+                        markDone(data);
+                        // Hide the "Simulation started" flash messages
+                        document.querySelectorAll('[id^="sim-flash-msg-"]').forEach(function(el) { el.style.display = 'none'; });
+                        // Show orange cancelled notice then fade it out after 10 s
+                        var notice = document.getElementById('sim-cancel-notice');
+                        if (notice) {
+                            notice.style.display = 'inline-flex';
+                            setTimeout(function() {
+                                notice.style.transition = 'opacity 0.6s';
+                                notice.style.opacity = '0';
+                                setTimeout(function() { notice.style.display = 'none'; notice.style.opacity = ''; notice.style.transition = ''; }, 650);
+                            }, 10000);
+                        }
+                    })
                     .catch(function() { stopBtn.disabled = false; stopBtn.classList.add('visible'); });
                 });
             }

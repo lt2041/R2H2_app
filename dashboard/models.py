@@ -555,6 +555,10 @@ class SimulationRun(models.Model):
                                    help_text='Relative path (under MEDIA_ROOT/outputs/) to the saved HDF5 results file.')
     xaxis_datetime = models.BooleanField(default=True,
                                          help_text='Display results charts with a datetime x-axis (False = hours index).')
+    app_version = models.CharField(max_length=20, blank=True, default='',
+                                   help_text='Version of r2h2 that produced this run.')
+    git_hash = models.CharField(max_length=40, blank=True, default='',
+                                help_text='Git commit hash of the code that produced this run.')
 
     class Meta:
         ordering = ['-started_at']

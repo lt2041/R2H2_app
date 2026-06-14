@@ -234,7 +234,7 @@
         </div>
         <div class="results-meta-item">
             <span class="results-meta-label">Started</span>
-            <span class="results-meta-value">{{ run.started_at|date:"d M Y, H:i:s" }}</span>
+            <span class="results-meta-value"><time class="local-dt" datetime="{{ run.started_at|date:"c" }}">{{ run.started_at|date:"d M Y, H:i:s" }}</time></span>
         </div>
         {% if run.duration_hms %}
         <div class="results-meta-item">

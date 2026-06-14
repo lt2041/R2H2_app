@@ -275,7 +275,7 @@
                                 {% endif %}
                             </td>
                             <td style="white-space:nowrap;">
-                                {% if run.started_at %}{{ run.started_at|date:"d M Y H:i" }}{% else %}—{% endif %}
+                                {% if run.started_at %}<time class="local-dt" datetime="{{ run.started_at|date:"c" }}">{{ run.started_at|date:"d M Y H:i" }}</time>{% else %}—{% endif %}
                             </td>
                             <td style="font-family:'Ubuntu Mono',monospace;">
                                 {% if run.duration_hms %}{{ run.duration_hms }}{% else %}—{% endif %}

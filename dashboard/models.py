@@ -49,6 +49,11 @@ class Controller(models.Model):
         return f"{self.name} ({self.filename}){verified_tag}"
 
 
+def default_start_date():
+    """Return 1st Jan of the current year."""
+    return datetime.date(datetime.date.today().year, 1, 1)
+
+
 #### ---------------------- SIMULATION MODEL (TOP-LEVEL) ---------------------- ####
 
 
@@ -76,8 +81,14 @@ class Simulation(models.Model):
         null=True, blank=True,
         help_text='Override simulation duration (days). Truncates wind data to this many days. Leave blank to use the full wind file.')
     datum_date = models.DateField(
+        default=default_start_date,
+        help_text='Start date (00:00) used as the datetime axis origin for results charts. Defaults to 1st Jan of the current year.')
+    start_date = models.DateField(
         null=True, blank=True,
-        help_text='Start date (00:00) used as the datetime axis origin for results charts. Defaults to today if not set.')
+        help_text='Start date for the simulation when using a specific date range.')
+    end_date = models.DateField(
+        null=True, blank=True,
+        help_text='End date for the simulation when using a specific date range.')
     controller_file = models.CharField(
         max_length=255, blank=True, default='',
         help_text='[Legacy] Filename of a custom controller. Superseded by controller FK.')
@@ -91,6 +102,16 @@ class Simulation(models.Model):
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"
+
+    def get_max_end_date(self):
+        """Calculate the maximum possible end date based on linked wind data."""
+        from datetime import timedelta
+        if not self.datum_date:
+            return None
+        total_hours = sum(wi.ts_n_hours or 0 for wi in self.wind_inputs.all())
+        if total_hours > 0:
+            return self.datum_date + timedelta(days=int(total_hours / 24))
+        return None
 
 
 #### ---------------------- SIMULATION <-> WIND INPUT THROUGH TABLE ---------------------- ####

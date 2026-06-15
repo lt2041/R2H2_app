@@ -429,15 +429,37 @@ def simulation_detail(request, sim_id):
 
     wind_type_label = dict(Simulation._meta.get_field('iWindType').choices).get(sim.iWindType, sim.iWindType)
 
-    from datetime import date as _today_date
+    from datetime import date as _today_date, timedelta as _timedelta
     datum_display = sim.datum_date.strftime('%d %b %Y') if sim.datum_date else None
+    _end_date = sim.end_date
+
+
+    # Derived dates from total linked wind hours (for "All available wind data" display)
+    _wind_total_hours = sum(
+        wi.ts_n_hours or 0
+        for wi in sim.wind_inputs.all()
+    )
+    if sim.datum_date and _wind_total_hours > 0:
+        new_end_date = sim.datum_date + _timedelta(days=int(_wind_total_hours / 24))
+        if sim.end_date != new_end_date:
+            sim.end_date = new_end_date
+            sim.save(update_fields=['end_date'])
+
+    _derived_start = sim.datum_date.isoformat() if sim.datum_date else ''
+    _derived_end = (
+        (sim.datum_date + _timedelta(days=int(_wind_total_hours / 24))).isoformat()
+        if (sim.datum_date and _wind_total_hours > 0) else ''
+    )
 
     sim_settings = [
-        {'name': 'Wind data resolution', 'value': wind_type_label,         'unit': ''},
         {'name': 'Duration',             'value': sim.duration_days,        'unit': 'days', 'editable': 'duration_days'},
-        {'name': 'Datum date',           'value': datum_display,            'unit': '',     'editable': 'datum_date',
-         'raw': sim.datum_date.isoformat() if sim.datum_date else ''},
         {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
+        {'name': 'Date range',           'editable': 'date_range',
+         'start_date':         sim.datum_date.isoformat() if sim.datum_date else '',
+         'end_date':           _end_date.isoformat() if _end_date else '',
+         'derived_start_date': _derived_start,
+         'derived_end_date':   _derived_end,
+         'mode':               'range' if sim.duration_days else 'all'},
     ]
     sim_hidden_settings = [
         {'name': 'Total time',           'value': sim.rTotalTime,           'unit': 's'},
@@ -491,6 +513,7 @@ def simulation_detail(request, sim_id):
         'nsm_sections': nsm_sections,
         'current_ids_json': current_ids_json,
         'update_url': f'/simulations/{sim_id}/update/',
+        'date_range_save_url': f'/simulations/{sim_id}/date-range/',
     })
 
 
@@ -943,7 +966,7 @@ def _run_simulation_thread(run_id):
                     hour_str = f'hour {done_steps+1}/{total_steps}'
                 else:
                     hour_str = f'hour {hour+1}/{total_hours}'
-                msg = (f'{year_str}{hour_str} \u2014 {pct}\u00a0%{eta_str}')
+                msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str}')
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
 
         results = sim_engine.run(run_id=run.pk, progress_callback=_on_progress)
@@ -1308,6 +1331,46 @@ def update_run_xaxis(request, sim_id, run_id):
     run.xaxis_datetime = (val == 'true')
     run.save(update_fields=['xaxis_datetime'])
     return JsonResponse({'xaxis_datetime': run.xaxis_datetime})
+
+
+@require_POST
+def update_sim_date_range(request, sim_id):
+    """POST: save start date and end date for a Simulation.
+    Derives duration_days from (end_date - start_date).
+    Validates that dates are within the allowed range from wind data.
+    """
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    from datetime import date as _date
+    start_raw = request.POST.get('start_date', '').strip()
+    end_raw   = request.POST.get('end_date',   '').strip()
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    try:
+        start = _date.fromisoformat(start_raw) if start_raw else None
+        end   = _date.fromisoformat(end_raw)   if end_raw   else None
+    except ValueError:
+        return JsonResponse({'error': 'Invalid date format (expected YYYY-MM-DD).'}, status=400)
+
+    # Validation
+    if start and sim.datum_date and start < sim.datum_date:
+        return JsonResponse({'error': f'Start date cannot be before the axis origin date ({sim.datum_date.strftime("%d %b %Y")}).'}, status=400)
+    
+    max_end_date = sim.get_max_end_date()
+    if end and max_end_date and end > max_end_date:
+        return JsonResponse({'error': f'End date cannot be after the maximum possible date from wind data ({max_end_date.strftime("%d %b %Y")}).'}, status=400)
+
+    sim.start_date = start
+    sim.end_date = end
+    if start and end and end > start:
+        sim.duration_days = (end - start).days
+    else:
+        sim.duration_days = None
+    sim.save(update_fields=['start_date', 'end_date', 'duration_days'])
+    return JsonResponse({
+        'start_date':    sim.start_date.isoformat() if sim.start_date else '',
+        'end_date':      sim.end_date.isoformat() if sim.end_date else '',
+        'duration_days': sim.duration_days,
+    })
 
 
 @require_POST

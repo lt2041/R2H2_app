@@ -1031,7 +1031,7 @@
                     badge.innerHTML = '<span class="material-symbols-outlined">' + icon + '</span>' + data.status;
                 }
                 if (dur) dur.textContent = data.duration || '';
-                if (msg) msg.textContent = localiseEta(data.message  || '—');
+                if (msg) msg.innerHTML = localiseEta(data.message  || '—');
                 if (runBtn)  runBtn.disabled = false;
                 if (stopBtn) { stopBtn.disabled = false; stopBtn.classList.remove('visible'); }
                 // Inject pencil + delete buttons into the actions cell
@@ -1071,7 +1071,8 @@
                 if (data.output_path) {
                     var dlCell = document.getElementById('run-dl-' + runId);
                     if (dlCell) {
-                        dlCell.innerHTML = '<a href="{{ MEDIA_URL }}" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
+                        dlCell.innerHTML = '<a href="{{ MEDIA_URL }}" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;">
+                            <span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
                         dlCell.querySelector('a').href = '{{ MEDIA_URL }}' + data.output_path;
                     }
                     // Make the row clickable
@@ -1095,7 +1096,7 @@
                     .then(function(data) {
                         // Update live progress message even while still running
                         var msg = document.getElementById('run-msg-' + '{{ latest_run.id }}');
-                        if (msg && data.message) { msg.textContent = localiseEta(data.message); }
+                        if (msg && data.message) { msg.innerHTML = localiseEta(data.message); }
                         var dur = document.getElementById('run-dur-' + '{{ latest_run.id }}');
                         if (dur && data.duration) { dur.textContent = data.duration; }
                         if (data.done) { markDone(data); }
@@ -1305,40 +1306,39 @@
                 <td class="{% if forloop.first %}ss-name{% else %}ss-name-r{% endif %}">{{ s.name }}</td>
                 <td class="ss-val{% if not forloop.last %}-mid{% endif %}">
                     {% if s.editable == 'duration_days' %}
-                    <span class="ss-val" id="ss-duration-val">{% if s.value %}{{ s.value }} days{% else %}<em style="color:#aaa;">tbc</em>{% endif %}</span>
-                    <input type="number" class="ss-edit-input" id="ss-duration-input"
-                           value="{% if s.value %}{{ s.value }}{% endif %}"
-                           min="1" placeholder="—"
-                           style="display:none;width:70px;">
-                    <button class="ss-edit-btn" id="ss-duration-btn" title="Edit duration"
-                            onclick="startEditDuration()">
-                        <span class="material-symbols-outlined">edit</span>
-                    </button>
-                    <button class="ss-save-btn" id="ss-duration-save" style="display:none;"
-                            onclick="saveDuration()">
-                        <span class="material-symbols-outlined">check</span>
-                    </button>
-                    <button class="ss-save-btn" id="ss-duration-cancel" style="display:none;color:#aaa;"
-                            onclick="cancelEditDuration()">
-                        <span class="material-symbols-outlined">close</span>
-                    </button>
-                    {% elif s.editable == 'datum_date' %}
-                    <span class="ss-val" id="ss-datum-val">{% if s.value %}{{ s.value }}{% else %}<em style="color:#aaa;">today</em>{% endif %}</span>
-                    <input type="date" class="ss-edit-input" id="ss-datum-input"
-                           value="{{ s.raw }}"
-                           style="display:none;width:130px;">
-                    <button class="ss-edit-btn" id="ss-datum-btn" title="Edit datum date"
-                            onclick="startEditDatum()">
-                        <span class="material-symbols-outlined">edit</span>
-                    </button>
-                    <button class="ss-save-btn" id="ss-datum-save" style="display:none;"
-                            onclick="saveDatum()">
-                        <span class="material-symbols-outlined">check</span>
-                    </button>
-                    <button class="ss-save-btn" id="ss-datum-cancel" style="display:none;color:#aaa;"
-                            onclick="cancelEditDatum()">
-                        <span class="material-symbols-outlined">close</span>
-                    </button>
+                    <select id="ss-duration-mode" class="browser-default"
+                            onchange="onDurationModeChange(this)"
+                            style="border:1px solid #b2e0e4;border-radius:4px;font-size:0.82rem;padding:2px 6px;color:#1a2e30;background:#f4fafb;cursor:pointer;outline:none;font-family:inherit;height:auto;display:inline-block;width:auto;">
+                      <option value="all"  {% if not s.value %}selected{% endif %}>All available wind data</option>
+                      <option value="range"{% if s.value %} selected{% endif %}>Specific date range</option>
+                    </select>
+                    {% elif s.editable == 'date_range' %}
+                    <div id="ss-date-range-wrap"
+                         data-saved-start="{{ s.start_date }}"
+                         data-saved-end="{{ s.end_date }}"
+                         data-derived-start="{{ s.derived_start_date }}"
+                         data-derived-end="{{ s.derived_end_date }}"
+                         style="display:flex;flex-direction:row;align-items:center;gap:8px;
+                                {% if s.mode == 'all' %}opacity:0.3;pointer-events:none;{% endif %}">
+                      <span style="display:inline-flex;align-items:center;gap:4px;">
+                        <span style="font-size:0.7rem;color:#4a7a80;font-weight:600;"></span>
+                        <input type="date" id="ss-start-date"
+                               value="{{ s.start_date }}"
+                               min="{{ sim.datum_date|date:'Y-m-d' }}"
+                               max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                               style="border:1px solid #b2e0e4;border-radius:4px;font-size:0.8rem;padding:0 4px;font-family:inherit;outline:none;color:#1a2e30;height:22px;"
+                               onblur="saveDateRange()">
+                      </span>
+                      <span style="display:inline-flex;align-items:center;gap:4px;">
+                        <span style="font-size:0.7rem;color:#4a7a80;font-weight:600;transform: translate(-2px,-5px);"> — </span>
+                        <input type="date" id="ss-end-date"
+                               value="{{ s.end_date }}"
+                               min="{{ sim.datum_date|date:'Y-m-d' }}"
+                               max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                               style="border:1px solid #b2e0e4;border-radius:4px;font-size:0.8rem;padding:0 4px;font-family:inherit;outline:none;color:#1a2e30;height:22px;"
+                               onblur="saveDateRange()">
+                      </span>
+                    </div>
                     {% elif s.value is None %}
                         <span style="color:#b2e0e4;">—</span>
                     {% else %}
@@ -1921,56 +1921,73 @@
         }
     }
 
-    // ── Duration inline edit ──
-    var _durSaveUrl = "{% url 'dashboard-update-sim-duration' sim_id=sim.id %}";
-    var _durCsrf    = '{{ csrf_token }}';
+    // ── Duration mode dropdown ──
+    var _durSaveUrl       = "{% url 'dashboard-update-sim-duration' sim_id=sim.id %}";
+    var _dateRangeSaveUrl = '{{ date_range_save_url }}';
+    var _durCsrf          = '{{ csrf_token }}';
+    var _durSavePending   = false;
 
-    function startEditDuration() {
-        document.getElementById('ss-duration-val').style.display   = 'none';
-        document.getElementById('ss-duration-btn').style.display   = 'none';
-        document.getElementById('ss-duration-input').style.display = 'inline-block';
-        document.getElementById('ss-duration-save').style.display  = 'inline-block';
-        document.getElementById('ss-duration-cancel').style.display= 'inline-block';
-        document.getElementById('ss-duration-input').focus();
+    function onDurationModeChange(sel) {
+        var wrap  = document.getElementById('ss-date-range-wrap');
+        var start = document.getElementById('ss-start-date');
+        var end   = document.getElementById('ss-end-date');
+        if (!wrap || !start || !end) return;
+
+        if (sel.value === 'all') {
+            wrap.style.opacity = '0.3';
+            wrap.style.pointerEvents = 'none';
+            // Show derived (wind-data) dates as hint
+            start.value = wrap.dataset.derivedStart || '';
+            end.value   = wrap.dataset.derivedEnd   || '';
+            // Clear duration/datum override on server
+            var fd = new FormData();
+            fd.append('duration_days', '');
+            fd.append('csrfmiddlewaretoken', _durCsrf);
+            fetch(_durSaveUrl, { method: 'POST', body: fd }).catch(function(){});
+        } else {
+            wrap.style.opacity = '';
+            wrap.style.pointerEvents = '';
+            // Restore last saved specific-range dates
+            start.value = wrap.dataset.savedStart || '';
+            end.value   = wrap.dataset.savedEnd   || '';
+            start.focus();
+        }
     }
-    function cancelEditDuration() {
-        document.getElementById('ss-duration-val').style.display   = '';
-        document.getElementById('ss-duration-btn').style.display   = '';
-        document.getElementById('ss-duration-input').style.display = 'none';
-        document.getElementById('ss-duration-save').style.display  = 'none';
-        document.getElementById('ss-duration-cancel').style.display= 'none';
+
+    function clampDateInput(el) {
+        if (!el || !el.value) return;
+        var val = el.value;
+        if (el.min && val < el.min) el.value = el.min;
+        if (el.max && val > el.max) el.value = el.max;
     }
-    function saveDuration() {
-        var val = document.getElementById('ss-duration-input').value.trim();
-        var fd  = new FormData();
-        fd.append('duration_days', val);
+
+    function saveDateRange() {
+        var startEl = document.getElementById('ss-start-date');
+        var endEl   = document.getElementById('ss-end-date');
+        clampDateInput(startEl);
+        clampDateInput(endEl);
+        var start   = (startEl || {}).value || '';
+        var end     = (endEl   || {}).value || '';
+        if (!start || !end) return;
+        if (_durSavePending) return;
+        _durSavePending = true;
+        var fd = new FormData();
+        fd.append('start_date', start);
+        fd.append('end_date',   end);
         fd.append('csrfmiddlewaretoken', _durCsrf);
-        document.getElementById('ss-duration-save').disabled = true;
-        fetch(_durSaveUrl, { method: 'POST', body: fd })
+        fetch(_dateRangeSaveUrl, { method: 'POST', body: fd })
             .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var valEl = document.getElementById('ss-duration-val');
-                if (data.duration_days) {
-                    valEl.innerHTML = data.duration_days;
-                    document.getElementById('ss-duration-input').value = data.duration_days;
-                } else {
-                    valEl.innerHTML = '<em style="color:#aaa;">tbc</em>';
-                    document.getElementById('ss-duration-input').value = '';
+            .then(function() {
+                // Keep data attrs in sync so switching back to "range" restores these values
+                var wrap = document.getElementById('ss-date-range-wrap');
+                if (wrap) {
+                    wrap.dataset.savedStart = start;
+                    wrap.dataset.savedEnd   = end;
                 }
-                cancelEditDuration();
             })
-            .catch(function() {})
-            .finally(function() { document.getElementById('ss-duration-save').disabled = false; });
+            .catch(function(){})
+            .finally(function() { _durSavePending = false; });
     }
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') cancelEditDuration();
-    });
-    document.addEventListener('DOMContentLoaded', function() {
-        var inp = document.getElementById('ss-duration-input');
-        if (inp) inp.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') saveDuration();
-        });
-    });
 
     // ── Datum date inline edit ──
     var _datumSaveUrl = "{% url 'dashboard-update-sim-datum' sim_id=sim.id %}";

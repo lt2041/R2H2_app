@@ -16,6 +16,7 @@ urlpatterns = [
     path('simulations/<int:sim_id>/wind-year/', views.update_wind_year, name='dashboard-wind-year'),
     path('simulations/<int:sim_id>/wind-first-year/', views.update_first_wind_year, name='dashboard-wind-first-year'),
     path('simulations/<int:sim_id>/duration/', views.update_sim_duration, name='dashboard-update-sim-duration'),
+    path('simulations/<int:sim_id>/date-range/', views.update_sim_date_range, name='dashboard-update-sim-date-range'),
     path('simulations/<int:sim_id>/datum/',    views.update_sim_datum,    name='dashboard-update-sim-datum'),
     path('simulations/<int:sim_id>/controller/', views.update_sim_controller, name='dashboard-update-sim-controller'),
     path('controllers/save/', views.save_controller_file, name='dashboard-save-controller'),

@@ -548,6 +548,11 @@ class WindInput(models.Model):
             'arTime': 'Time Axis',
             'h5_datasets': 'HDF5 Fields',
         }
+        editable_groups = {
+            'Wind Input': ['name'],
+            'File': ['wind_file'],
+            'Time Series': ['ts_n_hours', 'ts_resolution', 'ts_start', 'ts_end'],
+        }
 
 #### ---------------------- SIMULATION RUN (JOB TRACKING) ---------------------- ####
 

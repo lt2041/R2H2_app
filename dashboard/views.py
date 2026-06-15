@@ -1276,31 +1276,45 @@ def view_run_results(request, sim_id, run_id):
 
             years_data.append(ydata)
 
-    # Append per-year wind speed data from all linked WindInput H5 files
+    # Append per-year wind speed data from all linked WindInput H5 files.
+    # When a date range was used, apply the same start/end hour slice so
+    # wind speed aligns with the simulated power data.
     try:
+        import datetime as _dt_mod
         wind_paths = _resolve_wind_h5_paths(sim)
         ws_full = []
         for wp in wind_paths:
             with h5py.File(wp, 'r') as wf:
                 if 'WindSpeed' in wf:
-                    ws_full.extend(wf['WindSpeed'][0].tolist())  # shape (N,)
+                    ws_full.extend(wf['WindSpeed'][0].tolist())
+
         if ws_full:
-            # Distribute hours across years by matching year data lengths
+            # Determine the start-hour offset into the full wind array
+            _ws_start_hour = 0
+            if run.run_start_date:
+                datum = sim.datum_date or _dt_mod.date(run.run_start_date.year, 1, 1)
+                _ws_start_hour = max(0, int((run.run_start_date - datum).days * 24))
+
+            ws_sliced = ws_full[_ws_start_hour:]
+
             offset = 0
             for yd in years_data:
                 ref = (yd.get('arSoc') or yd.get('arTotalH2') or yd.get('arElecOnAv') or [])
                 n = len(ref)
-                yd['arWindSpeed'] = ws_full[offset: offset + n] if n else []
+                yd['arWindSpeed'] = ws_sliced[offset: offset + n] if n else []
                 offset += n
     except Exception:
         pass  # wind data is optional — silently skip if unavailable
 
-    # Compute per-year cumulative hour offsets from datum
+    # Compute per-year cumulative hour offsets from datum.
+    # If the run used a specific start date, use that as the x-axis origin;
+    # otherwise fall back to 1 Jan of the datum year (integer-based origin).
     from datetime import date as _date
-    datum = sim.datum_date or _date.today()
-    # Pin x-axis origin to 1 Jan of the datum year so the first hour of the
-    # simulation aligns with the start of the year regardless of datum_date day.
-    datum_iso = _date(datum.year, 1, 1).isoformat()
+    if run.run_start_date:
+        datum_iso = run.run_start_date.isoformat()
+    else:
+        datum = sim.datum_date or _date.today()
+        datum_iso = _date(datum.year, 1, 1).isoformat()
     year_cumulative_hours = []
     cumulative = 0
     for yd in years_data:

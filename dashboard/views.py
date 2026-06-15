@@ -811,6 +811,8 @@ def _save_run_outputs(run, results: dict) -> str:
         meta.attrs['insulated']            = bool(results.get('Insulated', False))
         meta.attrs['app_version']          = run.app_version or ''
         meta.attrs['git_hash']             = run.git_hash or ''
+        meta.attrs['run_start_date']       = run.run_start_date.isoformat() if run.run_start_date else ''
+        meta.attrs['run_end_date']         = run.run_end_date.isoformat()   if run.run_end_date   else ''
 
         # ── /inputs ──────────────────────────────────────────────────────────
         inp = f.create_group('inputs')
@@ -922,27 +924,49 @@ def _run_simulation_thread(run_id):
         run.git_hash = _get_git_hash()
         run.save(update_fields=['status', 'started_at', 'app_version', 'git_hash'])
 
+        import numpy as np
+        import datetime as _dt
         from r2h2.r2h2 import R2H2
         wind_paths = _resolve_wind_h5_paths(run.simulation)
         sim_engine = R2H2(run.simulation)
         sim_engine.windinputs = _load_concatenated_wind(wind_paths)
 
-        # If user set a duration override AND only a single wind file is linked,
-        # truncate wind data to requested hours.  When multiple files are linked
-        # their concatenated length is the intended multi-year duration; in that
-        # case duration_days is ignored so all linked years are simulated.
-        duration_days = run.simulation.duration_days
-        if duration_days and len(wind_paths) == 1:
-            import numpy as np
-            max_hours = duration_days * 24
-            wi = sim_engine.windinputs
+        sim_obj = run.simulation
+        wi = sim_engine.windinputs
+        effective_start = None
+        effective_end   = None
+
+        # If a specific date range is set, slice wind data to [start_date, end_date).
+        # For integer-based wind files (no real timestamps), time origin is
+        # 00:00 on 1-Jan of the datum_date year.
+        if sim_obj.start_date and sim_obj.end_date and sim_obj.duration_days:
+            datum = sim_obj.datum_date or _dt.date(sim_obj.start_date.year, 1, 1)
+            start_hour = int((sim_obj.start_date - datum).days * 24)
+            end_hour   = int((sim_obj.end_date   - datum).days * 24)
+            start_hour = max(0, start_hour)
+            if wi is not None and hasattr(wi, 'arPowerInput') and wi.arPowerInput is not None:
+                n_hours = wi.arPowerInput.shape[1]
+                end_hour = min(end_hour, n_hours)
+                if start_hour < end_hour:
+                    wi.arPowerInput = wi.arPowerInput[:, start_hour:end_hour]
+            effective_start = sim_obj.start_date
+            effective_end   = sim_obj.end_date
+        elif sim_obj.duration_days and len(wind_paths) == 1:
+            # Legacy: duration_days only (no explicit date range), single wind file.
+            # Truncate to requested hours from the start of the wind data.
+            max_hours = sim_obj.duration_days * 24
             if wi is not None and hasattr(wi, 'arPowerInput') and wi.arPowerInput is not None:
                 n_hours = wi.arPowerInput.shape[1]
                 if max_hours < n_hours:
-                    # arPowerInput shape: (time_steps_per_hour, num_hours)
-                    # Only truncate the hours axis (axis 1); arTime is the
-                    # within-hour time axis and must be left unchanged.
                     wi.arPowerInput = wi.arPowerInput[:, :max_hours]
+            datum = sim_obj.datum_date or _dt.date(_dt.date.today().year, 1, 1)
+            effective_start = datum
+            effective_end   = datum + _dt.timedelta(days=sim_obj.duration_days)
+
+        # Persist effective date range on the run record
+        run.run_start_date = effective_start
+        run.run_end_date   = effective_end
+        run.save(update_fields=['run_start_date', 'run_end_date'])
 
         _progress_interval = 50  # update DB message every N hours
         _progress_start = timezone.now()

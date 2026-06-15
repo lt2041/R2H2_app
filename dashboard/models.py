@@ -574,6 +574,10 @@ class SimulationRun(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
     output_path = models.CharField(max_length=512, blank=True, default='',
                                    help_text='Relative path (under MEDIA_ROOT/outputs/) to the saved HDF5 results file.')
+    run_start_date = models.DateField(null=True, blank=True,
+                                      help_text='Effective start date used for this run (derived from simulation date range).')
+    run_end_date   = models.DateField(null=True, blank=True,
+                                      help_text='Effective end date used for this run (derived from simulation date range).')
     xaxis_datetime = models.BooleanField(default=True,
                                          help_text='Display results charts with a datetime x-axis (False = hours index).')
     app_version = models.CharField(max_length=20, blank=True, default='',

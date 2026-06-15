@@ -298,8 +298,8 @@
     .run-status-badge.done      { background:#e6f9f0; color:#1a7a4a; }
     .run-status-badge.error     { background:#fdecea; color:#b71c1c; }
     .run-status-badge.running   { background:#e8f8f9; color:#136b75; }
-    .run-status-badge.pending   { background:#f4f4f4; color:#757575; }
-    .run-status-badge.cancelled { background:#fff8e1; color:#e65100; border:1px solid #ffe082; }
+    .run-status-badge.pending   { background:#fffde7; color:#f9a825; border:1px solid #ffe082; }
+    .run-status-badge.cancelled { background:#f5f5f5; color:#9e9e9e; border:1px solid #e0e0e0; }
 
     .run-status-badge .material-symbols-outlined {
         font-size: 0.85rem !important;
@@ -940,7 +940,7 @@
                             {% elif run.status == 'running' %}
                                 <span class="sim-spinner" style="width:0.7rem;height:0.7rem;"></span>running
                             {% else %}
-                                <span class="material-symbols-outlined">schedule</span>pending
+                                <span class="material-symbols-outlined">schedule</span>running
                             {% endif %}
                         </span>
                     </td>
@@ -1071,8 +1071,7 @@
                 if (data.output_path) {
                     var dlCell = document.getElementById('run-dl-' + runId);
                     if (dlCell) {
-                        dlCell.innerHTML = '<a href="{{ MEDIA_URL }}" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;">
-                            <span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
+                        dlCell.innerHTML = '<a href="#" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
                         dlCell.querySelector('a').href = '{{ MEDIA_URL }}' + data.output_path;
                     }
                     // Make the row clickable
@@ -1298,59 +1297,61 @@
             <span class="material-symbols-outlined ss-toggle">expand_more</span>
         </div>
         <div class="sim-settings-body">
-            <table class="sim-settings-table">
-                <tbody>
-                {% for pair in sim_settings_pairs %}
-                <tr>
-                {% for s in pair %}
-                <td class="{% if forloop.first %}ss-name{% else %}ss-name-r{% endif %}">{{ s.name }}</td>
-                <td class="ss-val{% if not forloop.last %}-mid{% endif %}">
-                    {% if s.editable == 'duration_days' %}
-                    <select id="ss-duration-mode" class="browser-default"
-                            onchange="onDurationModeChange(this)"
-                            style="border:1px solid #b2e0e4;border-radius:4px;font-size:0.82rem;padding:2px 6px;color:#1a2e30;background:#f4fafb;cursor:pointer;outline:none;font-family:inherit;height:auto;display:inline-block;width:auto;">
-                      <option value="all"  {% if not s.value %}selected{% endif %}>All available wind data</option>
-                      <option value="range"{% if s.value %} selected{% endif %}>Specific date range</option>
-                    </select>
-                    {% elif s.editable == 'date_range' %}
-                    <div id="ss-date-range-wrap"
-                         data-saved-start="{{ s.start_date }}"
-                         data-saved-end="{{ s.end_date }}"
-                         data-derived-start="{{ s.derived_start_date }}"
-                         data-derived-end="{{ s.derived_end_date }}"
-                         style="display:flex;flex-direction:row;align-items:center;gap:8px;
-                                {% if s.mode == 'all' %}opacity:0.3;pointer-events:none;{% endif %}">
-                      <span style="display:inline-flex;align-items:center;gap:4px;">
-                        <span style="font-size:0.7rem;color:#4a7a80;font-weight:600;"></span>
-                        <input type="date" id="ss-start-date"
-                               value="{{ s.start_date }}"
-                               min="{{ sim.datum_date|date:'Y-m-d' }}"
-                               max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
-                               style="border:1px solid #b2e0e4;border-radius:4px;font-size:0.8rem;padding:0 4px;font-family:inherit;outline:none;color:#1a2e30;height:22px;"
-                               onblur="saveDateRange()">
-                      </span>
-                      <span style="display:inline-flex;align-items:center;gap:4px;">
-                        <span style="font-size:0.7rem;color:#4a7a80;font-weight:600;transform: translate(-2px,-5px);"> — </span>
-                        <input type="date" id="ss-end-date"
-                               value="{{ s.end_date }}"
-                               min="{{ sim.datum_date|date:'Y-m-d' }}"
-                               max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
-                               style="border:1px solid #b2e0e4;border-radius:4px;font-size:0.8rem;padding:0 4px;font-family:inherit;outline:none;color:#1a2e30;height:22px;"
-                               onblur="saveDateRange()">
-                      </span>
+            <div class="badge-groups-wrap">
+                <div class="badge-group">
+                    <div class="badge-group-fields">
+                        {% for s in sim_settings %}
+                        {% if s.editable == 'duration_days' %}
+                        <span class="param-badge">
+                            <span class="pb-label">{{ s.name }}</span>
+                            <span class="pb-val">
+                                <select id="ss-duration-mode" class="browser-default"
+                                        onchange="onDurationModeChange(this)"
+                                        style="border:none;background:transparent;font-size:0.82rem;padding:0;color:#1a2e30;cursor:pointer;outline:none;font-family:inherit;height:auto;display:inline-block;width:auto;">
+                                  <option value="all"  {% if not s.value %}selected{% endif %}>Full duration of wind data</option>
+                                  <option value="range"{% if s.value %} selected{% endif %}>Specific range</option>
+                                </select>
+                            </span>
+                        </span>
+                        {% elif s.editable == 'date_range' %}
+                        <span class="param-badge" style="flex-direction:row;align-items:center;">
+                            <span class="pb-label">{{ s.name }}</span>
+                            <span class="pb-val">
+                                <div id="ss-date-range-wrap"
+                                     data-saved-start="{{ s.start_date }}"
+                                     data-saved-end="{{ s.end_date }}"
+                                     data-derived-start="{{ s.derived_start_date }}"
+                                     data-derived-end="{{ s.derived_end_date }}"
+                                     style="display:flex;flex-direction:row;align-items:center;gap:4px;
+                                            {% if s.mode == 'all' %}opacity:0.3;pointer-events:none;{% endif %}">
+                                    <input type="date" id="ss-start-date" class="browser-default"
+                                           value="{{ s.start_date }}"
+                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
+                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
+                                           onblur="saveDateRange()">
+                                    <span style="color:#4a7a80;font-size:0.8rem;">—</span>
+                                    <input type="date" id="ss-end-date" class="browser-default"
+                                           value="{{ s.end_date }}"
+                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
+                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
+                                           onblur="saveDateRange()">
+                                </div>
+                            </span>
+                        </span>
+                        {% else %}
+                        <span class="param-badge">
+                            <span class="pb-label">{{ s.name }}</span>
+                            <span class="pb-val">
+                                {% if s.value is None %}—{% else %}{{ s.value|fmt_float }}{% if s.unit %} <span style="color:#aaa;font-size:0.75rem;">{{ s.unit }}</span>{% endif %}{% endif %}
+                            </span>
+                        </span>
+                        {% endif %}
+                        {% endfor %}
                     </div>
-                    {% elif s.value is None %}
-                        <span style="color:#b2e0e4;">—</span>
-                    {% else %}
-                        {{ s.value|fmt_float }}{% if s.unit %} <span style="color:#b2e0e4;font-size:0.75rem;">{{ s.unit }}</span>{% endif %}
-                    {% endif %}
-                </td>
-                {% endfor %}
-                {% if pair|length == 1 %}<td></td><td></td>{% endif %}
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                </div>
+            </div>
             {% if sim_hidden_settings %}
             <div class="hidden-fields-wrap" style="margin-top:0.75rem;">
                 <div class="hidden-fields-toggle" onclick="toggleHiddenFields(this)">
@@ -1362,15 +1363,7 @@
                     <span class="param-badge pb-hidden">
                         <span class="pb-label">{{ s.name }}</span>
                         <span class="pb-val">
-                            {% if s.value is None %}
-                                —
-                            {% elif s.value == True %}
-                                True
-                            {% elif s.value == False %}
-                                False
-                            {% else %}
-                                {{ s.value|fmt_float }}
-                            {% endif %}
+                            {% if s.value is None %}—{% elif s.value == True %}True{% elif s.value == False %}False{% else %}{{ s.value|fmt_float }}{% endif %}
                             {% if s.unit %} <span style="color:#bbb;font-size:0.75rem;">{{ s.unit }}</span>{% endif %}
                         </span>
                     </span>

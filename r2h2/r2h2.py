@@ -471,7 +471,7 @@ def dynamicControl(units, battery, t_out, settings):
     )
 
     # Exponential smoothing (first-order low-pass)
-    tau = units[0].rTimeConst
+    tau = 30
     dt = settings.rTimeStep
     alpha = dt / (tau + dt)
     t_out.arElectroAvailablePower = np.zeros_like(t_out.arElectroAvailablePowerA)

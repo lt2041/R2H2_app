@@ -91,11 +91,11 @@ _TECH_PRESETS: Dict[str, Dict[str, Dict[str, Any]]] = {
         "topology": {
             "iN_stacks": 4,
             "iN_banks": 2,
-            "iNumElectro": 1,
+            "iNumElectro": 5,
             "iN_cell": 100,
         },
         "dynamics": {
-            "rTimeConst": 30.0,
+            "rTimeConst": 0.0,
             "rDeadBandRatio": 2.0,
             "r_s": 1.42e-10,
             "r_f": 3.33e-7,

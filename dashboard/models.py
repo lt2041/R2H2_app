@@ -263,18 +263,18 @@ class ElectroCellPEM(models.Model):
     arV_cell = models.JSONField(default=None, blank=True, null=True)
     # GEOMETRY & GRID
     iNumCurrent = models.PositiveIntegerField(default=1000)
-    rA_cell = models.FloatField(default=1000.0, help_text="cm^2")
-    rI_rated = models.FloatField(default=3.0, help_text="A/cm^2")
+    rA_cell = models.FloatField(default=1000.0, help_text="Area of the cell (cm^2)")
+    rI_rated = models.FloatField(default=3.0, help_text="The rated current density of the cell (A/cm^2)")
     # TEMPERATURE REFERENCES
-    rT_0 = models.FloatField(default=55.0, help_text="Nominal operating temperature [°C]")
+    rT_0 = models.FloatField(default=20.0, help_text="The reference temperature for the electrolyser (i.e. the temperature used in design stage) (°C)")
     rT = models.FloatField(default=55.0, help_text="Initial operating temperature [°C]")
     # PEM VOLTAGE MODEL PARAMS
-    rE_min0 = models.FloatField(default=1.55)
-    rR_0 = models.FloatField(default=0.178, help_text="should be x2 according to literature but polarization curve would be too steep")
-    rD_rt = models.FloatField(default=-0.0045 , help_text="dR/dT")
+    rE_min0 = models.FloatField(default=1.55, help_text="Reference cell voltage (V)")
+    rR_0 = models.FloatField(default=0.178, help_text="Reference resistance area (Ω·cm²)")
+    rD_rt = models.FloatField(default=-0.0045 , help_text="Rate of change of resistance area with temperature (Ω·cm²/°C)")
     # STACK/CELL NOMINALS (INFORMATIVE)
-    rV_cellNom = models.FloatField(default=2.1)
-    rV_bank = models.FloatField(default=633.5)
+    rV_cellNom = models.FloatField(default=2.1, help_text="Parameter for the Faraday efficiency calculation")
+    rV_bank = models.FloatField(default=633.5, help_text="Parameter for the Faraday efficiency calculation")
     rI_bank = models.FloatField(default=3000.0)
     # FARADAY EFF PARAMS
     rF1 = models.FloatField(default=0.25)
@@ -298,18 +298,18 @@ class ElectroCellPEM(models.Model):
             'arR_cell':         'R_cell Curve',
             'arV_cell':         'V_cell Curve',
             'iNumCurrent':      'Current Steps',
-            'rA_cell':          'Cell Area (cm²)',
-            'rI_rated':         'Rated Current Density (A/cm²)',
-            'rT_0':             'Nominal Temp (°C)',
+            'rA_cell':          'Area of the cell (cm²)',
+            'rI_rated':         'The rated current density of the cell (A/cm²)',
+            'rT_0':             'The reference temperature for the electrolyser (i.e. the temperature used in design stage) (°C)',
             'rT':               'Initial Temp (°C)',
-            'rE_min0':          'E_min0 (V)',
-            'rR_0':             'R0 (Ω·cm²)',
-            'rD_rt':            'dR/dT',
+            'rE_min0':          'Reference cell voltage (V)',
+            'rR_0':             'Reference resistance area (Ω·cm²)',
+            'rD_rt':            'Rate of change of resistance area with temperature (Ω·cm²/°C)',
             'rV_cellNom':       'Nominal V_cell (V)',
             'rV_bank':          'Bank Voltage (V)',
             'rI_bank':          'Bank Current (A)',
-            'rF1':              'Faraday Eff F1',
-            'rF2':              'Faraday Eff F2',
+            'rF1':              'Parameter for the Faraday efficiency calculation',
+            'rF2':              'Parameter for the Faraday efficiency calculation',
             'arFaradayTemp_C':  'Faraday Temp Points (°C)',
             'arFaradayF1':      'Faraday F1 Points',
             'arFaradayF2':      'Faraday F2 Points',
@@ -329,16 +329,16 @@ class ElectroCellPEM(models.Model):
 class ElectrolyserUnit(models.Model):
     name = models.CharField(max_length=100, default='ElectrolyserUnit')
     # TOPOLOGY
-    iN_stacks = models.PositiveIntegerField(default=0)
-    iN_banks = models.PositiveIntegerField(default=0)
-    iNumElectro = models.PositiveIntegerField(default=0)
+    iN_stacks = models.PositiveIntegerField(default=4, help_text="Number of Stacks in a bank")
+    iN_banks = models.PositiveIntegerField(default=2, help_text="Number of banks in an electrolyser")
+    iNumElectro = models.PositiveIntegerField(default=5, help_text="Number of Electrolysers in the system")
     iN_cell = models.PositiveIntegerField(default=0)
     iControlLevel = models.PositiveIntegerField(default=2, choices=[(1, 'Electrolyser'), (2, 'Bank'), (3, 'Stack')])
     # DYNAMICS
-    rTimeConst = models.FloatField(default=30.0)
+    rTimeConst = models.FloatField(default=0, help_text="Time constant for the controller to smooth the power flow to the electrolyser (s)")
     rDegradation = models.FloatField(default=1e-30)
-    rTurnDownRatio = models.FloatField(default=0.125)
-    r_s = models.FloatField(default=1.42e-10)
+    rTurnDownRatio = models.FloatField(default=0.125, help_text="The turn down ratio of the electrolyser - the fraction of power that is the minimum operational power")
+    r_s = models.FloatField(default=1.42e-10, help_text="The steady state degradation factor")
     r_f = models.FloatField(default=3.33e-7)
     r_o = models.FloatField(default=1.47e-4)
     rAncilliaryPowerFrac = models.FloatField(default=0.0, help_text="Always required (For WT and all - set to zero for weak grid rather than off gid)")
@@ -378,14 +378,14 @@ class ElectrolyserUnit(models.Model):
         verbose_name_plural = 'Electrolyser Units'
         ui_display_fields = {
             'name':                      'Name',
-            'iN_stacks':                 'Stacks / Bank',
-            'iN_banks':                  'Banks / Unit',
-            'iNumElectro':               'Num Electrolyser Units',
+            'iN_stacks':                 'Number of Stacks in a bank',
+            'iN_banks':                  'Number of banks in an electrolyser',
+            'iNumElectro':               'Number of Electrolysers in the system',
             'iN_cell':                   'Cells / Stack',
             'iControlLevel':             'Control Level',
-            'rTimeConst':                'Time Constant (s)',
+            'rTimeConst':                'Time constant for the controller to smooth the power flow to the electrolyser (s)',
             # 'rDegradation':              'Degradation',
-            'rTurnDownRatio':            'Turn-Down Ratio',
+            'rTurnDownRatio':            'The turn down ratio of the electrolyser - the fraction of power that is the minimum operational power',
             'r_s':                       'r_s',
             'r_f':                       'r_f',
             'r_o':                       'r_o',

@@ -7,13 +7,13 @@ class ElectrolyserUnit(ComponentBase):
 
     def __init__(self, orm_object=None):
         # Topology (overwritten by apply_unit_topology at runtime)
-        self.iN_stacks    = 0
-        self.iN_banks     = 0
-        self.iNumElectro  = 0
+        self.iN_stacks    = 4
+        self.iN_banks     = 2
+        self.iNumElectro  = 5
         self.iN_cell      = 0
         self.iControlLevel = 2   # 1=Electrolyser, 2=Bank, 3=Stack
         # Dynamics
-        self.rTimeConst          = 30.0
+        self.rTimeConst          = 0.0
         self.rDegradation        = 1e-30
         self.rTurnDownRatio      = 0.125
         self.r_s                 = 1.42e-10

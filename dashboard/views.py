@@ -211,6 +211,127 @@ def update_simulation(request, sim_id):
 
 
 @require_POST
+def create_default_model(request):
+    """POST: create a new default simulation model.
+
+    For each component type (Battery, ElectroCellPEM, ElectrolyserUnit,
+    ThermalProperties) the view looks for an existing DB record whose
+    field values exactly match the current defaults.  If one is found it
+    is reused; otherwise a brand-new record is created (with an
+    auto-incrementing suffix so names never clash).
+
+    A new Simulation is always created (with a unique name derived from
+    "Default Model") and the resolved components are linked to it.
+
+    Returns JSON {id: <sim_pk>} on success so the client can redirect.
+    """
+    from django.http import JsonResponse
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    # ── Import defaults from the management command ──────────────────────
+    from dashboard.management.commands.create_main_model import (
+        _BATTERY_DEFAULTS,
+        _ELECTROCELL_PEM_DEFAULTS,
+        _THERMAL_DEFAULTS,
+        _build_electrolyser_defaults,
+        _build_simulation_defaults,
+    )
+
+    kind = 'PEM'
+    el_defaults   = _build_electrolyser_defaults(kind)
+    sim_def_extra = _build_simulation_defaults(kind, el_defaults)
+
+    _SENTINEL = object()
+
+    # Fields that are part of the component "identity" (skip name / pk /
+    # array fields that don't compare cleanly with ==).
+    def _match(model, defaults):
+        """Return the first existing record whose non-name fields all match
+        *defaults*, or None if no match exists."""
+        skip = {'name', 'id'}
+        for obj in model.objects.all():
+            match = True
+            for field, val in defaults.items():
+                if field in skip:
+                    continue
+                db_val = getattr(obj, field, _SENTINEL)
+                # Normalise None / empty list comparisons
+                if db_val != val:
+                    match = False
+                    break
+            if match:
+                return obj
+        return None
+
+    def _unique_name(model, base):
+        """Return *base* if unused, else *base* (2), (3) … until unique."""
+        if not model.objects.filter(name=base).exists():
+            return base
+        n = 2
+        while model.objects.filter(name=f'{base} ({n})').exists():
+            n += 1
+        return f'{base} ({n})'
+
+    # ── Resolve / create each component ──────────────────────────────────
+    bat_match = _match(Battery, _BATTERY_DEFAULTS)
+    if bat_match:
+        bat = bat_match
+    else:
+        bat = Battery.objects.create(
+            **{**_BATTERY_DEFAULTS,
+               'name': _unique_name(Battery, _BATTERY_DEFAULTS['name'])})
+
+    ec_match = _match(ElectroCellPEM, _ELECTROCELL_PEM_DEFAULTS)
+    if ec_match:
+        ec = ec_match
+    else:
+        ec = ElectroCellPEM.objects.create(
+            **{**_ELECTROCELL_PEM_DEFAULTS,
+               'name': _unique_name(ElectroCellPEM, _ELECTROCELL_PEM_DEFAULTS['name'])})
+
+    el_match = _match(ElectrolyserUnit, el_defaults)
+    if el_match:
+        el = el_match
+    else:
+        el = ElectrolyserUnit.objects.create(
+            **{**el_defaults,
+               'name': _unique_name(ElectrolyserUnit, el_defaults['name'])})
+
+    th_match = _match(ThermalProperties, _THERMAL_DEFAULTS)
+    if th_match:
+        th = th_match
+    else:
+        th = ThermalProperties.objects.create(
+            **{**_THERMAL_DEFAULTS,
+               'name': _unique_name(ThermalProperties, _THERMAL_DEFAULTS['name'])})
+
+    # ── Always create a new Simulation ───────────────────────────────────
+    # Only pass fields that actually exist on the Simulation model
+    _sim_model_fields = {f.name for f in Simulation._meta.get_fields() if hasattr(f, 'column')}
+    sim_fields = {k: v for k, v in sim_def_extra.items()
+                  if k not in ('name', 'description') and k in _sim_model_fields}
+    sim_name = _unique_name(Simulation, 'Default Model')
+    sim = Simulation.objects.create(
+        name=sim_name,
+        description=f'Default model created from built-in component defaults ({kind}).',
+        **sim_fields,
+    )
+    sim.batteries.add(bat)
+    sim.electro_cells.add(ec)
+    sim.electrolyser_units.add(el)
+    sim.thermal_properties.add(th)
+
+    return JsonResponse({'id': sim.pk, 'name': sim.name,
+                         'reused': {
+                             'battery':      bat_match is not None,
+                             'electro_cell': ec_match  is not None,
+                             'electrolyser': el_match  is not None,
+                             'thermal':      th_match  is not None,
+                         }})
+
+
 def delete_simulation(request, sim_id):
     """POST: delete a Simulation model and its associated runs."""
     from django.http import JsonResponse

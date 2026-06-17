@@ -60,7 +60,7 @@ _ELECTROCELL_PEM_DEFAULTS = dict(
     iNumCurrent=1000,
     rA_cell=1000.0,
     rI_rated=3.0,
-    rT_0=55.0,
+    rT_0=20.0,
     rT=55.0,
     rE_min0=1.55,
     rR_0=0.178,
@@ -87,9 +87,9 @@ _THERMAL_DEFAULTS = dict(
 # Technology presets (mirrors _TECH_PRESETS in renew2h2.py)
 _TECH_PRESETS = {
     'PEM': {
-        'topology': dict(iN_stacks=4, iN_banks=2, iNumElectro=1, iN_cell=100),
+        'topology': dict(iN_stacks=4, iN_banks=2, iNumElectro=5, iN_cell=100),
         'dynamics': dict(
-            rTimeConst=30.0,
+            rTimeConst=0.0,
             rDeadBandRatio=2.0,
             r_s=1.42e-10,
             r_f=3.33e-7,
@@ -99,7 +99,7 @@ _TECH_PRESETS = {
         ),
     },
     'ALK': {
-        'topology': dict(iN_stacks=9, iN_banks=3, iNumElectro=1, iN_cell=100),
+        'topology': dict(iN_stacks=9, iN_banks=3, iNumElectro=5, iN_cell=100),
         'dynamics': dict(
             rTimeConst=120.0,
             rDeadBandRatio=3.0,

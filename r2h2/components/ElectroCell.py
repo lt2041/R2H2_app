@@ -19,7 +19,7 @@ class ElectroCellPEM(ComponentBase):
         self.rA_cell     = 1000.0   # cm^2
         self.rI_rated    = 3.0      # A/cm^2
         # Temperature references
-        self.rT_0 = 55.0   # Nominal operating temperature [°C]
+        self.rT_0 = 20.0   # Nominal operating temperature [°C]
         self.rT   = 55.0   # Initial operating temperature [°C]
         # PEM voltage model
         self.rE_min0 = 1.55

@@ -7,6 +7,7 @@ urlpatterns = [
     path('components', views.home, name='dashboard-home'),
     path('simulations/', views.simulations, name='dashboard-simulations'),
     path('simulations/create/', views.create_simulation, name='dashboard-create-simulation'),
+    path('simulations/create-default/', views.create_default_model, name='dashboard-create-default-model'),
     path('simulations/<int:sim_id>/update/', views.update_simulation, name='dashboard-update-simulation'),
     path('simulations/<int:sim_id>/delete/', views.delete_simulation, name='dashboard-delete-simulation'),
     path('simulations/<int:sim_id>/', views.simulation_detail, name='dashboard-simulation-detail'),

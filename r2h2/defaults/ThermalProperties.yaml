@@ -1,5 +1,0 @@
-rAmbientTemp: 15.0
-rTauHeating: 120.0 # 20 * 60.0
-rTauCooling: 180.0 # 30 * 60.0
-rTargetTemp: 60.0
-rMinTemp: 50.0

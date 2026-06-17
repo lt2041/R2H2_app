@@ -30,7 +30,12 @@
             Add components in the <a href="{% url 'dashboard-home' %}">Component Library</a> first
         </div>
     </div>
-    <div class="sim-hero-actions">
+    <div class="sim-hero-actions" style="display:flex;gap:0.5rem;align-items:center;">
+        <button class="sim-hero-btn" id="default-model-btn"
+                onclick="createDefaultModel(this)">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;">auto_awesome</span>
+            Default Model
+        </button>
         <button class="sim-hero-btn"
                 onclick="openNewSim()">
             <span class="material-symbols-outlined" style="font-size:1.1rem;">add</span>
@@ -97,6 +102,7 @@
         white-space: nowrap;
     }
     .sim-hero-btn:hover { background: rgba(255,255,255,0.28); }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Card grid ── */
     .sim-grid {
@@ -595,9 +601,31 @@ function updateNsmCount(field) {
     badge.classList.toggle('visible', n > 0);
 }
 
-document.getElementById('new-sim-overlay').addEventListener('click', function(e) {
-    if (e.target === this) closeNewSim();
-});
+function createDefaultModel(btn) {
+    btn.disabled = true;
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<span class="sim-spinner" style="display:inline-block;width:0.85rem;height:0.85rem;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;"></span> Creating…';
+    fetch('{% url "dashboard-create-default-model" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.id) {
+            window.location.href = '/simulations/' + data.id + '/';
+        } else {
+            alert('Error: ' + (data.error || 'unknown'));
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        }
+    })
+    .catch(function(e) {
+        alert('Network error: ' + e);
+        btn.disabled = false;
+        btn.innerHTML = orig;
+    });
+}
+
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeNewSim();
 });

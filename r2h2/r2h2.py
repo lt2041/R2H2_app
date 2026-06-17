@@ -587,6 +587,7 @@ def runElectroStackStep1(
     ec_state_banks = [copy.copy(zElectroCell) for _ in range(num_banks_total)]
     bank_units = [[units[j] for j in idxs] for idxs in bank_to_units]
     last_T_bank = np.full(num_banks_total, np.nan)
+    last_deg_unit = np.full(num_units, np.nan)
     bank_ec_curves: List[Optional[Any]] = [None] * num_banks_total
     temp_cache_threshold = 0.1
 
@@ -689,6 +690,11 @@ def runElectroStackStep1(
         # 1) Rebuild curves per bank if temperature changed enough
         for b, idxs in enumerate(bank_to_units):
             T_b = th_banks[b].rT
+            deg_changed = any(
+                not np.isfinite(last_deg_unit[j]) or
+                abs(units[j].rSummedDegradation - last_deg_unit[j]) > 1e-6
+                for j in idxs
+            )
             if not np.isfinite(last_T_bank[b]) or abs(T_b - last_T_bank[b]) > temp_cache_threshold:
                 ec_state_banks[b].rT = T_b
                 ec_curves_b = ec_state_banks[b].build_curves()
@@ -731,6 +737,7 @@ def runElectroStackStep1(
                     cache_arVsd[j] = arV_sd
                     cache_arVs[j]  = arV_s
                     cache_arH2[j]  = arH2
+                    last_deg_unit[j] = units[j].rSummedDegradation
 
         # 2) Interpolate per-unit quantities + accumulate per-bank heat
         P_bank_k     = np.zeros(num_banks_total)

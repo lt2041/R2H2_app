@@ -695,7 +695,9 @@ def runElectroStackStep1(
                 abs(units[j].rSummedDegradation - last_deg_unit[j]) > 1e-6
                 for j in idxs
             )
-            if not np.isfinite(last_T_bank[b]) or abs(T_b - last_T_bank[b]) > temp_cache_threshold:
+            if (not np.isfinite(last_T_bank[b]) or
+                    abs(T_b - last_T_bank[b]) > temp_cache_threshold or
+                    deg_changed):
                 ec_state_banks[b].rT = T_b
                 ec_curves_b = ec_state_banks[b].build_curves()
                 bank_ec_curves[b] = ec_curves_b

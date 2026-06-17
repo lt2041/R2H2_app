@@ -1940,9 +1940,10 @@
         } else {
             wrap.style.opacity = '';
             wrap.style.pointerEvents = '';
-            // Restore last saved specific-range dates
-            start.value = wrap.dataset.savedStart || '';
-            end.value   = wrap.dataset.savedEnd   || '';
+            // Restore last saved specific-range dates; fall back to derived dates
+            // so inputs are never blank when the user first switches to this mode
+            start.value = wrap.dataset.savedStart || wrap.dataset.derivedStart || '';
+            end.value   = wrap.dataset.savedEnd   || wrap.dataset.derivedEnd   || '';
             start.focus();
         }
     }
@@ -2634,17 +2635,33 @@
                             var datumInp = document.getElementById('ss-datum-input');
                             if (datumInp) datumInp.value = d.datum_date;
                         }
+                        // Update date-range inputs and derived data attrs
+                        if (d.derived_start || d.derived_end) {
+                            var wrap = document.getElementById('ss-date-range-wrap');
+                            if (wrap) {
+                                if (d.derived_start) wrap.dataset.derivedStart = d.derived_start;
+                                if (d.derived_end)   wrap.dataset.derivedEnd   = d.derived_end;
+                                var mode = document.getElementById('ss-duration-mode');
+                                var startEl = document.getElementById('ss-start-date');
+                                var endEl   = document.getElementById('ss-end-date');
+                                // Always keep saved attrs in sync so switching modes gets fresh dates
+                                if (d.derived_start) wrap.dataset.savedStart = d.derived_start;
+                                if (d.derived_end)   wrap.dataset.savedEnd   = d.derived_end;
+                                if (!mode || mode.value === 'all') {
+                                    // Full-duration mode: update displayed (greyed-out) values
+                                    if (startEl && d.derived_start) startEl.value = d.derived_start;
+                                    if (endEl   && d.derived_end)   endEl.value   = d.derived_end;
+                                } else {
+                                    // Specific-range mode: update visible inputs too
+                                    if (startEl && d.derived_start) startEl.value = d.derived_start;
+                                    if (endEl   && d.derived_end)   endEl.value   = d.derived_end;
+                                }
+                            }
+                        }
                     } else { masterInp.value = _lastVal; }
                 })
                 .catch(function() { masterInp.value = _lastVal; });
         }
-        masterInp.addEventListener('input', function() {
-            var newVal = parseInt(masterInp.value, 10);
-            var oldVal = parseInt(_lastVal, 10);
-            if (!isNaN(newVal) && !isNaN(oldVal) && newVal !== oldVal) {
-                masterInp.value = oldVal - (newVal - oldVal);
-            }
-        });
         masterInp.addEventListener('change', saveYear);
         masterInp.addEventListener('keydown', function(e) {
             if (e.key === 'Enter')  { masterInp.blur(); }

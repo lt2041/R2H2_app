@@ -657,8 +657,29 @@ def update_first_wind_year(request, sim_id):
     else:
         new_date = _dt.date(year, 1, 1)
     sim.datum_date = new_date
-    sim.save(update_fields=['datum_date'])
-    return JsonResponse({'year': year, 'datum_date': new_date.isoformat()})
+    _wind_total_hours = sum(
+        wi.ts_n_hours or 0
+        for wi in sim.wind_inputs.all()
+    )
+    new_end = (
+        new_date + _dt.timedelta(days=int(_wind_total_hours / 24))
+        if _wind_total_hours > 0 else None
+    )
+    derived_end = new_end.isoformat() if new_end else ''
+    # Always update end_date to match new datum; only update start_date/duration
+    # if we are in "full duration" mode (duration_days is None / not overridden).
+    save_fields = ['datum_date', 'end_date']
+    sim.end_date = new_end
+    if not sim.duration_days:  # full-duration mode — keep start pinned to datum
+        sim.start_date = new_date
+        save_fields.append('start_date')
+    sim.save(update_fields=save_fields)
+    return JsonResponse({
+        'year': year,
+        'datum_date': new_date.isoformat(),
+        'derived_start': new_date.isoformat(),
+        'derived_end': derived_end,
+    })
 
 
 def _resolve_wind_h5_path(sim):

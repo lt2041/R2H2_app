@@ -721,6 +721,107 @@ def runElectroStackStep1(
             t_out.arProportionPower[i, :] * t_out.arTotalElectroDemand,
         )
 
+    def _bounded_allocate(total_power, weights, lo, hi):
+        """Allocate total_power across channels with elementwise [lo, hi] bounds.
+
+        Returns an array that sums (approximately) to total_power when feasible.
+        """
+        n = len(weights)
+        if n == 0:
+            return np.zeros(0, dtype=float)
+
+        total_power = float(total_power)
+        lo = np.asarray(lo, dtype=float)
+        hi = np.asarray(hi, dtype=float)
+        w = np.asarray(weights, dtype=float)
+        w = np.clip(w, 0.0, np.inf)
+
+        if np.sum(w) <= 0.0:
+            w = np.ones(n, dtype=float)
+
+        # Start from weighted allocation, then project into bounds.
+        x = total_power * (w / np.sum(w))
+        x = np.clip(x, lo, hi)
+
+        for _ in range(30):
+            rem = total_power - float(np.sum(x))
+            if abs(rem) <= 1e-9:
+                break
+
+            if rem > 0.0:
+                free = x < (hi - 1e-12)
+                if not np.any(free):
+                    break
+                wf = w[free]
+                if np.sum(wf) <= 0.0:
+                    wf = np.ones(np.sum(free), dtype=float)
+                add = rem * (wf / np.sum(wf))
+                x[free] = np.minimum(hi[free], x[free] + add)
+            else:
+                free = x > (lo + 1e-12)
+                if not np.any(free):
+                    break
+                wf = w[free]
+                if np.sum(wf) <= 0.0:
+                    wf = np.ones(np.sum(free), dtype=float)
+                sub = (-rem) * (wf / np.sum(wf))
+                x[free] = np.maximum(lo[free], x[free] - sub)
+
+        return x
+
+    # ── Post-controller physical guards (outside controller code) ───────────
+    # Enforce individual per-unit min/max on ON units by adjusting ON count and
+    # re-allocating demand with bounds. This applies to both built-in and custom
+    # controllers.
+    for k in range(T):
+        total_k = float(t_out.arTotalElectroDemand[k])
+        pref_all = np.asarray(t_out.arProportionPower[:, k], dtype=float).copy()
+        on_idx = np.flatnonzero(t_out.aiIsOn[:, k] > 0)
+        n_on = int(len(on_idx))
+
+        t_out.arElectroDemand[:, k] = 0.0
+        t_out.arProportionPower[:, k] = 0.0
+
+        if n_on <= 0 or total_k <= 0.0:
+            t_out.arTotalElectroDemand[k] = 0.0
+            t_out.arTotalElectroOn[k] = 0.0
+            continue
+
+        if min_power > 0.0:
+            n_max_by_min = int(np.floor(total_k / min_power))
+            n_keep = max(0, min(n_on, n_max_by_min))
+        else:
+            n_keep = n_on
+
+        # If too many units are ON to satisfy individual minimum power,
+        # turn OFF the lowest-priority units based on controller proportions.
+        if n_keep < n_on:
+            sort_key = np.argsort(pref_all[on_idx])
+            off_count = n_on - n_keep
+            off_idx = on_idx[sort_key[:off_count]]
+            t_out.aiIsOn[off_idx, k] = 0
+            on_idx = np.flatnonzero(t_out.aiIsOn[:, k] > 0)
+            n_on = int(len(on_idx))
+
+        t_out.arTotalElectroOn[k] = float(n_on)
+        if n_on <= 0:
+            t_out.arTotalElectroDemand[k] = 0.0
+            continue
+
+        # Re-allocate demand to ON units with individual bounds.
+        pref = pref_all[on_idx]
+        lo = np.full(n_on, min_power, dtype=float)
+        hi = np.full(n_on, rated_power, dtype=float)
+        alloc = _bounded_allocate(total_k, pref, lo, hi)
+        total_alloc = float(np.sum(alloc))
+        t_out.arTotalElectroDemand[k] = total_alloc
+
+        t_out.arElectroDemand[on_idx, k] = alloc
+        if total_alloc > 0.0:
+            t_out.arProportionPower[on_idx, k] = alloc / total_alloc
+        else:
+            t_out.arProportionPower[on_idx, k] = 1.0 / float(n_on)
+
     T_amb_hour = 15.0
     dt = settings.rTimeStep
     step0 = int(settings.rTransientSteps)
@@ -798,6 +899,7 @@ def runElectroStackStep1(
         Qgain_bank_k = np.zeros(num_banks_total)
 
         for i in range(num_units):
+            on = t_out.aiIsOn[i, k]
             demand_target = float(t_out.arElectroDemand[i, k])
             prev_P = float(t_out.arPower_unit[i, k - 1]) if k > 0 else 0.0
 
@@ -811,9 +913,13 @@ def runElectroStackStep1(
                 prev_P - down_Ws * dt,
                 prev_P + up_Ws  * dt,
             ))
+            # Final per-unit physical bounds on executed power.
+            if on > 0:
+                demand_ik = float(np.clip(demand_ik, min_power, rated_power))
+            else:
+                demand_ik = 0.0
             t_out.arElectroDemand[i, k] = demand_ik
 
-            on = t_out.aiIsOn[i, k]
             I_ik   = np.interp(demand_ik, cache_arP[i], cache_arI[i])   * on
             V_deg  = np.interp(I_ik,      cache_arI[i], cache_arVsd[i]) * on
             V_use  = np.interp(I_ik,      cache_arI[i], cache_arVs[i])  * on

@@ -119,6 +119,41 @@ R2H2 can derive these optional outputs when absent:
   - P_batt = arAvailablePower - arTotalElectroDemand
   This happens in the battery step after controller dispatch.
 
+### Electrolyser Limits And Residual Handling
+
+Outside the controller, R2H2 applies additional guards and balancing logic:
+
+- Total electrolyser demand is clipped to fleet bounds based on active units:
+  - lower bound: rMinPower_s * arTotalElectroOn
+  - upper bound: rRatedPower_s * arTotalElectroOn
+- Per-unit demand is capped at rRatedPower_s.
+- Per-unit minimum power is enforced for ON units.
+- Per-unit demand is also constrained by ramp up/down rates.
+
+Automatic ON-count correction:
+
+- If too many units are ON to satisfy individual minimum power, R2H2 will
+  automatically turn OFF the lowest-priority units (based on controller
+  proportion weights) before electro-thermal execution.
+- Demand is then re-allocated across remaining ON units within [min, max]
+  per-unit bounds.
+
+What this means in practice:
+
+- If requested electrolyser demand is too high, it is clipped down and residual power
+  tends to go to battery charging (subject to battery limits).
+- If requested demand is too low for the enforced floor, battery discharge may be
+  required to supply the shortfall (subject to battery limits).
+- Battery dynamics still apply after clipping/ramping via:
+  - P_batt = arAvailablePower - arTotalElectroDemand
+
+Important nuance:
+
+- Minimum and maximum are now enforced at both fleet and per-unit execution level,
+  outside the controller.
+- If the requested dispatch is infeasible with current ON count and bounds,
+  the engine modifies ON state and re-allocates demand to keep execution physical.
+
 Important:
 
 - The built-in dynamicControl includes a battery SoC regulator that drives SoC toward
@@ -235,6 +270,12 @@ What to check first:
 2. Returned tuple is exactly (units, t_out, battery).
 3. Required arrays (arElectroAvailablePower, aiIsOn) exist and have expected dimensions.
 4. No invalid numeric values are produced.
+
+Physical sanity checks:
+
+- arSpillPower should normally remain near zero in physically consistent runs.
+- If arSpillPower has sustained significant magnitude, treat this as a model/control
+  consistency issue and review controller commands, electrolyser bounds, and battery limits.
 
 ## 1Hz Controller Debug Logging
 

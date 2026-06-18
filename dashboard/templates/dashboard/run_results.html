@@ -662,31 +662,98 @@
 
     // ── Chart 2: Electrolyser efficiency ─────────────────────────────────
     (function() {
+        function holdLastDuringOff(series, elecOnAv) {
+            if (!series || !series.length) return series;
+            var out = series.slice();
+            var last = null;
+            for (var i = 0; i < out.length; i++) {
+                var isOff = false;
+                if (elecOnAv && elecOnAv.length === out.length) {
+                    isOff = !(elecOnAv[i] > 0);
+                } else {
+                    isOff = !(out[i] != null && isFinite(out[i]) && out[i] > 0);
+                }
+
+                if (isOff) {
+                    if (last != null) out[i] = last;
+                    continue;
+                }
+
+                if (out[i] != null && isFinite(out[i])) {
+                    last = out[i];
+                }
+            }
+            return out;
+        }
+
         var traces = [];
+        var baselineEta = null;
+        yearsData.forEach(function(d) {
+            if (baselineEta != null) return;
+            var arr = d.arEtaElPeak;
+            if (!arr || !arr.length) return;
+            for (var i = 0; i < arr.length; i++) {
+                var v = arr[i];
+                if (v != null && isFinite(v) && v > 0) {
+                    baselineEta = v;
+                    break;
+                }
+            }
+        });
+
         yearsData.forEach(function(d, idx) {
-            var degUnits = d.arDegradationPerUnit;
-            if (!degUnits || !degUnits.length) return;
             var cumHours = yearCumulativeHours[idx] || 0;
-            degUnits.forEach(function(unitDeg, ui) {
-                var effPct = unitDeg.map(function(v) { return (1 - v) * 100; });
-                var col = UNIT_PALETTE[ui % UNIT_PALETTE.length];
-                var label = (yearsData.length > 1 ? 'Y' + (idx + 1) + ' ' : '')
-                          + (degUnits.length === 1 ? 'Efficiency' : 'Unit ' + (ui + 1));
-                traces.push({
-                    x: xvals(effPct, cumHours), y: effPct,
-                    type: 'scatter', mode: 'lines',
-                    line: { color: col, width: 1.3,
-                            dash: idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash') },
-                    name: label,
-                    hovertemplate: '%{y:.1f}%<extra>' + label + '</extra>',
-                });
+            var peakEta = d.arEtaElPeak;
+
+            // Backward compatibility for older runs without arEtaElPeak in HDF5.
+            if ((!peakEta || !peakEta.length) && d.arDegradationPerUnit && d.arDegradationPerUnit.length) {
+                var legacy = d.arDegradationPerUnit[0];
+                peakEta = legacy.map(function(v) { return Math.max(0, 1 - v); });
+                if (baselineEta == null) baselineEta = 1.0;
+            }
+            if (!peakEta || !peakEta.length) return;
+
+            var effPct = peakEta.map(function(v) {
+                if (v == null || !isFinite(v) || v < 0) return null;
+                if (baselineEta == null || baselineEta <= 0) return v * 100;
+                return (v / baselineEta) * 100;
             });
+            effPct = holdLastDuringOff(effPct, d.arElecOnAv);
+
+            var label = yearsData.length > 1 ? 'Year ' + (idx + 1) : 'Peak efficiency';
+            traces.push({
+                x: xvals(effPct, cumHours), y: effPct,
+                type: 'scatter', mode: 'lines',
+                line: { color: TEAL2, width: 1.4,
+                        dash: idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash') },
+                name: label,
+                hovertemplate: '%{y:.1f}%<extra>' + label + '</extra>',
+            });
+
+            var sysEta = d.arEtaSystemPeak;
+            if (sysEta && sysEta.length) {
+                var sysPct = sysEta.map(function(v) {
+                    if (v == null || !isFinite(v) || v < 0) return null;
+                    if (baselineEta == null || baselineEta <= 0) return v * 100;
+                    return (v / baselineEta) * 100;
+                });
+                sysPct = holdLastDuringOff(sysPct, d.arElecOnAv);
+                var sysLabel = (yearsData.length > 1 ? 'Year ' + (idx + 1) + ' ' : '') + 'System';
+                traces.push({
+                    x: xvals(sysPct, cumHours), y: sysPct,
+                    type: 'scatter', mode: 'lines',
+                    line: { color: TEAL, width: 1.2,
+                            dash: idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash') },
+                    name: sysLabel,
+                    hovertemplate: '%{y:.1f}%<extra>' + sysLabel + '</extra>',
+                });
+            }
         });
         if (traces.length) {
             Plotly.newPlot('chart-eff', traces,
                 Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                           { title: '% of original', tickformat: '.1f' }),
+                              { title: '% of original', tickformat: '.1f', rangemode: 'tozero' }),
                     xaxis: xaxisLayout(),
                     showlegend: traces.length > 1,
                 }), { responsive: true, displayModeBar: false, scrollZoom: true });
@@ -856,16 +923,39 @@
     // ── Summary stats (aggregate across all years) ────────────────────────
     (function() {
         var totalH2g = 0, totalSpill = 0, totalReplacements = 0, finalRating = null;
+        var cumReplacementSeries = [];
         yearsData.forEach(function(d) {
             if (d.arTotalH2 && d.arTotalH2.length)
                 totalH2g += d.arTotalH2[d.arTotalH2.length - 1];
             if (d.arSpillPowerFull && d.arSpillPowerFull.length)
                 totalSpill += d.arSpillPowerFull.reduce(function(a,b){return a+b;},0);
-            if (d.iNumReplacements !== undefined)
-                totalReplacements += d.iNumReplacements;
+            if (d.iNumReplacementsYear !== undefined) {
+                totalReplacements += d.iNumReplacementsYear;
+            } else if (d.iNumReplacementsCumulative !== undefined) {
+                cumReplacementSeries.push(d.iNumReplacementsCumulative);
+            } else if (d.iNumReplacements !== undefined) {
+                // Legacy behavior: old files may store cumulative counts under this key.
+                cumReplacementSeries.push(d.iNumReplacements);
+            }
             if (d.rFinalBatteryRating !== undefined)
                 finalRating = d.rFinalBatteryRating;
         });
+
+        if (totalReplacements === 0 && cumReplacementSeries.length) {
+            var prev = 0;
+            cumReplacementSeries.forEach(function(v) {
+                var n = (v != null && isFinite(v)) ? v : prev;
+                if (n >= prev) {
+                    totalReplacements += (n - prev);
+                    prev = n;
+                } else {
+                    // If ordering is unexpected, fall back to summing provided values.
+                    totalReplacements += n;
+                    prev = n;
+                }
+            });
+        }
+
         var stats = [];
         if (totalH2g > 0) stats.push({ v: fmtH2(totalH2g), label: 'Total H₂ produced' });
         if (finalRating !== null) stats.push({ v: fmtNum(finalRating / 3.6e6, 1) + ' kWh', label: 'Battery capacity (final)' });

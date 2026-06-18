@@ -692,7 +692,7 @@ def runElectroStackStep1(
             T_b = th_banks[b].rT
             deg_changed = any(
                 not np.isfinite(last_deg_unit[j]) or
-                abs(units[j].rSummedDegradation - last_deg_unit[j]) > 1e-6
+                abs(units[j].rSummedDegradation - last_deg_unit[j]) > 1e-12
                 for j in idxs
             )
             if (not np.isfinite(last_T_bank[b]) or
@@ -1439,6 +1439,7 @@ class R2H2():
         for y in range(settings.iNumYears):
             _y_offset = y * hours_per_year
             arTotalH2 = np.zeros(hours_per_year)
+            replacements_at_year_start = int(battery.iNumReplacements)
             zLogOut = {
                 "arSoc":             np.zeros(hours_per_year),
                 "arSocMax":          np.zeros(hours_per_year),
@@ -1448,6 +1449,8 @@ class R2H2():
                 "arBatteryRating":   np.zeros(hours_per_year),
                 "arSpillPower":      np.zeros(hours_per_year),
                 "arElecOnAv":        np.zeros(hours_per_year),
+                "arEtaElPeak":       np.zeros(hours_per_year),
+                "arEtaSystemPeak":   np.zeros(hours_per_year),
                 "arHourlyDegradation": np.zeros((units[0].iNumUnits, hours_per_year)),
                 "arWindPowerFilt":        np.zeros(hours_per_year),
                 "arAvailablePower":       np.zeros(hours_per_year),
@@ -1499,6 +1502,8 @@ class R2H2():
                 zLogOut["arSpillPower"][h]     = float(np.mean(battery.arSpillPower[_skip:])) if len(battery.arSpillPower) > _skip else 0.0
                 _skip = int(settings.rTransientSteps)
                 zLogOut["arElecOnAv"][h]       = float(np.nanmean(t_out.arTotalElectroOn[_skip:]))
+                zLogOut["arEtaElPeak"][h]      = float(np.nanmax(t_out.arEta_el_total[_skip:]))
+                zLogOut["arEtaSystemPeak"][h]  = float(np.nanmax(t_out.arEta_system_total[_skip:]))
                 zLogOut["arWindPowerFilt"][h]      = float(np.nanmean(t_out.arWindPowerFilt[_skip:]))
                 zLogOut["arAvailablePower"][h]     = float(np.nanmean(t_out.arAvailablePower[_skip:]))
                 zLogOut["arTotalElectroDemand"][h] = float(np.nanmean(t_out.arTotalElectroDemand[_skip:]))
@@ -1515,7 +1520,12 @@ class R2H2():
                           flush=True)
 
             # Add end-of-year metadata to Log
-            zLogOut['iNumReplacements'] = int(battery.iNumReplacements)
+            replacements_cumulative = int(battery.iNumReplacements)
+            replacements_this_year = max(0, replacements_cumulative - replacements_at_year_start)
+            # Keep legacy key as yearly count so multi-year summaries can sum safely.
+            zLogOut['iNumReplacements'] = replacements_this_year
+            zLogOut['iNumReplacementsYear'] = replacements_this_year
+            zLogOut['iNumReplacementsCumulative'] = replacements_cumulative
             zLogOut['rFinalBatteryRating'] = float(battery.rBatteryRating)
 
             zYearResults.append({

@@ -983,6 +983,10 @@ def _save_run_outputs(run, results: dict) -> str:
             # Store scalar metadata as attributes
             if 'iNumReplacements' in log:
                 bat.attrs['iNumReplacements'] = int(log['iNumReplacements'])
+            if 'iNumReplacementsYear' in log:
+                bat.attrs['iNumReplacementsYear'] = int(log['iNumReplacementsYear'])
+            if 'iNumReplacementsCumulative' in log:
+                bat.attrs['iNumReplacementsCumulative'] = int(log['iNumReplacementsCumulative'])
             if 'rFinalBatteryRating' in log:
                 bat.attrs['rFinalBatteryRating'] = float(log['rFinalBatteryRating'])
             
@@ -998,7 +1002,7 @@ def _save_run_outputs(run, results: dict) -> str:
             eu_list = yr.get('ElectrolyserUnit', [])
             i_num_units = eu_list[0].iNumUnits if eu_list else 0
             elec.attrs['iNumUnits'] = int(i_num_units)
-            for key in ('arElecOnAv',):
+            for key in ('arElecOnAv', 'arEtaElPeak', 'arEtaSystemPeak'):
                 arr = log.get(key)
                 if arr is not None:
                     elec.create_dataset(key, data=np.asarray(arr, dtype=np.float64),
@@ -1353,6 +1357,10 @@ def view_run_results(request, sim_id, run_id):
             if bat:
                 if 'iNumReplacements' in bat.attrs:
                     ydata['iNumReplacements'] = int(bat.attrs['iNumReplacements'])
+                if 'iNumReplacementsYear' in bat.attrs:
+                    ydata['iNumReplacementsYear'] = int(bat.attrs['iNumReplacementsYear'])
+                if 'iNumReplacementsCumulative' in bat.attrs:
+                    ydata['iNumReplacementsCumulative'] = int(bat.attrs['iNumReplacementsCumulative'])
                 if 'rFinalBatteryRating' in bat.attrs:
                     ydata['rFinalBatteryRating'] = float(bat.attrs['rFinalBatteryRating'])
             
@@ -1383,6 +1391,16 @@ def view_run_results(request, sim_id, run_id):
                     arr = arr[:8760]
                 ydata['arElecOnAv'] = arr.tolist()
                 ydata['iNumUnits'] = int(elec.attrs.get('iNumUnits', 0))
+            if 'arEtaElPeak' in elec:
+                arr = elec['arEtaElPeak'][:]
+                if len(arr) > 8760:
+                    arr = arr[:8760]
+                ydata['arEtaElPeak'] = arr.tolist()
+            if 'arEtaSystemPeak' in elec:
+                arr = elec['arEtaSystemPeak'][:]
+                if len(arr) > 8760:
+                    arr = arr[:8760]
+                ydata['arEtaSystemPeak'] = arr.tolist()
             if 'arHourlyDegradation' in elec:
                 deg = elec['arHourlyDegradation'][:]
                 if deg.ndim == 1:

@@ -99,6 +99,34 @@ class Simulation(models.Model):
         related_name='simulations',
         help_text='Custom engineering controller to use for this simulation. '
                   'Leave blank to use the built-in default.')
+    # 1HZ DATA COLLECTION SETTINGS
+    collect_1hz_data = models.BooleanField(
+        default=False,
+        help_text='Enable collection of per-second (1Hz) data over a limited time period.')
+    collect_1hz_start_date = models.DateField(
+        null=True, blank=True,
+        help_text='Start date for 1Hz data collection (inclusive). Must be before end_date and within 3 months.')
+    collect_1hz_end_date = models.DateField(
+        null=True, blank=True,
+        help_text='End date for 1Hz data collection (inclusive). Must be after start_date and within 3 months.')
+
+    def clean(self):
+        """Validate 1Hz data collection settings."""
+        from django.core.exceptions import ValidationError
+        from datetime import timedelta
+        
+        if self.collect_1hz_data:
+            if not self.collect_1hz_start_date or not self.collect_1hz_end_date:
+                raise ValidationError(
+                    'Both collect_1hz_start_date and collect_1hz_end_date must be set when collecting 1Hz data.')
+            if self.collect_1hz_start_date > self.collect_1hz_end_date:
+                raise ValidationError(
+                    'collect_1hz_start_date must be before or equal to collect_1hz_end_date.')
+            date_range = (self.collect_1hz_end_date - self.collect_1hz_start_date).days
+            if date_range > 90:  # 3 months ≈ 90 days
+                raise ValidationError(
+                    f'1Hz data collection period cannot exceed 3 months (90 days). '
+                    f'Current range: {date_range} days.')
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"

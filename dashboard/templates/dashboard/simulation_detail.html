@@ -1374,6 +1374,62 @@
         </div>
     </div>
 
+    <!-- 1Hz Data Collection Settings panel -->
+    <div class="sim-settings-panel">
+        <div class="sim-settings-header" onclick="toggleSettings(this)">
+            <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">dataset</span>
+            <span class="ss-title">1Hz Data Collection</span>
+            <span class="material-symbols-outlined ss-toggle">expand_more</span>
+        </div>
+        <div class="sim-settings-body">
+            <div class="badge-groups-wrap">
+                <div class="badge-group">
+                    <div class="badge-group-fields" style="flex-direction:column;gap:0.8rem;">
+                        <span class="param-badge">
+                            <span class="pb-label" style="display:block;">Enable 1Hz Data Collection</span>
+                            <span class="pb-val" style="display:block;margin-top:0.4rem;">
+                                <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;user-select:none;">
+                                    <input type="checkbox" id="ss-collect-1hz" 
+                                           {% if sim.collect_1hz_data %}checked{% endif %}
+                                           onchange="on1HzCollectionToggle()"
+                                           style="cursor:pointer;width:18px;height:18px;">
+                                    <span style="font-size:0.85rem;color:#1a2e30;">Collect per-second data over a limited time period</span>
+                                </label>
+                            </span>
+                        </span>
+                        
+                        <span class="param-badge" id="ss-1hz-range-badge"
+                              style="{% if not sim.collect_1hz_data %}opacity:0.4;pointer-events:none;{% endif %}">
+                            <span class="pb-label">Collection Period (max 3 months)</span>
+                            <span class="pb-val">
+                                <div style="display:flex;flex-direction:row;align-items:center;gap:4px;">
+                                    <input type="date" id="ss-1hz-start-date"
+                                           value="{% if sim.collect_1hz_start_date %}{{ sim.collect_1hz_start_date|date:'Y-m-d' }}{% endif %}"
+                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
+                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
+                                           onblur="save1HzRange()">
+                                    <span style="color:#4a7a80;font-size:0.8rem;">—</span>
+                                    <input type="date" id="ss-1hz-end-date"
+                                           value="{% if sim.collect_1hz_end_date %}{{ sim.collect_1hz_end_date|date:'Y-m-d' }}{% endif %}"
+                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
+                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
+                                           onblur="save1HzRange()">
+                                </div>
+                                <div id="ss-1hz-msg" style="font-size:0.75rem;color:#7b5555;margin-top:0.3rem;display:none;"></div>
+                            </span>
+                        </span>
+                        
+                        <span class="param-badge" style="font-size:0.78rem;color:#4a7a80;padding:0.5rem;background:#f0f8f9;border-radius:4px;border-left:3px solid #22a6b3;">
+                            <strong>Note:</strong> Collecting 1Hz data can require significant memory and storage. Maximum collection period is 3 months. The collected 1Hz data will be included in the simulation output file.
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Engineering Controller panel -->
     <div class="sim-settings-panel" id="ctrl-panel">
         <div class="sim-settings-header" onclick="toggleSettings(this)">
@@ -1382,6 +1438,12 @@
             <span class="material-symbols-outlined ss-toggle">expand_more</span>
         </div>
         <div class="sim-settings-body" style="padding:1rem 1.2rem;">
+            <div style="margin:0 0 0.7rem 0;font-size:0.82rem;color:#8fc7d6;">
+                Need guidance? See the
+                <a href="https://github.com/RenewableTools/R2H2_app/blob/main/docs/dynamic_controller_user_guide.md"
+                   target="_blank" rel="noopener noreferrer"
+                   style="color:#7ed7e5;text-decoration:underline;">Dynamic Controller User Guide</a>.
+            </div>
             <!-- Controller selector row -->
             <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.5rem;">
                 <select id="ctrl-select" class="browser-default"
@@ -2030,6 +2092,87 @@
             if (e.key === 'Escape') cancelEditDatum();
         });
     });
+
+    // ── 1Hz Data Collection Settings ─────────────────────────────────────────
+    var _1hzSaveUrl = "{% url 'dashboard-update-sim-1hz' sim_id=sim.id %}";
+    var _1hzSavePending = false;
+
+    function on1HzCollectionToggle() {
+        var checkbox = document.getElementById('ss-collect-1hz');
+        var rangeBadge = document.getElementById('ss-1hz-range-badge');
+        if (checkbox.checked) {
+            rangeBadge.style.opacity = '1';
+            rangeBadge.style.pointerEvents = 'auto';
+        } else {
+            rangeBadge.style.opacity = '0.4';
+            rangeBadge.style.pointerEvents = 'none';
+        }
+        // Save the state
+        var fd = new FormData();
+        fd.append('collect_1hz_data', checkbox.checked ? '1' : '0');
+        fd.append('csrfmiddlewaretoken', _durCsrf);
+        fetch(_1hzSaveUrl, { method: 'POST', body: fd })
+            .catch(function() {});
+    }
+
+    function save1HzRange() {
+        var checkbox = document.getElementById('ss-collect-1hz');
+        if (!checkbox.checked) return;
+
+        var startEl = document.getElementById('ss-1hz-start-date');
+        var endEl = document.getElementById('ss-1hz-end-date');
+        var start = (startEl || {}).value || '';
+        var end = (endEl || {}).value || '';
+
+        if (!start || !end) {
+            document.getElementById('ss-1hz-msg').style.display = 'none';
+            return;
+        }
+
+        var msgEl = document.getElementById('ss-1hz-msg');
+        
+        // Validate dates
+        var startDate = new Date(start + 'T00:00:00');
+        var endDate = new Date(end + 'T00:00:00');
+        
+        if (isNaN(startDate) || isNaN(endDate)) {
+            msgEl.innerHTML = 'Invalid date format';
+            msgEl.style.display = 'block';
+            msgEl.style.color = '#d84040';
+            return;
+        }
+
+        if (startDate > endDate) {
+            msgEl.innerHTML = 'Start date must be before or equal to end date';
+            msgEl.style.display = 'block';
+            msgEl.style.color = '#d84040';
+            return;
+        }
+
+        var daysDiff = (endDate - startDate) / (1000 * 60 * 60 * 24);
+        if (daysDiff > 90) {
+            msgEl.innerHTML = 'Period cannot exceed 3 months (90 days). Current: ' + Math.ceil(daysDiff) + ' days';
+            msgEl.style.display = 'block';
+            msgEl.style.color = '#d84040';
+            return;
+        }
+
+        // Show info message
+        msgEl.innerHTML = daysDiff + ' days (~' + Math.round(daysDiff * 3600 * 8 / 1e9 * 10) / 10 + ' GB for 8 arrays)';
+        msgEl.style.display = 'block';
+        msgEl.style.color = '#4a7a80';
+
+        // Save
+        if (_1hzSavePending) return;
+        _1hzSavePending = true;
+        var fd = new FormData();
+        fd.append('collect_1hz_start_date', start);
+        fd.append('collect_1hz_end_date', end);
+        fd.append('csrfmiddlewaretoken', _durCsrf);
+        fetch(_1hzSaveUrl, { method: 'POST', body: fd })
+            .catch(function() {})
+            .finally(function() { _1hzSavePending = false; });
+    }
 
     // ── Engineering Controller panel ────────────────────────────────────────
     function _ctrlCsrf() {

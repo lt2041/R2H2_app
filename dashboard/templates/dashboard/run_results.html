@@ -286,7 +286,7 @@
     <!-- Summary stats (filled by JS) -->
     <div class="summary-row" id="summary-row-all"></div>
 
-    <!-- Charts grid: 2 columns × 3 rows — all years shown on each chart -->
+    <!-- Charts grid: 2 columns — all years shown on each chart -->
     <div class="charts-grid" style="margin-top:0.5rem;">
 
         <div class="chart-card">
@@ -919,6 +919,7 @@
             document.getElementById('chart-wind').innerHTML = '<div class="no-data-notice">No wind speed data.</div>';
         }
     })();
+
 
     // ── Summary stats (aggregate across all years) ────────────────────────
     (function() {

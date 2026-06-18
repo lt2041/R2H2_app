@@ -1029,6 +1029,25 @@ def _save_run_outputs(run, results: dict) -> str:
                 h2.create_dataset('arTotalH2', data=np.asarray(arr, dtype=np.float64),
                                   compression='gzip', compression_opts=4)
 
+        # ── /time_series_1hz (1Hz per-second data if collected) ────────────────
+        ts_output = results.get('TimeSeriesOutput')
+        if ts_output is not None:
+            ts_grp = f.create_group('time_series_1hz')
+            ts_grp.attrs['start_hour'] = int(ts_output.get('start_hour', 0))
+            ts_grp.attrs['end_hour'] = int(ts_output.get('end_hour', 0))
+
+            # Write all datasets that were collected in-memory.
+            # Metadata keys are stored as attrs above.
+            for key, arr in ts_output.items():
+                if key in ('start_hour', 'end_hour') or arr is None:
+                    continue
+                ts_grp.create_dataset(
+                    key,
+                    data=np.asarray(arr),
+                    compression='gzip',
+                    compression_opts=4,
+                )
+
     # Return path relative to MEDIA_ROOT
     return str(abs_path.relative_to(media_root))
 
@@ -1139,7 +1158,16 @@ def _run_simulation_thread(run_id):
                 msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str}')
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
 
-        results = sim_engine.run(run_id=run.pk, progress_callback=_on_progress)
+        # Prepare 1Hz collection parameters if enabled
+        collect_1hz_kwargs = {}
+        if sim_obj.collect_1hz_data and sim_obj.collect_1hz_start_date and sim_obj.collect_1hz_end_date:
+            collect_1hz_kwargs = {
+                'collect_1hz_start_date': sim_obj.collect_1hz_start_date,
+                'collect_1hz_end_date': sim_obj.collect_1hz_end_date,
+                'datum_date': sim_obj.datum_date,
+            }
+
+        results = sim_engine.run(run_id=run.pk, progress_callback=_on_progress, **collect_1hz_kwargs)
 
         # Only mark DONE if user hasn't cancelled in the meantime
         run.refresh_from_db(fields=['status'])
@@ -1572,6 +1600,53 @@ def update_sim_date_range(request, sim_id):
 
 
 @require_POST
+def update_sim_1hz(request, sim_id):
+    """POST: save 1Hz data collection settings for a Simulation."""
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    from django.core.exceptions import ValidationError
+    from datetime import date as _date
+    
+    sim = get_object_or_404(Simulation, pk=sim_id)
+    
+    # Handle collect_1hz_data toggle
+    if 'collect_1hz_data' in request.POST:
+        collect_enabled = request.POST.get('collect_1hz_data', '0').strip() == '1'
+        sim.collect_1hz_data = collect_enabled
+        sim.save(update_fields=['collect_1hz_data'])
+        return JsonResponse({'collect_1hz_data': sim.collect_1hz_data})
+    
+    # Handle date range updates
+    start_raw = request.POST.get('collect_1hz_start_date', '').strip()
+    end_raw = request.POST.get('collect_1hz_end_date', '').strip()
+    
+    if start_raw or end_raw:
+        try:
+            start = _date.fromisoformat(start_raw) if start_raw else None
+            end = _date.fromisoformat(end_raw) if end_raw else None
+        except ValueError:
+            return JsonResponse({'error': 'Invalid date format (expected YYYY-MM-DD).'}, status=400)
+        
+        # Set the fields
+        sim.collect_1hz_start_date = start
+        sim.collect_1hz_end_date = end
+        
+        # Validate using the model's clean() method
+        try:
+            sim.full_clean()
+        except ValidationError as e:
+            return JsonResponse({'error': str(e)}, status=400)
+        
+        sim.save(update_fields=['collect_1hz_start_date', 'collect_1hz_end_date'])
+        return JsonResponse({
+            'collect_1hz_start_date': sim.collect_1hz_start_date.isoformat() if sim.collect_1hz_start_date else '',
+            'collect_1hz_end_date': sim.collect_1hz_end_date.isoformat() if sim.collect_1hz_end_date else '',
+        })
+    
+    return JsonResponse({'error': 'No valid parameters provided.'}, status=400)
+
+
+@require_POST
 def update_sim_duration(request, sim_id):
     """POST: save duration_days override for a Simulation."""
     from django.http import JsonResponse
@@ -1588,6 +1663,7 @@ def update_sim_duration(request, sim_id):
             return JsonResponse({'error': 'Invalid value.'}, status=400)
     sim.save(update_fields=['duration_days'])
     return JsonResponse({'duration_days': sim.duration_days})
+
 
 
 

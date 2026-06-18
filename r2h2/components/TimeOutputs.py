@@ -56,4 +56,27 @@ class TimeOutputs(ComponentBase):
         self.arQ_cool_total      = None
         self.arP_cool_elec_total = None
 
+        # Optional controller debug buffers (user-defined values captured at 1 Hz).
+        # Custom controllers can populate any subset of arBuffer1..arBuffer20.
+        self.arBuffer1  = None
+        self.arBuffer2  = None
+        self.arBuffer3  = None
+        self.arBuffer4  = None
+        self.arBuffer5  = None
+        self.arBuffer6  = None
+        self.arBuffer7  = None
+        self.arBuffer8  = None
+        self.arBuffer9  = None
+        self.arBuffer10 = None
+        self.arBuffer11 = None
+        self.arBuffer12 = None
+        self.arBuffer13 = None
+        self.arBuffer14 = None
+        self.arBuffer15 = None
+        self.arBuffer16 = None
+        self.arBuffer17 = None
+        self.arBuffer18 = None
+        self.arBuffer19 = None
+        self.arBuffer20 = None
+
         super().__init__(orm_object=orm_object)

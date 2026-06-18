@@ -72,3 +72,7 @@ Use **Ctrl+C** in the terminal to stop the server.
 - The database schema is defined entirely by `dashboard/models.py`; use Django migrations (`python manage.py makemigrations && python manage.py migrate`) if you change it.
 - A useful tool for inspecting the SQLite database: <https://sqlitebrowser.org>
 
+## Documentation
+
+- Dynamic controller guide: [docs/dynamic_controller_user_guide.md](docs/dynamic_controller_user_guide.md)
+

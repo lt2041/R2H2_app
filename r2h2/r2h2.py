@@ -708,8 +708,27 @@ def runElectroStackStep1(
     else:
         units, t_out, battery = dynamicControl(units, battery, t_out, settings)
 
-    min_power   = units[0].rMinPower_s
-    rated_power = units[0].rRatedPower_s
+    min_power = float(units[0].rMinPower_s)
+    rated_power_curve = float(units[0].rRatedPower_s)
+    rated_power = rated_power_curve
+    # Use at least nominal nameplate power for guard limits. The electro-curve
+    # endpoint can be lower than nameplate and otherwise caps default models
+    # below expected plant rating (for example ~19.5 MW instead of ~25 MW).
+    try:
+        i_rated = float(zElectroCell.rI_rated) * float(zElectroCell.rA_cell)
+        v_cell_nom = float(zElectroCell.rV_cellNom)
+        if units[0].iControlLevel == 1:
+            n_cells = float(units[0].iN_cell * units[0].iN_stacks * units[0].iN_banks)
+        elif units[0].iControlLevel == 2:
+            n_cells = float(units[0].iN_cell * units[0].iN_stacks)
+        else:
+            n_cells = float(units[0].iN_cell)
+        rated_power_nominal = v_cell_nom * i_rated * n_cells
+        if np.isfinite(rated_power_nominal) and rated_power_nominal > 0.0:
+            rated_power = max(rated_power_curve, rated_power_nominal)
+    except Exception:
+        # Fall back to curve-derived rating if nominal metadata is unavailable.
+        rated_power = rated_power_curve
     t_out.arTotalElectroDemand = np.clip(
         t_out.arElectroAvailablePower,
         min_power  * t_out.arTotalElectroOn,

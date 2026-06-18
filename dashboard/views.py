@@ -51,6 +51,69 @@ def help_page(request):
     return render(request, 'dashboard/help.html', context)
 
 
+def _infer_simulation_end_date(sim):
+    """Best-effort simulation end date inferred from current simulation settings."""
+    import datetime as _dt
+
+    start = sim.datum_date or _dt.date.today()
+
+    candidates = []
+    if sim.end_date:
+        candidates.append(sim.end_date)
+    if sim.duration_days:
+        candidates.append(start + _dt.timedelta(days=int(sim.duration_days)))
+
+    wind_hours = sum((wi.ts_n_hours or 0) for wi in sim.wind_inputs.all())
+    if wind_hours > 0:
+        candidates.append(start + _dt.timedelta(days=int(wind_hours / 24)))
+
+    return min(candidates) if candidates else None
+
+
+def _default_1hz_range(sim):
+    """Return preset 1Hz range: simulation start to first month or sim end."""
+    import datetime as _dt
+
+    start = sim.datum_date or _dt.date.today()
+    first_month_end = start + _dt.timedelta(days=30)
+    sim_end = _infer_simulation_end_date(sim)
+    end = min(first_month_end, sim_end) if sim_end else first_month_end
+    if end < start:
+        end = start
+    return start, end
+
+
+def _ensure_1hz_preset(sim, *, persist=False):
+    """Ensure preset 1Hz settings are present.
+
+    Preset behavior:
+    - Enabled by default
+    - Range defaults to first month from datum_date (or simulation end if shorter)
+    """
+    # Respect explicit user-off choice when a configured range already exists.
+    if (not sim.collect_1hz_data) and sim.collect_1hz_start_date and sim.collect_1hz_end_date:
+        return False
+
+    needs_dates = (sim.collect_1hz_start_date is None or sim.collect_1hz_end_date is None)
+    needs_enable = not sim.collect_1hz_data
+    if not needs_dates and not needs_enable:
+        return False
+
+    start, end = _default_1hz_range(sim)
+    sim.collect_1hz_data = True
+    if needs_dates:
+        sim.collect_1hz_start_date = start
+        sim.collect_1hz_end_date = end
+
+    if persist:
+        update_fields = ['collect_1hz_data']
+        if needs_dates:
+            update_fields.extend(['collect_1hz_start_date', 'collect_1hz_end_date'])
+        sim.save(update_fields=update_fields)
+
+    return True
+
+
 @require_POST
 def git_pull(request):
     """POST: check for a newer release on GitHub and upgrade via pip if found.
@@ -162,6 +225,7 @@ def create_simulation(request):
     description = request.POST.get('description', '').strip()
 
     sim = Simulation.objects.create(name=name, description=description)
+    _ensure_1hz_preset(sim, persist=True)
 
     # M2M: each field sent as multiple values, e.g. batteries=1&batteries=3
     m2m_map = {
@@ -318,6 +382,7 @@ def create_default_model(request):
         description=f'Default model created from built-in component defaults ({kind}).',
         **sim_fields,
     )
+    _ensure_1hz_preset(sim, persist=True)
     sim.batteries.add(bat)
     sim.electro_cells.add(ec)
     sim.electrolyser_units.add(el)
@@ -451,6 +516,7 @@ def simulation_detail(request, sim_id):
         ),
         pk=sim_id
     )
+    _ensure_1hz_preset(sim, persist=True)
 
     def component_detail(obj):
         scalar, arrays = _model_to_sections(obj)
@@ -1097,6 +1163,7 @@ def _run_simulation_thread(run_id):
         sim_engine.windinputs = _load_concatenated_wind(wind_paths)
 
         sim_obj = run.simulation
+        _ensure_1hz_preset(sim_obj, persist=True)
         wi = sim_engine.windinputs
         effective_start = None
         effective_end   = None
@@ -1116,9 +1183,9 @@ def _run_simulation_thread(run_id):
                     wi.arPowerInput = wi.arPowerInput[:, start_hour:end_hour]
             effective_start = sim_obj.start_date
             effective_end   = sim_obj.end_date
-        elif sim_obj.duration_days and len(wind_paths) == 1:
-            # Legacy: duration_days only (no explicit date range), single wind file.
-            # Truncate to requested hours from the start of the wind data.
+        elif sim_obj.duration_days:
+            # duration_days only (no explicit date range): truncate concatenated
+            # wind data from the beginning, regardless of number of source files.
             max_hours = sim_obj.duration_days * 24
             if wi is not None and hasattr(wi, 'arPowerInput') and wi.arPowerInput is not None:
                 n_hours = wi.arPowerInput.shape[1]
@@ -1613,6 +1680,17 @@ def update_sim_1hz(request, sim_id):
     if 'collect_1hz_data' in request.POST:
         collect_enabled = request.POST.get('collect_1hz_data', '0').strip() == '1'
         sim.collect_1hz_data = collect_enabled
+        if collect_enabled and (not sim.collect_1hz_start_date or not sim.collect_1hz_end_date):
+            start, end = _default_1hz_range(sim)
+            sim.collect_1hz_start_date = start
+            sim.collect_1hz_end_date = end
+            sim.save(update_fields=['collect_1hz_data', 'collect_1hz_start_date', 'collect_1hz_end_date'])
+            return JsonResponse({
+                'collect_1hz_data': sim.collect_1hz_data,
+                'collect_1hz_start_date': sim.collect_1hz_start_date.isoformat() if sim.collect_1hz_start_date else '',
+                'collect_1hz_end_date': sim.collect_1hz_end_date.isoformat() if sim.collect_1hz_end_date else '',
+            })
+
         sim.save(update_fields=['collect_1hz_data'])
         return JsonResponse({'collect_1hz_data': sim.collect_1hz_data})
     

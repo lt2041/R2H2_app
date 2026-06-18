@@ -101,7 +101,7 @@ class Simulation(models.Model):
                   'Leave blank to use the built-in default.')
     # 1HZ DATA COLLECTION SETTINGS
     collect_1hz_data = models.BooleanField(
-        default=False,
+        default=True,
         help_text='Enable collection of per-second (1Hz) data over a limited time period.')
     collect_1hz_start_date = models.DateField(
         null=True, blank=True,
@@ -298,7 +298,7 @@ class ElectroCellPEM(models.Model):
     rT = models.FloatField(default=55.0, help_text="Initial operating temperature [°C]")
     # PEM VOLTAGE MODEL PARAMS
     rE_min0 = models.FloatField(default=1.55, help_text="Reference cell voltage")
-    rR_0 = models.FloatField(default=0.178, help_text="Reference resistance area")
+    rR_0 = models.FloatField(default=0.345, help_text="Reference resistance area")
     rD_rt = models.FloatField(default=-0.0045 , help_text="Rate of change of resistance area with temperature")
     # STACK/CELL NOMINALS (INFORMATIVE)
     rV_cellNom = models.FloatField(default=2.1, help_text="Parameter for the Faraday efficiency calculation")

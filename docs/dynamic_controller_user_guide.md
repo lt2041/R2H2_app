@@ -301,6 +301,31 @@ Optional developer buffers captured (if set by your controller):
 
 - arBuffer1 through arBuffer20 (each 1-D, length n_seconds)
 
+End-of-hour buffer mapping (optional):
+
+- You can define ``end_hour_buffer_map`` (or ``END_HOUR_BUFFER_MAP``) in your
+  controller module to map any ``t_out`` variable into ``arBuffer`` slots using
+  the final value of each simulated hour.
+- This mapping is applied after ``runElectroStackStep1`` and subsequent hourly
+  post-processing (for example battery update), so values represent end-of-hour
+  state.
+- Mapping values can be:
+  - a string (name of a ``t_out`` attribute)
+  - a callable ``fn(t_out)`` returning a scalar/array-like
+  - a scalar/array-like constant
+- For array-like values, R2H2 uses the last element for that hour and fills the
+  full 1Hz segment of that hour with that scalar.
+
+Example:
+
+```python
+end_hour_buffer_map = {
+    'arBuffer1': 'arEta_system_total',   # final system efficiency for the hour
+    'arBuffer2': 'arT_stack',            # final average stack temperature
+    'arBuffer3': lambda t: np.mean(t.arTotalElectroOn),
+}
+```
+
 System-populated non-essential buffer channel:
 
 - arBuffer20 is auto-populated with arTotalElectroOn when your controller does

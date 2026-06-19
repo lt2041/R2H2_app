@@ -373,6 +373,63 @@ def _make_bank_index_maps(units: list) -> Tuple[List[List[int]], np.ndarray]:
 _CONTROLLER_TIMEOUT_S = 30  # max seconds allowed for one hourly control call
 
 
+def _apply_end_hour_buffer_map(
+    t_out,
+    buffer_map: Optional[Dict[str, Any]],
+    *,
+    verbose: bool = False,
+) -> Dict[str, float]:
+    """Populate ``t_out.arBufferN`` slots from end-of-hour values.
+
+    ``buffer_map`` maps buffer slot names (``arBuffer1``..``arBuffer20``) to:
+    - string: attribute name on ``t_out``
+    - callable: called as ``fn(t_out)``
+    - scalar/array-like: direct value (last element used for arrays)
+
+    Returns ``{buffer_name: scalar_value}`` for successfully resolved slots.
+    """
+    if not buffer_map:
+        return {}
+
+    out: Dict[str, float] = {}
+    for buf_name, src in buffer_map.items():
+        if not isinstance(buf_name, str):
+            continue
+        if not buf_name.startswith("arBuffer"):
+            continue
+        try:
+            idx = int(buf_name.replace("arBuffer", ""))
+        except Exception:
+            continue
+        if idx < 1 or idx > 20:
+            continue
+
+        try:
+            if callable(src):
+                raw = src(t_out)
+            elif isinstance(src, str):
+                raw = getattr(t_out, src)
+            else:
+                raw = src
+
+            arr = np.asarray(raw, dtype=float)
+            if arr.size == 0:
+                raise ValueError("empty value")
+            val = float(arr.ravel()[-1])
+            if not np.isfinite(val):
+                raise ValueError("non-finite value")
+
+            setattr(t_out, buf_name, val)
+            out[buf_name] = val
+        except Exception as exc:
+            if verbose:
+                print(
+                    f"  [run] Skipping end-hour buffer map for {buf_name}: {exc}",
+                    flush=True,
+                )
+    return out
+
+
 def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
     """Call a user-supplied controller with a wall-clock timeout and return-value
     validation.  Falls back to ``dynamicControl`` on any failure.
@@ -586,7 +643,7 @@ def dynamicControl(units, battery, t_out, settings):
             t_out.arProportionPower[:, k] = (
                 t_out.aiIsOn[:, k] / t_out.arTotalElectroOn[k]
             )
-
+    
     return units, t_out, battery
 
 
@@ -1568,6 +1625,7 @@ class R2H2():
 
         # ── Load custom engineering controller (if configured) ───────────────
         _controller_fn = None
+        _ctrl_end_hour_buffer_map = None
         _ctrl_obj  = getattr(self.simulation_name, 'controller', None) if self.simulation_name is not None else None
         _ctrl_file = _ctrl_obj.filename if _ctrl_obj is not None else None
         if _ctrl_file:
@@ -1579,6 +1637,18 @@ class R2H2():
                 _ctrl_mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(_ctrl_mod)
                 _controller_fn = getattr(_ctrl_mod, 'control', None)
+                _ctrl_end_hour_buffer_map = getattr(
+                    _ctrl_mod,
+                    'end_hour_buffer_map',
+                    getattr(_ctrl_mod, 'END_HOUR_BUFFER_MAP', None),
+                )
+                if _ctrl_end_hour_buffer_map is not None and not isinstance(_ctrl_end_hour_buffer_map, dict):
+                    if self.verbose:
+                        print(
+                            "  [run] Ignoring end_hour_buffer_map: expected dict",
+                            flush=True,
+                        )
+                    _ctrl_end_hour_buffer_map = None
                 if _controller_fn is None:
                     raise AttributeError(f"Controller file '{_ctrl_file}' has no 'control' function.")
                 if self.verbose:
@@ -1591,6 +1661,7 @@ class R2H2():
                     RuntimeWarning, stacklevel=2,
                 )
                 _controller_fn = None
+                _ctrl_end_hour_buffer_map = None
 
         # ── Bank thermal states ──────────────────────────────────────────────
         el = self.electrolyserunit
@@ -1722,6 +1793,9 @@ class R2H2():
                 if _feedback:
                     _cooling_feedback_prev = t_out.arP_cool_elec_total.copy()
 
+                _collected_hour_start = None
+                _collected_hour_len = 0
+
                 # ── Collect 1Hz data if this hour is in the collection range ─────
                 if _collect_1hz and _collect_1hz_start_hour is not None and _collect_1hz_end_hour is not None:
                     if _collect_1hz_start_hour <= global_hour <= _collect_1hz_end_hour:
@@ -1757,6 +1831,8 @@ class R2H2():
                         # Build indices from the last appended sample so the
                         # saved time axis is always sequential (no overlaps or
                         # backward jumps at hour boundaries).
+                        _collected_hour_start = len(_1hz_time_series_data['time_indices'])
+                        _collected_hour_len = n_hz
                         if _1hz_time_series_data['time_indices']:
                             t_idx = int(_1hz_time_series_data['time_indices'][-1]) + 1
                         else:
@@ -1866,6 +1942,36 @@ class R2H2():
                             )
 
                 battery = runBattery1(t_out, battery, settings)
+                # Expose end-of-hour battery SoC on t_out so controller-level
+                # end-hour buffer mapping can reference it directly.
+                t_out.arBatterySoC = float(getattr(battery, 'arInitialSoC', np.nan))
+
+                # Optional end-of-hour snapshots from controller-defined mapping.
+                # This runs after hourly post-processing so mapped values reflect
+                # the final state for this hour.
+                mapped_vals = _apply_end_hour_buffer_map(
+                    t_out,
+                    _ctrl_end_hour_buffer_map,
+                    verbose=self.verbose,
+                )
+                if (
+                    mapped_vals
+                    and _collect_1hz
+                    and _collected_hour_start is not None
+                    and _collected_hour_len > 0
+                    and 'time_indices' in _1hz_time_series_data
+                ):
+                    total_points = len(_1hz_time_series_data['time_indices'])
+                    seg0 = _collected_hour_start
+                    seg1 = _collected_hour_start + _collected_hour_len
+                    for buf_name, val in mapped_vals.items():
+                        if buf_name not in _1hz_time_series_data:
+                            _1hz_time_series_data[buf_name] = [np.nan] * total_points
+                        elif len(_1hz_time_series_data[buf_name]) < total_points:
+                            _1hz_time_series_data[buf_name].extend(
+                                [np.nan] * (total_points - len(_1hz_time_series_data[buf_name]))
+                            )
+                        _1hz_time_series_data[buf_name][seg0:seg1] = [float(val)] * _collected_hour_len
 
                 zLogOut["arSoc"][h]           = battery.arInitialSoC
                 zLogOut["arSocMax"][h]         = battery.rSocMax

@@ -2214,8 +2214,10 @@ def edit_component(request, table_name, pk):
         return JsonResponse({'error': 'Not found'}, status=404)
 
     mode = request.POST.get('_mode', 'direct')
+    validation_errors = []
 
     def _apply_fields(target):
+        from datetime import date as _date
         for f in model_class._meta.get_fields():
             if not hasattr(f, 'column'):
                 continue
@@ -2230,6 +2232,20 @@ def edit_component(request, table_name, pk):
                 continue
             if isinstance(f, dm.BooleanField):
                 setattr(target, f.name, raw.lower() in ('on', 'true', '1', 'yes'))
+            elif isinstance(f, dm.DateField) and not isinstance(f, dm.DateTimeField):
+                raw_date = raw.strip()
+                if raw_date == '':
+                    if f.null:
+                        setattr(target, f.name, None)
+                    else:
+                        validation_errors.append(f'{f.name}: this field is required.')
+                else:
+                    try:
+                        setattr(target, f.name, _date.fromisoformat(raw_date))
+                    except ValueError:
+                        validation_errors.append(
+                            f'{f.name}: invalid calendar date (expected YYYY-MM-DD).'
+                        )
             elif isinstance(f, (dm.FloatField, dm.DecimalField)):
                 try:
                     setattr(target, f.name, float(raw.replace(',', '')))
@@ -2262,6 +2278,8 @@ def edit_component(request, table_name, pk):
         copy_obj = model_class.objects.get(pk=pk)
         copy_obj.pk = None
         _apply_fields(copy_obj)
+        if validation_errors:
+            return JsonResponse({'error': '; '.join(validation_errors)}, status=400)
         # Ensure the name is unique (exclude original pk)
         if hasattr(copy_obj, 'name'):
             base = copy_obj.name
@@ -2280,6 +2298,8 @@ def edit_component(request, table_name, pk):
         return JsonResponse({'ok': True, 'pk': copy_obj.pk, 'mode': 'copy'})
     else:
         _apply_fields(obj)
+        if validation_errors:
+            return JsonResponse({'error': '; '.join(validation_errors)}, status=400)
         # Ensure the name is unique (allow the object to keep its own current name)
         if hasattr(obj, 'name'):
             base = obj.name

@@ -1339,6 +1339,7 @@
                                            style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
                                            onblur="saveDateRange()">
                                 </div>
+                                <div id="ss-date-range-msg" style="font-size:0.75rem;color:#7b5555;margin-top:0.3rem;display:none;"></div>
                             </span>
                         </span>
                         {% else %}
@@ -2018,14 +2019,63 @@
         if (el.max && val > el.max) el.value = el.max;
     }
 
+    function parseIsoDateStrict(iso) {
+        if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+        var parts = iso.split('-');
+        var y = parseInt(parts[0], 10);
+        var m = parseInt(parts[1], 10);
+        var d = parseInt(parts[2], 10);
+        var dt = new Date(Date.UTC(y, m - 1, d));
+        if (
+            dt.getUTCFullYear() !== y ||
+            dt.getUTCMonth() !== (m - 1) ||
+            dt.getUTCDate() !== d
+        ) {
+            return null;
+        }
+        return dt;
+    }
+
     function saveDateRange() {
         var startEl = document.getElementById('ss-start-date');
         var endEl   = document.getElementById('ss-end-date');
+        var msgEl   = document.getElementById('ss-date-range-msg');
+
+        function showDateRangeMsg(text, color) {
+            if (!msgEl) return;
+            if (!text) {
+                msgEl.style.display = 'none';
+                msgEl.textContent = '';
+                return;
+            }
+            msgEl.textContent = text;
+            msgEl.style.color = color || '#d84040';
+            msgEl.style.display = 'block';
+        }
+
         clampDateInput(startEl);
         clampDateInput(endEl);
         var start   = (startEl || {}).value || '';
         var end     = (endEl   || {}).value || '';
-        if (!start || !end) return;
+        if (!start || !end) {
+            showDateRangeMsg('Both start and end dates are required.', '#d84040');
+            return;
+        }
+
+        var startDate = parseIsoDateStrict(start);
+        var endDate = parseIsoDateStrict(end);
+        if (!startDate || !endDate) {
+            showDateRangeMsg('Invalid date format or non-existent date.', '#d84040');
+            return;
+        }
+
+        if (startDate > endDate) {
+            showDateRangeMsg('Start date must be before or equal to end date.', '#d84040');
+            return;
+        }
+
+        showDateRangeMsg('Saving...', '#4a7a80');
+
         if (_durSavePending) return;
         _durSavePending = true;
         var fd = new FormData();
@@ -2033,7 +2083,14 @@
         fd.append('end_date',   end);
         fd.append('csrfmiddlewaretoken', _durCsrf);
         fetch(_dateRangeSaveUrl, { method: 'POST', body: fd })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                return r.json().then(function(data) {
+                    if (!r.ok) {
+                        throw new Error((data && data.error) || 'Failed to save date range.');
+                    }
+                    return data;
+                });
+            })
             .then(function() {
                 // Keep data attrs in sync so switching back to "range" restores these values
                 var wrap = document.getElementById('ss-date-range-wrap');
@@ -2041,8 +2098,14 @@
                     wrap.dataset.savedStart = start;
                     wrap.dataset.savedEnd   = end;
                 }
+                showDateRangeMsg('Saved.', '#4a7a80');
+                setTimeout(function() {
+                    showDateRangeMsg('', '');
+                }, 1500);
             })
-            .catch(function(){})
+            .catch(function(err) {
+                showDateRangeMsg(err && err.message ? err.message : 'Failed to save date range.', '#d84040');
+            })
             .finally(function() { _durSavePending = false; });
     }
 
@@ -2066,6 +2129,9 @@
     }
     function saveDatum() {
         var val = document.getElementById('ss-datum-input').value.trim();
+        if (val && !parseIsoDateStrict(val)) {
+            return;
+        }
         var fd  = new FormData();
         fd.append('datum_date', val);
         fd.append('csrfmiddlewaretoken', _durCsrf);
@@ -2133,10 +2199,10 @@
         var msgEl = document.getElementById('ss-1hz-msg');
         
         // Validate dates
-        var startDate = new Date(start + 'T00:00:00');
-        var endDate = new Date(end + 'T00:00:00');
+        var startDate = parseIsoDateStrict(start);
+        var endDate = parseIsoDateStrict(end);
         
-        if (isNaN(startDate) || isNaN(endDate)) {
+        if (!startDate || !endDate) {
             msgEl.innerHTML = 'Invalid date format';
             msgEl.style.display = 'block';
             msgEl.style.color = '#d84040';
@@ -2150,7 +2216,7 @@
             return;
         }
 
-        var daysDiff = (endDate - startDate) / (1000 * 60 * 60 * 24);
+        var daysDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
 
         // Show info/warning message
         var estGb = Math.round(daysDiff * 3600 * 8 / 1e9 * 10) / 10;

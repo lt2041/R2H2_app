@@ -660,6 +660,8 @@ def simulation_detail(request, sim_id):
 
     latest_run = sim.runs.first()   # newest first via Meta ordering
     sim_runs   = list(sim.runs.all())
+    for run in sim_runs:
+        run.has_1hz_data = _get_run_1hz_info(run)['has_1hz_data']
 
     nsm_sections = [
         {'field': 'batteries',          'label': 'Battery',           'icon': 'battery_charging_full', 'table': 'Battery',           'items': list(Battery.objects.order_by('name'))},
@@ -1300,12 +1302,229 @@ def _fmt_duration(seconds):
     return f'{h:02d}:{m:02d}:{sec:02d}'
 
 
+_DEFAULT_1HZ_PLOT_KEYS = [
+    'arBuffer1', 'arBuffer2', 'arBuffer3', 'arBuffer4', 'arBuffer5',
+    'arBuffer6', 'arBuffer7', 'arBuffer8', 'arBuffer9', 'arBuffer10',
+    'arBuffer11', 'arBuffer12', 'arBuffer13', 'arBuffer14', 'arBuffer15',
+    'arBuffer16', 'arBuffer17', 'arBuffer18', 'arBuffer19', 'arBuffer20',
+    'controller_output_arBatteryDemand',
+    'controller_output_arElectroAvailablePower',
+]
+
+
+def _get_run_output_abspath(run):
+    """Return the absolute output path for a run, or None if unavailable."""
+    from django.conf import settings as dj_settings
+    from pathlib import Path
+
+    if not run.output_path:
+        return None
+
+    abs_path = Path(dj_settings.MEDIA_ROOT) / run.output_path
+    return abs_path if abs_path.exists() else None
+
+
+def _get_run_1hz_info(run):
+    """Return lightweight 1Hz availability metadata for a completed run."""
+    abs_path = _get_run_output_abspath(run)
+    if abs_path is None:
+        return {'has_1hz_data': False, 'output_abspath': None}
+
+    import h5py
+
+    try:
+        with h5py.File(abs_path, 'r') as h5_file:
+            has_1hz_data = 'time_series_1hz' in h5_file
+    except OSError:
+        has_1hz_data = False
+
+    return {
+        'has_1hz_data': has_1hz_data,
+        'output_abspath': abs_path,
+    }
+
+
+def _parse_1hz_request_time(raw_value):
+    """Parse an ISO datetime string from the browser into epoch seconds."""
+    if not raw_value:
+        return None
+
+    import pandas as pd
+
+    parsed = pd.to_datetime(raw_value, utc=True, errors='coerce')
+    if pd.isna(parsed):
+        raise ValueError('Invalid datetime range.')
+    return int(parsed.timestamp())
+
+
+def _select_1hz_plot_keys(ts_group):
+    """Return the preferred ordered set of plottable 1Hz dataset keys."""
+    plot_keys = [key for key in _DEFAULT_1HZ_PLOT_KEYS if key in ts_group]
+    if plot_keys:
+        return plot_keys
+    return [key for key in sorted(ts_group.keys()) if key != 'time_indices']
+
+
+def _get_run_datetime_origin(run):
+    """Return the datetime origin used by the hourly charts for this run."""
+    import datetime as _dt
+
+    if run.run_start_date:
+        return _dt.datetime.combine(run.run_start_date, _dt.time.min, tzinfo=_dt.timezone.utc)
+
+    sim = run.simulation
+    datum = sim.datum_date or _dt.date.today()
+    datum_start = _dt.date(datum.year, 1, 1)
+    return _dt.datetime.combine(datum_start, _dt.time.min, tzinfo=_dt.timezone.utc)
+
+
+def _resolve_1hz_time_seconds(run, raw_time_seconds, *, start_hour):
+    """Convert saved 1Hz time indices to absolute epoch seconds.
+
+    Newer simulation outputs store sequential seconds starting at zero for the
+    collected 1Hz window. Older or manually-produced files may already contain
+    absolute epoch seconds, so preserve those when detected.
+    """
+    import numpy as np
+
+    if raw_time_seconds.size == 0:
+        return raw_time_seconds
+
+    first_value = int(raw_time_seconds[0])
+    if first_value >= 946684800:
+        return raw_time_seconds
+
+    origin_dt = _get_run_datetime_origin(run)
+    origin_seconds = int(origin_dt.timestamp()) + int(start_hour) * 3600
+    return np.asarray(raw_time_seconds, dtype=np.int64) + origin_seconds
+
+
+def _load_run_1hz_plot_data(run, *, start_iso=None, end_iso=None, max_points=4000):
+    """Load 1Hz time-series data for browser plotting, adapting to a visible time window."""
+    info = _get_run_1hz_info(run)
+    if not info['has_1hz_data'] or info['output_abspath'] is None:
+        return None
+
+    import math
+    import h5py
+    import numpy as np
+    import pandas as pd
+
+    with h5py.File(info['output_abspath'], 'r') as h5_file:
+        ts_group = h5_file['time_series_1hz']
+        if 'time_indices' not in ts_group:
+            return None
+
+        available_keys = sorted(ts_group.keys())
+        plot_keys = _select_1hz_plot_keys(ts_group)
+        start_hour = int(ts_group.attrs.get('start_hour', 0))
+        end_hour = int(ts_group.attrs.get('end_hour', 0))
+
+        raw_time_seconds = np.asarray(ts_group['time_indices'], dtype=np.int64)
+        time_seconds = _resolve_1hz_time_seconds(run, raw_time_seconds, start_hour=start_hour)
+        total_points = int(time_seconds.shape[0])
+        if total_points == 0:
+            return {
+                'x_values': [],
+                'series': [],
+                'available_keys': available_keys,
+                'plot_keys': plot_keys,
+                'points_total': 0,
+                'window_points': 0,
+                'points_shown': 0,
+                'downsample_step': 1,
+                'is_full_resolution': True,
+                'window_start': None,
+                'window_end': None,
+                'full_start': None,
+                'full_end': None,
+                'start_hour': start_hour,
+                'end_hour': end_hour,
+                'output_name': info['output_abspath'].name,
+            }
+
+        full_start = pd.to_datetime(time_seconds[0], unit='s', utc=True).strftime('%Y-%m-%dT%H:%M:%SZ')
+        full_end = pd.to_datetime(time_seconds[-1], unit='s', utc=True).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        range_start_seconds = _parse_1hz_request_time(start_iso)
+        range_end_seconds = _parse_1hz_request_time(end_iso)
+        if range_start_seconds is not None and range_end_seconds is not None and range_end_seconds < range_start_seconds:
+            raise ValueError('Invalid datetime range.')
+
+        start_idx = 0
+        end_idx = total_points
+        if range_start_seconds is not None:
+            start_idx = int(np.searchsorted(time_seconds, range_start_seconds, side='left'))
+        if range_end_seconds is not None:
+            end_idx = int(np.searchsorted(time_seconds, range_end_seconds, side='right'))
+
+        start_idx = max(0, min(start_idx, total_points))
+        end_idx = max(start_idx, min(end_idx, total_points))
+
+        window_seconds = time_seconds[start_idx:end_idx]
+        window_points = int(window_seconds.shape[0])
+        if window_points == 0:
+            return {
+                'x_values': [],
+                'series': [],
+                'available_keys': available_keys,
+                'plot_keys': plot_keys,
+                'points_total': total_points,
+                'window_points': 0,
+                'points_shown': 0,
+                'downsample_step': 1,
+                'is_full_resolution': True,
+                'window_start': start_iso or full_start,
+                'window_end': end_iso or full_end,
+                'full_start': full_start,
+                'full_end': full_end,
+                'start_hour': start_hour,
+                'end_hour': end_hour,
+                'output_name': info['output_abspath'].name,
+            }
+
+        downsample_step = max(1, int(math.ceil(window_points / max_points)))
+        x_values = pd.to_datetime(window_seconds[::downsample_step], unit='s', utc=True).strftime('%Y-%m-%dT%H:%M:%SZ').tolist()
+
+        series = []
+        for key in plot_keys:
+            y_values = np.asarray(ts_group[key][start_idx:end_idx])
+            if y_values.ndim == 2:
+                y_values = y_values[:, 0]
+            if y_values.ndim != 1 or y_values.shape[0] != window_points:
+                continue
+            series.append({
+                'key': key,
+                'y': np.asarray(y_values[::downsample_step], dtype=float).tolist(),
+            })
+
+    return {
+        'x_values': x_values,
+        'series': series,
+        'available_keys': available_keys,
+        'plot_keys': plot_keys,
+        'points_total': total_points,
+        'window_points': window_points,
+        'points_shown': len(x_values),
+        'downsample_step': downsample_step,
+        'is_full_resolution': downsample_step == 1,
+        'window_start': pd.to_datetime(window_seconds[0], unit='s', utc=True).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'window_end': pd.to_datetime(window_seconds[-1], unit='s', utc=True).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'full_start': full_start,
+        'full_end': full_end,
+        'start_hour': start_hour,
+        'end_hour': end_hour,
+        'output_name': info['output_abspath'].name,
+    }
+
+
 def poll_simulation_run(request, sim_id, run_id):
     """GET: return JSON status of a SimulationRun for client-side polling."""
     from django.http import JsonResponse
     from django.shortcuts import get_object_or_404
     from django.utils import timezone
     run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    run_1hz_info = _get_run_1hz_info(run) if run.output_path else {'has_1hz_data': False}
     dur = run.duration_seconds
     if dur is not None:
         duration_str = _fmt_duration(dur)
@@ -1319,6 +1538,7 @@ def poll_simulation_run(request, sim_id, run_id):
         'message':     run.message or '',
         'duration':    duration_str,
         'output_path': run.output_path or '',
+        'has_1hz_data': run_1hz_info['has_1hz_data'],
         'done':        run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
     })
 
@@ -1386,15 +1606,12 @@ def download_run_output(request, sim_id, run_id):
     don't append an extra .html suffix (Safari issue)."""
     from django.http import FileResponse, Http404
     from django.shortcuts import get_object_or_404
-    from django.conf import settings as dj_settings
-    from pathlib import Path
-
     run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
     if not run.output_path:
         raise Http404('No output file for this run.')
 
-    abs_path = Path(dj_settings.MEDIA_ROOT) / run.output_path
-    if not abs_path.exists():
+    abs_path = _get_run_output_abspath(run)
+    if abs_path is None:
         raise Http404('Output file not found.')
 
     response = FileResponse(
@@ -1406,11 +1623,97 @@ def download_run_output(request, sim_id, run_id):
     return response
 
 
+def view_run_1hz(request, sim_id, run_id):
+    """GET: display interactive 1Hz charts for a completed SimulationRun."""
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404
+
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    sim = run.simulation
+
+    if not run.output_path:
+        messages.error(request, 'No results file found for this run.')
+        return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+    run_1hz_info = _get_run_1hz_info(run)
+    if run_1hz_info['output_abspath'] is None:
+        messages.error(request, f'Results file not found: {run.output_path}')
+        return redirect('dashboard-simulation-detail', sim_id=sim_id)
+    if not run_1hz_info['has_1hz_data']:
+        messages.error(request, 'No 1Hz data found for this run.')
+        return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+    plot_data = _load_run_1hz_plot_data(run)
+    if plot_data is None:
+        messages.error(request, 'Could not read 1Hz data for this run.')
+        return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+    return render(request, 'dashboard/run_1hz.html', {
+        'sim': sim,
+        'run': run,
+        'plot_x_values': plot_data['x_values'],
+        'plot_series': plot_data['series'],
+        'available_keys': plot_data['available_keys'],
+        'plot_keys': plot_data['plot_keys'],
+        'points_total': plot_data['points_total'],
+        'window_points': plot_data['window_points'],
+        'points_shown': plot_data['points_shown'],
+        'downsample_step': plot_data['downsample_step'],
+        'is_full_resolution': plot_data['is_full_resolution'],
+        'window_start': plot_data['window_start'],
+        'window_end': plot_data['window_end'],
+        'full_start': plot_data['full_start'],
+        'full_end': plot_data['full_end'],
+        'start_hour': plot_data['start_hour'],
+        'end_hour': plot_data['end_hour'],
+        'output_name': plot_data['output_name'],
+    })
+
+
+def view_run_1hz_data(request, sim_id, run_id):
+    """GET: return adaptive 1Hz chart data for the current visible range."""
+    from django.http import Http404, JsonResponse
+    from django.shortcuts import get_object_or_404
+
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    if not run.output_path:
+        raise Http404('No results file found for this run.')
+
+    run_1hz_info = _get_run_1hz_info(run)
+    if run_1hz_info['output_abspath'] is None or not run_1hz_info['has_1hz_data']:
+        raise Http404('No 1Hz data found for this run.')
+
+    start_iso = request.GET.get('start') or None
+    end_iso = request.GET.get('end') or None
+
+    try:
+        plot_data = _load_run_1hz_plot_data(run, start_iso=start_iso, end_iso=end_iso)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
+    if plot_data is None:
+        raise Http404('Could not read 1Hz data for this run.')
+
+    return JsonResponse({
+        'x_values': plot_data['x_values'],
+        'series': plot_data['series'],
+        'plot_keys': plot_data['plot_keys'],
+        'available_keys': plot_data['available_keys'],
+        'points_total': plot_data['points_total'],
+        'window_points': plot_data['window_points'],
+        'points_shown': plot_data['points_shown'],
+        'downsample_step': plot_data['downsample_step'],
+        'is_full_resolution': plot_data['is_full_resolution'],
+        'window_start': plot_data['window_start'],
+        'window_end': plot_data['window_end'],
+        'full_start': plot_data['full_start'],
+        'full_end': plot_data['full_end'],
+    })
+
+
 def view_run_results(request, sim_id, run_id):
     """GET: display interactive charts for a completed SimulationRun."""
     from django.shortcuts import get_object_or_404
-    from django.conf import settings as dj_settings
-    from pathlib import Path
     import json as _json
 
     run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
@@ -1421,8 +1724,8 @@ def view_run_results(request, sim_id, run_id):
         messages.error(request, 'No results file found for this run.')
         return redirect('dashboard-simulation-detail', sim_id=sim_id)
 
-    abs_path = Path(dj_settings.MEDIA_ROOT) / run.output_path
-    if not abs_path.exists():
+    abs_path = _get_run_output_abspath(run)
+    if abs_path is None:
         from django.contrib import messages
         messages.error(request, f'Results file not found: {run.output_path}')
         return redirect('dashboard-simulation-detail', sim_id=sim_id)

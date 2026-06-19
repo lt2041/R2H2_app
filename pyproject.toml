@@ -7,9 +7,9 @@ name = "r2h2"
 version = "1.2.18"
 description = "The Desktop App for R2H2."
 authors = [
-    {name = "Adam Stock", email = "a.stock@hw.ac.uk"},
+    {name = "Renewable Tools Team", email = "r2h2@renewabletools.co.uk"},
 ]
-license = {text = "GNUv3"}
+license = {text = "GPL-3.0-or-later"}
 readme = "README.md"
 requires-python = ">=3.10"      # End-of-life Oct 2026 (3.11 Oct 2027)
 dependencies = [

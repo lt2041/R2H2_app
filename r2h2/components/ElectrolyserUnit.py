@@ -19,7 +19,7 @@ class ElectrolyserUnit(ComponentBase):
         self.r_s                 = 1.42e-10
         self.r_f                 = 3.33e-7
         self.r_o                 = 1.47e-4
-        self.rAncilliaryPowerFrac = 0.0
+        self.rAncillaryPowerFrac = 0.0
         self.rDeadBandRatio      = 2.0
         # Ramp limits (None = unlimited)
         self.rRampUp_W_s   = None
@@ -38,7 +38,7 @@ class ElectrolyserUnit(ComponentBase):
         self.arEfficiency_s  = None
         self.rRatedPower_s   = 0.0
         self.rMinPower_s     = 0.0
-        self.rAncilliaryPower_s = 0.0
+        self.rAncillaryPower_s = 0.0
         # Degradation history
         self.arDegradationSteady  = None
         self.arDegradationFatigue = None

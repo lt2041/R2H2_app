@@ -669,7 +669,7 @@ def runElectroStackStep1(
 
     # Wind → available power (filtered)
     arWindPowerFilt = lsim_first_order_lowpass(np.squeeze(arPowerInput), arTime, 1.0)
-    arAvailablePower = arWindPowerFilt - units[0].rAncilliaryPower_s * num_units
+    arAvailablePower = arWindPowerFilt - units[0].rAncillaryPower_s * num_units
     if cooling_power_feedback is not None:
         cool_arr = np.asarray(cooling_power_feedback, dtype=float).ravel()
         if cool_arr.shape[0] != arAvailablePower.shape[0]:
@@ -1126,7 +1126,7 @@ def runElectroStackStep1(
 
     t_out.arTotalElectroDemand = (
         np.sum(t_out.arElectroDemand, axis=0)
-        + units[0].rAncilliaryPower_s * num_units
+        + units[0].rAncillaryPower_s * num_units
     )
 
     return units, t_out, battery, th_banks
@@ -1426,7 +1426,7 @@ class R2H2():
             e.arEfficiency_s = arEfficiency_s
             e.rRatedPower_s = float(arV_s[-1] * arI_s[-1])
             e.rMinPower_s = e.rRatedPower_s * e.rTurnDownRatio
-            e.rAncilliaryPower_s = e.rAncilliaryPowerFrac * e.rRatedPower_s
+            e.rAncillaryPower_s = e.rAncillaryPowerFrac * e.rRatedPower_s
 
     
     # WIP - not yet implemented

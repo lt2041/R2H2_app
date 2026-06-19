@@ -30,7 +30,7 @@ from dashboard.models import (
 
 _BATTERY_DEFAULTS = dict(
     name='Main Battery',
-    fKt=4.14e-10,
+    rKt=4.14e-10,
     rKs=1.04,
     KTemp=6.93e-2,
     rAlphaSei=5.75e-2,
@@ -139,7 +139,7 @@ def _build_electrolyser_defaults(kind: str) -> dict:
         iNumUnits=iNumUnits,
         rDegradation=1e-30,
         rTurnDownRatio=0.125,
-        rAncilliaryPowerFrac=0.0,
+        rAncillaryPowerFrac=0.0,
         **dyn,
     )
 

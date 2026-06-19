@@ -85,8 +85,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': config.data_root / 'R2H2_DataBase.sqlite3',
         'OPTIONS': {
-            'timeout': 20,          # seconds to wait for a lock before raising OperationalError
-            'init_command': 'PRAGMA journal_mode=WAL;',  # allow readers while simulation thread writes
+            'timeout': 20,  # seconds to wait for a lock before raising OperationalError
         },
     }
 }

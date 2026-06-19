@@ -5,9 +5,22 @@ class DashboardConfig(AppConfig):
     name = 'dashboard'
 
     def ready(self):
+        from django.db.backends.signals import connection_created
         from django.db.models.signals import post_migrate
+        connection_created.connect(_configure_sqlite_connection)
         post_migrate.connect(_seed_default_controller, sender=self)
         post_migrate.connect(_seed_main_model, sender=self)
+
+
+def _configure_sqlite_connection(connection, **kwargs):
+    """Enable SQLite WAL mode so reads stay responsive during simulation writes."""
+    try:
+        if connection.vendor == 'sqlite':
+            with connection.cursor() as cursor:
+                cursor.execute('PRAGMA journal_mode=WAL;')
+                cursor.execute('PRAGMA synchronous=NORMAL;')
+    except Exception:
+        pass
 
 
 def _seed_default_controller(sender, **kwargs):

@@ -1202,30 +1202,47 @@ def _run_simulation_thread(run_id):
         run.run_end_date   = effective_end
         run.save(update_fields=['run_start_date', 'run_end_date'])
 
-        _progress_interval = 50  # update DB message every N hours
+        _progress_interval = 200  # update DB message every N simulation hours
+        _progress_db_min_seconds = 10  # minimum wall-clock spacing between DB writes
         _progress_start = timezone.now()
+        _last_progress_write_at = _progress_start
+        _last_progress_msg = None
 
         def _on_progress(year, total_years, hour, total_hours):
-            if hour % _progress_interval == 0:
-                total_steps  = total_years * total_hours
-                done_steps   = year * total_hours + hour
-                pct = int(done_steps / total_steps * 100) if total_steps else 0
-                elapsed = (timezone.now() - _progress_start).total_seconds()
-                if done_steps > 0 and elapsed > 0:
-                    total_s   = elapsed / done_steps * total_steps
-                    finish_at = _progress_start + timezone.timedelta(seconds=total_s)
-                    # Encode ETA as ISO UTC so the browser can convert to local time
-                    finish_iso = finish_at.strftime('%Y-%m-%dT%H:%M:%SZ')
-                    eta_str = (f' [est. {_fmt_duration(total_s)}, done ~[{finish_iso}]]')
-                else:
-                    eta_str = ''
-                year_str = f'Year {year+1}/{total_years} \u2014 ' if total_years > 1 else ''
-                if total_years > 1:
-                    hour_str = f'hour {done_steps+1}/{total_steps}'
-                else:
-                    hour_str = f'hour {hour+1}/{total_hours}'
-                msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str}')
+            nonlocal _last_progress_write_at, _last_progress_msg
+
+            total_steps = total_years * total_hours
+            done_steps = year * total_hours + hour
+            is_final_progress_tick = bool(total_steps) and done_steps + 1 >= total_steps
+
+            if hour % _progress_interval != 0 and not is_final_progress_tick:
+                return
+
+            now = timezone.now()
+            if (now - _last_progress_write_at).total_seconds() < _progress_db_min_seconds and not is_final_progress_tick:
+                return
+
+            pct = int(done_steps / total_steps * 100) if total_steps else 0
+            elapsed = (now - _progress_start).total_seconds()
+            if done_steps > 0 and elapsed > 0:
+                total_s = elapsed / done_steps * total_steps
+                finish_at = _progress_start + timezone.timedelta(seconds=total_s)
+                # Encode ETA as ISO UTC so the browser can convert to local time
+                finish_iso = finish_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+                eta_str = (f' [est. {_fmt_duration(total_s)}, done ~[{finish_iso}]]')
+            else:
+                eta_str = ''
+            year_str = f'Year {year+1}/{total_years} — ' if total_years > 1 else ''
+            if total_years > 1:
+                hour_str = f'hour {done_steps+1}/{total_steps}'
+            else:
+                hour_str = f'hour {hour+1}/{total_hours}'
+            msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str}')
+
+            if msg != _last_progress_msg:
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
+                _last_progress_msg = msg
+                _last_progress_write_at = now
 
         # Prepare 1Hz collection parameters if enabled.
         # When the wind file is sliced to a simulation date range, the run's
@@ -1281,16 +1298,19 @@ def _run_simulation_thread(run_id):
 
 
 def run_simulation(request, sim_id):
-    """POST: create a SimulationRun, redirect immediately, run in background thread."""
+    """POST: create a SimulationRun, redirect immediately, run in background process."""
     from django.shortcuts import get_object_or_404, redirect
     from django.contrib import messages
-    import threading
+    from multiprocessing import get_context
+    from django.db import connections
     if request.method == 'POST':
         sim = get_object_or_404(Simulation, pk=sim_id)
         run = SimulationRun.objects.create(simulation=sim, status=SimulationRun.PENDING)
         messages.success(request, f'Simulation \u201c{sim.name}\u201d started.')
-        t = threading.Thread(target=_run_simulation_thread, args=(run.pk,), daemon=True)
-        t.start()
+        # Close inherited DB handles before child process starts.
+        connections.close_all()
+        p = get_context('spawn').Process(target=_run_simulation_thread, args=(run.pk,), daemon=True)
+        p.start()
     return redirect('dashboard-simulation-detail', sim_id=sim_id)
 
 

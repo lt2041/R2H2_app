@@ -1017,8 +1017,22 @@
             var downloadUrl = "{% url 'dashboard-download-run-output' sim_id=sim.id run_id=latest_run.id %}";
             var runBtn   = document.getElementById('sim-run-btn');
             var stopBtn  = document.getElementById('sim-stop-btn');
+            var pollTimer = null;
+            var pollInFlight = false;
+            var pollingStopped = false;
             if (runBtn)  runBtn.disabled = true;
             if (stopBtn) stopBtn.classList.add('visible');
+
+            function nextPollDelay(isError) {
+                if (document.hidden) return isError ? 12000 : 8000;
+                return isError ? 5000 : 2500;
+            }
+
+            function schedulePoll(delayMs) {
+                if (pollingStopped) return;
+                if (pollTimer) clearTimeout(pollTimer);
+                pollTimer = setTimeout(poll, delayMs);
+            }
 
             function localiseEta(text) {
                 if (!text) return text;
@@ -1044,6 +1058,11 @@
                 if (msg) msg.innerHTML = localiseEta(data.message  || '—');
                 if (runBtn)  runBtn.disabled = false;
                 if (stopBtn) { stopBtn.disabled = false; stopBtn.classList.remove('visible'); }
+                pollingStopped = true;
+                if (pollTimer) {
+                    clearTimeout(pollTimer);
+                    pollTimer = null;
+                }
                 // Inject pencil + delete buttons into the actions cell
                 var actRow = document.getElementById('run-row-' + runId);
                 if (actRow) {
@@ -1106,7 +1125,14 @@
             }
 
             function poll() {
-                fetch(pollUrl)
+                if (pollingStopped) return;
+                if (pollInFlight) {
+                    schedulePoll(nextPollDelay(false));
+                    return;
+                }
+
+                pollInFlight = true;
+                fetch(pollUrl, { cache: 'no-store' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         // Update live progress message even while still running
@@ -1115,11 +1141,18 @@
                         var dur = document.getElementById('run-dur-' + '{{ latest_run.id }}');
                         if (dur && data.duration) { dur.textContent = data.duration; }
                         if (data.done) { markDone(data); }
-                        else           { setTimeout(poll, 1500); }
+                        else           { schedulePoll(nextPollDelay(false)); }
                     })
-                    .catch(function() { setTimeout(poll, 3000); });
+                    .catch(function() { schedulePoll(nextPollDelay(true)); })
+                    .finally(function() { pollInFlight = false; });
             }
-            setTimeout(poll, 1500);
+            schedulePoll(nextPollDelay(false));
+
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden && !pollingStopped) {
+                    schedulePoll(400);
+                }
+            });
 
             if (stopBtn) {
                 stopBtn.addEventListener('click', function() {

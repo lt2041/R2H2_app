@@ -1725,6 +1725,12 @@ class R2H2():
                 # ── Collect 1Hz data if this hour is in the collection range ─────
                 if _collect_1hz and _collect_1hz_start_hour is not None and _collect_1hz_end_hour is not None:
                     if _collect_1hz_start_hour <= global_hour <= _collect_1hz_end_hour:
+                        hz_start = int(settings.rTransientSteps)
+                        hz_start = max(0, min(hz_start, len(t_out.arAvailablePower)))
+                        n_hz = len(t_out.arAvailablePower) - hz_start
+                        if n_hz <= 0:
+                            continue
+
                         # Initialize 1Hz arrays on first collection
                         if not _1hz_time_series_data:
                             _1hz_time_series_data['time_indices'] = []
@@ -1747,51 +1753,71 @@ class R2H2():
                             _1hz_time_series_data['controller_output_aiIsOn'] = []
                             _1hz_time_series_data['controller_output_arProportionPower'] = []
                         
-                        # Append 1Hz data for this hour
-                        t_idx = global_hour * 3600  # convert hour to seconds
+                        # Append transient-trimmed 1Hz data for this hour.
+                        # Build indices from the last appended sample so the
+                        # saved time axis is always sequential (no overlaps or
+                        # backward jumps at hour boundaries).
+                        if _1hz_time_series_data['time_indices']:
+                            t_idx = int(_1hz_time_series_data['time_indices'][-1]) + 1
+                        else:
+                            t_idx = 0
                         _1hz_time_series_data['time_indices'].extend(
-                            range(t_idx, t_idx + len(t_out.arAvailablePower))
+                            range(t_idx, t_idx + n_hz)
                         )
-                        _1hz_time_series_data['arAvailablePower'].extend(t_out.arAvailablePower)
-                        _1hz_time_series_data['arTotalElectroDemand'].extend(t_out.arTotalElectroDemand)
-                        _1hz_time_series_data['arProducedH2Dot'].extend(t_out.arProducedH2Dot)
-                        _1hz_time_series_data['arTotalElectroOn'].extend(t_out.arTotalElectroOn)
-                        _1hz_time_series_data['arEta_el_total'].extend(t_out.arEta_el_total)
-                        _1hz_time_series_data['arT_stack'].extend(t_out.arT_stack)
-                        _1hz_time_series_data['arV_cell_avg'].extend(t_out.arV_cell_avg)
+                        _1hz_time_series_data['arAvailablePower'].extend(
+                            np.asarray(t_out.arAvailablePower).ravel()[hz_start:]
+                        )
+                        _1hz_time_series_data['arTotalElectroDemand'].extend(
+                            np.asarray(t_out.arTotalElectroDemand).ravel()[hz_start:]
+                        )
+                        _1hz_time_series_data['arProducedH2Dot'].extend(
+                            np.asarray(t_out.arH2Dot_total).ravel()[hz_start:]
+                        )
+                        _1hz_time_series_data['arTotalElectroOn'].extend(
+                            np.asarray(t_out.arTotalElectroOn).ravel()[hz_start:]
+                        )
+                        _1hz_time_series_data['arEta_el_total'].extend(
+                            np.asarray(t_out.arEta_el_total).ravel()[hz_start:]
+                        )
+                        _1hz_time_series_data['arT_stack'].extend(
+                            np.asarray(t_out.arT_stack).ravel()[hz_start:]
+                        )
+                        _1hz_time_series_data['arV_cell_avg'].extend(
+                            np.asarray(t_out.arV_cell_avg).ravel()[hz_start:]
+                        )
                         _1hz_time_series_data['controller_input_arAvailablePower'].extend(
-                            np.asarray(t_out.arAvailablePower).ravel()
+                            np.asarray(t_out.arAvailablePower).ravel()[hz_start:]
                         )
                         _1hz_time_series_data['controller_input_aiIsOn'].extend(
                             np.tile(
                                 ctrl_input_ai_is_on_prev,
-                                (len(t_out.arAvailablePower), 1),
+                                (n_hz, 1),
                             ).tolist()
                         )
                         _1hz_time_series_data['controller_input_initial_soc'].extend(
                             np.full(
-                                len(t_out.arAvailablePower),
+                                n_hz,
                                 ctrl_input_initial_soc,
                                 dtype=np.float64,
                             )
                         )
                         _1hz_time_series_data['controller_output_arBatteryDemand'].extend(
-                            np.asarray(battery.arBatteryDemand).ravel()
+                            np.asarray(battery.arBatteryDemand).ravel()[hz_start:]
                         )
                         _1hz_time_series_data['controller_output_arElectroAvailablePowerA'].extend(
-                            np.asarray(t_out.arElectroAvailablePowerA).ravel()
+                            np.asarray(t_out.arElectroAvailablePowerA).ravel()[hz_start:]
                         )
                         _1hz_time_series_data['controller_output_arElectroAvailablePower'].extend(
-                            np.asarray(t_out.arElectroAvailablePower).ravel()
+                            np.asarray(t_out.arElectroAvailablePower).ravel()[hz_start:]
                         )
                         _1hz_time_series_data['controller_output_arTotalElectroOn'].extend(
-                            np.asarray(t_out.arTotalElectroOn).ravel()
+                            np.asarray(t_out.arTotalElectroOn).ravel()[hz_start:]
                         )
                         _1hz_time_series_data['controller_output_aiIsOn'].extend(
-                            np.asarray(t_out.aiIsOn).T.tolist()
+                            np.asarray(t_out.aiIsOn, dtype=np.int8).T[hz_start:, :].tolist()
                         )
                         _1hz_time_series_data['controller_output_arProportionPower'].extend(
-                            np.asarray(t_out.arProportionPower).T.tolist()
+                            np.asarray(t_out.arProportionPower).T[hz_start:, :].tolist()
                         )
 
                         # Optional user debug buffers from custom controllers.
@@ -1805,7 +1831,7 @@ class R2H2():
                             buf_arr = np.asarray(buf_val)
                             if buf_arr.ndim == 0:
                                 buf_arr = np.full(
-                                    len(t_out.arAvailablePower),
+                                    n_hz,
                                     float(buf_arr),
                                     dtype=np.float64,
                                 )
@@ -1814,11 +1840,14 @@ class R2H2():
 
                             if buf_arr.size == 0:
                                 continue
-                            if buf_arr.size != len(t_out.arAvailablePower):
+                            if buf_arr.size == len(t_out.arAvailablePower):
+                                buf_arr = buf_arr[hz_start:]
+                            elif buf_arr.size != n_hz:
                                 if self.verbose:
                                     print(
                                         f"  [run] Skipping {buf_name}: length {buf_arr.size} "
-                                        f"does not match hourly time axis {len(t_out.arAvailablePower)}",
+                                        f"does not match trimmed 1Hz axis {n_hz} "
+                                        f"(or full axis {len(t_out.arAvailablePower)})",
                                         flush=True,
                                     )
                                 continue
@@ -1833,7 +1862,7 @@ class R2H2():
                             if 'arBuffer20' not in _1hz_time_series_data:
                                 _1hz_time_series_data['arBuffer20'] = []
                             _1hz_time_series_data['arBuffer20'].extend(
-                                np.asarray(t_out.arTotalElectroOn).ravel().astype(np.float64, copy=False)
+                                np.asarray(t_out.arTotalElectroOn).ravel()[hz_start:].astype(np.float64, copy=False)
                             )
 
                 battery = runBattery1(t_out, battery, settings)

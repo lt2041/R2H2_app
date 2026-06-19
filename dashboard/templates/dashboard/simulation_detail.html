@@ -1005,6 +1005,7 @@
     <script>
         (function() {
             var pollUrl  = "{% url 'dashboard-poll-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
+            var downloadUrl = "{% url 'dashboard-download-run-output' sim_id=sim.id run_id=latest_run.id %}";
             var runBtn   = document.getElementById('sim-run-btn');
             var stopBtn  = document.getElementById('sim-stop-btn');
             if (runBtn)  runBtn.disabled = true;
@@ -1072,7 +1073,7 @@
                     var dlCell = document.getElementById('run-dl-' + runId);
                     if (dlCell) {
                         dlCell.innerHTML = '<a href="#" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
-                        dlCell.querySelector('a').href = '{{ MEDIA_URL }}' + data.output_path;
+                        dlCell.querySelector('a').href = downloadUrl;
                     }
                     // Make the row clickable
                     var resultsUrl = "{% url 'dashboard-run-results' sim_id=sim.id run_id=latest_run.id %}";
@@ -1393,14 +1394,14 @@
                                            {% if sim.collect_1hz_data %}checked{% endif %}
                                            onchange="on1HzCollectionToggle()"
                                            style="cursor:pointer;width:18px;height:18px;">
-                                    <span style="font-size:0.85rem;color:#1a2e30;">Collect per-second data over a limited time period</span>
+                                    <span style="font-size:0.85rem;color:#1a2e30;">Collect per-second data (1Hz)</span>
                                 </label>
                             </span>
                         </span>
                         
                         <span class="param-badge" id="ss-1hz-range-badge"
                               style="{% if not sim.collect_1hz_data %}opacity:0.4;pointer-events:none;{% endif %}">
-                            <span class="pb-label">Collection Period (max 3 months)</span>
+                            <span class="pb-label">Collection Period</span>
                             <span class="pb-val">
                                 <div style="display:flex;flex-direction:row;align-items:center;gap:4px;">
                                     <input type="date" id="ss-1hz-start-date"
@@ -1422,7 +1423,7 @@
                         </span>
                         
                         <span class="param-badge" style="font-size:0.78rem;color:#4a7a80;padding:0.5rem;background:#f0f8f9;border-radius:4px;border-left:3px solid #22a6b3;">
-                            <strong>Note:</strong> Collecting 1Hz data can require significant memory and storage. Maximum collection period is 3 months. The collected 1Hz data will be included in the simulation output file.
+                            <strong>Warning:</strong> Collecting 1Hz data can create very large output files. Periods longer than approximately 3 months should be used with care.
                         </span>
                     </div>
                 </div>
@@ -2150,17 +2151,17 @@
         }
 
         var daysDiff = (endDate - startDate) / (1000 * 60 * 60 * 24);
-        if (daysDiff > 90) {
-            msgEl.innerHTML = 'Period cannot exceed 3 months (90 days). Current: ' + Math.ceil(daysDiff) + ' days';
-            msgEl.style.display = 'block';
-            msgEl.style.color = '#d84040';
-            return;
-        }
 
-        // Show info message
-        msgEl.innerHTML = daysDiff + ' days (~' + Math.round(daysDiff * 3600 * 8 / 1e9 * 10) / 10 + ' GB for 8 arrays)';
+        // Show info/warning message
+        var estGb = Math.round(daysDiff * 3600 * 8 / 1e9 * 10) / 10;
+        msgEl.innerHTML = daysDiff + ' days (~' + estGb + ' GB for 8 arrays)';
+        if (daysDiff > 90) {
+            msgEl.innerHTML += ' Warning: periods longer than approximately 3 months can create very large files. Use with care.';
+            msgEl.style.color = '#a46a00';
+        } else {
+            msgEl.style.color = '#4a7a80';
+        }
         msgEl.style.display = 'block';
-        msgEl.style.color = '#4a7a80';
 
         // Save
         if (_1hzSavePending) return;

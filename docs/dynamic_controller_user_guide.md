@@ -311,6 +311,9 @@ Notes:
 
 - These traces are snapshots around the controller call in each simulated hour.
 - This makes it easier to compare what your custom controller received versus what it wrote.
+- 1Hz collection windows are not hard-limited by duration, but long windows can
+  generate very large output files.
+- For ranges longer than approximately 3 months, use with care.
 
 ### Using arBuffer1..arBuffer20 For Debugging
 
@@ -401,66 +404,109 @@ def control(units, battery, t_out, settings):
   ### Inspecting Buffers In Python
 
   Use this example to inspect available buffer channels and plot selected traces
-  from /time_series_1hz in an output HDF5 file.
-
+  from /time_series_1hz in an output HDF5 file. Note you may need to run 
   ```python
-  import h5py
-  import numpy as np
-  import matplotlib.pyplot as plt
+pip install plotly-resampler
+  ```
+prior to using the code below
+  ```python
+import h5py
+import pandas as pd
 
+import plotly.graph_objects as go
+from plotly_resampler import FigureResampler
+import plotly.subplots as sp
+import webbrowser
 
-  h5_path = "path/to/output_file.h5"
+# Adjust this to be the path to your h5 file
+h5_path = "/home/ajs2007/Downloads/run_47_Default_Model_20260619-105234.h5"
 
-  with h5py.File(h5_path, "r") as f:
+with h5py.File(h5_path, "r") as f:
     if "time_series_1hz" not in f:
-      raise RuntimeError("No /time_series_1hz group found in this file.")
+        raise RuntimeError("No /time_series_1hz group found in this file.")
 
     ts = f["time_series_1hz"]
     keys = sorted(ts.keys())
+
     print("Available datasets:")
     for k in keys:
-      print("  ", k, ts[k].shape)
+        print("  ", k, ts[k].shape)
 
-    # Time axis in seconds from simulation start.
+    #  Convert seconds → datetime
     t = ts["time_indices"][:]
+    t = pd.to_datetime(t, unit="s")
 
-    # Discover available developer buffers.
-    buffer_keys = [k for k in keys if k.startswith("arBuffer")]
-    print("\nAvailable buffers:", buffer_keys)
-
-    # Pick some channels to plot if present.
+    # Channels to plot
     plot_keys = [
-      "arBuffer1",
-      "arBuffer2",
-      "arBuffer3",
-      "arBuffer20",
-      "controller_output_arBatteryDemand",
-      "controller_output_arElectroAvailablePower",
+        "arBuffer1","arBuffer2","arBuffer3","arBuffer4","arBuffer5",
+        "arBuffer6","arBuffer7","arBuffer8","arBuffer9","arBuffer10",
+        "arBuffer11","arBuffer12","arBuffer13","arBuffer14","arBuffer15",
+        "arBuffer16","arBuffer17","arBuffer18","arBuffer19","arBuffer20",
+        "controller_output_arBatteryDemand",
+        "controller_output_arElectroAvailablePower",
     ]
     plot_keys = [k for k in plot_keys if k in ts]
 
     if not plot_keys:
-      raise RuntimeError("No selected channels found. Check dataset names above.")
+        raise RuntimeError("No selected channels found.")
 
-    fig, axes = plt.subplots(len(plot_keys), 1, figsize=(12, 2.6 * len(plot_keys)), sharex=True)
-    if len(plot_keys) == 1:
-      axes = [axes]
+    # Create subplot figure
+    base_fig = sp.make_subplots(rows=len(plot_keys), cols=1, shared_xaxes=True)
 
-    for ax, key in zip(axes, plot_keys):
-      y = ts[key][:]
-      # For 2-D datasets (for example aiIsOn-like channels), plot first column.
-      if y.ndim == 2:
-        y_plot = y[:, 0]
-        ax.set_ylabel(f"{key}[:,0]")
-      else:
-        y_plot = y
-        ax.set_ylabel(key)
-      ax.plot(t, y_plot, linewidth=1.0)
-      ax.grid(True, alpha=0.3)
+    fig = FigureResampler(base_fig)
 
-    axes[-1].set_xlabel("time_indices [s]")
-    plt.tight_layout()
-    plt.show()
+    for i, key in enumerate(plot_keys, start=1):
+        y = ts[key][:]
+
+        if y.ndim == 2:
+            y_plot = y[:, 0]
+        else:
+            y_plot = y
+
+        fig.add_trace(
+            go.Scattergl(name=key, mode='lines'),
+            hf_x=t,
+            hf_y=y_plot,
+            row=i,
+            col=1
+        )
+
+#  Layout
+fig.update_layout(
+    height=300 * len(plot_keys),
+    title="Interactive Time Series (Resampled)"
+)
+
+#   Dynamic time scaling for x-axis
+fig.update_xaxes(
+    title="Time",
+    tickformatstops=[
+        # Very fine → seconds
+        dict(dtickrange=[None, 1000], value="%H:%M:%S"),
+
+        # Seconds to minutes
+        dict(dtickrange=[1000, 60000], value="%H:%M:%S"),
+
+        # Minutes
+        dict(dtickrange=[60000, 3600000], value="%H:%M"),
+
+        # Hours
+        dict(dtickrange=[3600000, 86400000], value="%H:%M"),
+
+        # Days+
+        dict(dtickrange=[86400000, None], value="%d %b"),
+    ]
+)
+
+# Dash server setup
+port = 8051
+url = f"http://127.0.0.1:{port}"
+
+fig.show_dash(mode="external", port=port, open_browser=False)
+
+# Open browser automatically
+webbrowser.open(url)
+
   ```
 
   Tips:

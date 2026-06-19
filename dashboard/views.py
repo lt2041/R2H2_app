@@ -71,13 +71,13 @@ def _infer_simulation_end_date(sim):
 
 
 def _default_1hz_range(sim):
-    """Return preset 1Hz range: simulation start to first month or sim end."""
+    """Return preset 1Hz range: simulation start to first 3 months or sim end."""
     import datetime as _dt
 
     start = sim.datum_date or _dt.date.today()
-    first_month_end = start + _dt.timedelta(days=30)
+    first_three_months_end = start + _dt.timedelta(days=90)
     sim_end = _infer_simulation_end_date(sim)
-    end = min(first_month_end, sim_end) if sim_end else first_month_end
+    end = min(first_three_months_end, sim_end) if sim_end else first_three_months_end
     if end < start:
         end = start
     return start, end
@@ -88,7 +88,7 @@ def _ensure_1hz_preset(sim, *, persist=False):
 
     Preset behavior:
     - Enabled by default
-    - Range defaults to first month from datum_date (or simulation end if shorter)
+    - Range defaults to first 3 months from datum_date (or simulation end if shorter)
     """
     # Respect explicit user-off choice when a configured range already exists.
     if (not sim.collect_1hz_data) and sim.collect_1hz_start_date and sim.collect_1hz_end_date:
@@ -1225,13 +1225,18 @@ def _run_simulation_thread(run_id):
                 msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str}')
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
 
-        # Prepare 1Hz collection parameters if enabled
+        # Prepare 1Hz collection parameters if enabled.
+        # When the wind file is sliced to a simulation date range, the run's
+        # time origin shifts to the first hour of that slice. Use that same
+        # origin for 1Hz date offsets so the collection window stays aligned
+        # with the hourly simulation timeline.
+        run_datum_date = effective_start or sim_obj.datum_date
         collect_1hz_kwargs = {}
         if sim_obj.collect_1hz_data and sim_obj.collect_1hz_start_date and sim_obj.collect_1hz_end_date:
             collect_1hz_kwargs = {
                 'collect_1hz_start_date': sim_obj.collect_1hz_start_date,
                 'collect_1hz_end_date': sim_obj.collect_1hz_end_date,
-                'datum_date': sim_obj.datum_date,
+                'datum_date': run_datum_date,
             }
 
         results = sim_engine.run(run_id=run.pk, progress_callback=_on_progress, **collect_1hz_kwargs)

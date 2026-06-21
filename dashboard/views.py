@@ -1309,9 +1309,24 @@ def run_simulation(request, sim_id):
         messages.success(request, f'Simulation \u201c{sim.name}\u201d started.')
         # Close inherited DB handles before child process starts.
         connections.close_all()
-        p = get_context('spawn').Process(target=_run_simulation_thread, args=(run.pk,), daemon=True)
+        from dashboard.simulation_worker import run as _worker_run
+        p = get_context('spawn').Process(target=_worker_run, args=(run.pk,), daemon=True)
         p.start()
     return redirect('dashboard-simulation-detail', sim_id=sim_id)
+
+
+def _simulation_process_entry(run_id):
+    """Entry point for the spawned simulation process.
+
+    A 'spawn' child process starts with a clean interpreter — Django is not
+    yet configured.  We must call django.setup() before importing any models
+    or running application code.
+    """
+    import os
+    import django
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'r2h2_ui.settings')
+    django.setup()
+    _run_simulation_thread(run_id)
 
 
 def _fmt_duration(seconds):

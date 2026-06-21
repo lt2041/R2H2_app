@@ -296,7 +296,9 @@ def load_wind_h5(path: str, turbine_rated_W: float = 5.447e6) -> "WindInputs":
     with h5py.File(path, "r") as f:
         t  = f["/Time"][:].astype(np.float64).ravel()
         ws = f["/WindSpeed"][:].astype(np.float64).ravel()
-        P  = f["/PowerInput"][:].astype(np.float64)
+        # Use float32 to halve wind-array memory (e.g. 780 MB → 390 MB for a 3-year run).
+        # The simulation inner loop promotes to float64 on first arithmetic use.
+        P  = f["/PowerInput"][:].astype(np.float32)
 
     # Detect orientation: rows → time-steps (len t), cols → hours (len ws)
     if P.shape[0] == ws.size and P.shape[1] == t.size:
@@ -309,7 +311,7 @@ def load_wind_h5(path: str, turbine_rated_W: float = 5.447e6) -> "WindInputs":
         v_cut_out = 25.0   # m/s
         T_steps   = t.size
         n_hours   = ws.size
-        P = np.zeros((T_steps, n_hours), dtype=np.float64)
+        P = np.zeros((T_steps, n_hours), dtype=np.float32)
         for h in range(n_hours):
             v = ws[h]
             if v < v_cut_in or v >= v_cut_out:
@@ -905,6 +907,12 @@ def runElectroStackStep1(
 
     arH2Dot_time = np.zeros((num_units, T))
 
+    # Pre-allocate bank accumulator work arrays so they are zeroed in-place
+    # each second rather than re-allocated (avoids GC pressure over millions of steps).
+    _P_bank_work     = np.zeros(num_banks_total)
+    _H2_bank_work    = np.zeros(num_banks_total)
+    _Qgain_bank_work = np.zeros(num_banks_total)
+
     t_out.aiIsOn[:, step0 - 1]      = t_out.aiIsOn[:, -1]
     t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
     if t_out.arTotalElectroOn[step0 - 1] > 0:
@@ -970,9 +978,12 @@ def runElectroStackStep1(
                     last_deg_unit[j] = units[j].rSummedDegradation
 
         # 2) Interpolate per-unit quantities + accumulate per-bank heat
-        P_bank_k     = np.zeros(num_banks_total)
-        H2_bank_k    = np.zeros(num_banks_total)
-        Qgain_bank_k = np.zeros(num_banks_total)
+        _P_bank_work[:]     = 0.0
+        _H2_bank_work[:]    = 0.0
+        _Qgain_bank_work[:] = 0.0
+        P_bank_k     = _P_bank_work
+        H2_bank_k    = _H2_bank_work
+        Qgain_bank_k = _Qgain_bank_work
 
         for i in range(num_units):
             on = t_out.aiIsOn[i, k]
@@ -2023,55 +2034,41 @@ class R2H2():
             print(f"Simulation complete in {runtime:.2f} s")
 
         # ── Convert 1Hz time series lists to numpy arrays ──────────────────────
+        # Free the list immediately after conversion to avoid holding both
+        # the Python list and the numpy array in memory simultaneously.
         time_series_output = None
         if _collect_1hz and _1hz_time_series_data:
+            def _pop_array(key, dtype):
+                arr = np.array(_1hz_time_series_data.pop(key, []), dtype=dtype)
+                return arr
+
             time_series_output = {
                 'start_hour': int(_collect_1hz_start_hour) if _collect_1hz_start_hour is not None else 0,
                 'end_hour': int(_collect_1hz_end_hour) if _collect_1hz_end_hour is not None else 0,
-                'time_indices': np.array(_1hz_time_series_data['time_indices'], dtype=np.int64),
-                'arAvailablePower': np.array(_1hz_time_series_data['arAvailablePower'], dtype=np.float64),
-                'arTotalElectroDemand': np.array(_1hz_time_series_data['arTotalElectroDemand'], dtype=np.float64),
-                'arProducedH2Dot': np.array(_1hz_time_series_data['arProducedH2Dot'], dtype=np.float64),
-                'arTotalElectroOn': np.array(_1hz_time_series_data['arTotalElectroOn'], dtype=np.float64),
-                'arEta_el_total': np.array(_1hz_time_series_data['arEta_el_total'], dtype=np.float64),
-                'arT_stack': np.array(_1hz_time_series_data['arT_stack'], dtype=np.float64),
-                'arV_cell_avg': np.array(_1hz_time_series_data['arV_cell_avg'], dtype=np.float64),
-                'controller_input_arAvailablePower': np.array(
-                    _1hz_time_series_data['controller_input_arAvailablePower'], dtype=np.float64
-                ),
-                'controller_input_aiIsOn': np.array(
-                    _1hz_time_series_data['controller_input_aiIsOn'], dtype=np.int8
-                ),
-                'controller_input_initial_soc': np.array(
-                    _1hz_time_series_data['controller_input_initial_soc'], dtype=np.float64
-                ),
-                'controller_output_arBatteryDemand': np.array(
-                    _1hz_time_series_data['controller_output_arBatteryDemand'], dtype=np.float64
-                ),
-                'controller_output_arElectroAvailablePowerA': np.array(
-                    _1hz_time_series_data['controller_output_arElectroAvailablePowerA'], dtype=np.float64
-                ),
-                'controller_output_arElectroAvailablePower': np.array(
-                    _1hz_time_series_data['controller_output_arElectroAvailablePower'], dtype=np.float64
-                ),
-                'controller_output_arTotalElectroOn': np.array(
-                    _1hz_time_series_data['controller_output_arTotalElectroOn'], dtype=np.float64
-                ),
-                'controller_output_aiIsOn': np.array(
-                    _1hz_time_series_data['controller_output_aiIsOn'], dtype=np.int8
-                ),
-                'controller_output_arProportionPower': np.array(
-                    _1hz_time_series_data['controller_output_arProportionPower'], dtype=np.float64
-                ),
+                'time_indices':                          _pop_array('time_indices',                          np.int64),
+                'arAvailablePower':                      _pop_array('arAvailablePower',                      np.float64),
+                'arTotalElectroDemand':                  _pop_array('arTotalElectroDemand',                  np.float64),
+                'arProducedH2Dot':                       _pop_array('arProducedH2Dot',                       np.float64),
+                'arTotalElectroOn':                      _pop_array('arTotalElectroOn',                      np.float64),
+                'arEta_el_total':                        _pop_array('arEta_el_total',                        np.float64),
+                'arT_stack':                             _pop_array('arT_stack',                             np.float64),
+                'arV_cell_avg':                          _pop_array('arV_cell_avg',                          np.float64),
+                'controller_input_arAvailablePower':     _pop_array('controller_input_arAvailablePower',     np.float64),
+                'controller_input_aiIsOn':               _pop_array('controller_input_aiIsOn',               np.int8),
+                'controller_input_initial_soc':          _pop_array('controller_input_initial_soc',          np.float64),
+                'controller_output_arBatteryDemand':     _pop_array('controller_output_arBatteryDemand',     np.float64),
+                'controller_output_arElectroAvailablePowerA': _pop_array('controller_output_arElectroAvailablePowerA', np.float64),
+                'controller_output_arElectroAvailablePower':  _pop_array('controller_output_arElectroAvailablePower',  np.float64),
+                'controller_output_arTotalElectroOn':    _pop_array('controller_output_arTotalElectroOn',    np.float64),
+                'controller_output_aiIsOn':              _pop_array('controller_output_aiIsOn',              np.int8),
+                'controller_output_arProportionPower':   _pop_array('controller_output_arProportionPower',   np.float64),
             }
 
             # Include optional user debug buffers that were populated.
             for i_buf in range(1, 21):
                 buf_name = f'arBuffer{i_buf}'
                 if buf_name in _1hz_time_series_data and _1hz_time_series_data[buf_name]:
-                    time_series_output[buf_name] = np.array(
-                        _1hz_time_series_data[buf_name], dtype=np.float64
-                    )
+                    time_series_output[buf_name] = _pop_array(buf_name, np.float64)
             if self.verbose:
                 n_points = len(time_series_output['time_indices'])
                 print(f"  [run] Collected {n_points} 1Hz data points", flush=True)

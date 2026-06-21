@@ -1348,24 +1348,25 @@
         <div class="sim-settings-body">
             <div class="badge-groups-wrap">
                 <div class="badge-group">
-                    <div class="badge-group-fields">
+                    <div class="badge-group-name">Simulation start &amp; end</div>
+                    <div class="badge-group-fields" style="flex-direction:row;align-items:center;flex-wrap:nowrap;">
                         {% for s in sim_settings %}
                         {% if s.editable == 'duration_days' %}
-                        <span class="param-badge">
+                        <span class="param-badge" style="width:20rem;">
                             <span class="pb-label">{{ s.name }}</span>
-                            <span class="pb-val">
+                            <span class="pb-val" style="flex:1;max-width:none;">
                                 <select id="ss-duration-mode" class="browser-default"
                                         onchange="onDurationModeChange(this)"
-                                        style="border:none;background:transparent;font-size:0.82rem;padding:0;color:#1a2e30;cursor:pointer;outline:none;font-family:inherit;height:auto;display:inline-block;width:auto;">
+                                        style="border:none;background:transparent;font-size:0.82rem;padding:0;color:#1a2e30;cursor:pointer;outline:none;font-family:inherit;height:auto;display:inline-block;width:100%;">
                                   <option value="all"  {% if not s.value %}selected{% endif %}>Full duration of wind data</option>
                                   <option value="range"{% if s.value %} selected{% endif %}>Specific range</option>
                                 </select>
                             </span>
                         </span>
                         {% elif s.editable == 'date_range' %}
-                        <span class="param-badge" style="flex-direction:row;align-items:center;">
+                        <span class="param-badge" style="flex-direction:row;align-items:center;width:20rem;">
                             <span class="pb-label">{{ s.name }}</span>
-                            <span class="pb-val">
+                            <span class="pb-val" style="flex:1;max-width:none;">
                                 <div id="ss-date-range-wrap"
                                      data-saved-start="{{ s.start_date }}"
                                      data-saved-end="{{ s.end_date }}"
@@ -2042,13 +2043,24 @@
             wrap.style.opacity = '0.3';
             wrap.style.pointerEvents = 'none';
             // Show derived (wind-data) dates as hint
-            start.value = wrap.dataset.derivedStart || '';
-            end.value   = wrap.dataset.derivedEnd   || '';
-            // Clear duration/datum override on server
-            var fd = new FormData();
-            fd.append('duration_days', '');
-            fd.append('csrfmiddlewaretoken', _durCsrf);
-            fetch(_durSaveUrl, { method: 'POST', body: fd }).catch(function(){});
+            var derivedStart = wrap.dataset.derivedStart || '';
+            var derivedEnd   = wrap.dataset.derivedEnd   || '';
+            start.value = derivedStart;
+            end.value   = derivedEnd;
+            // Save derived dates as the actual start/end on the server
+            if (derivedStart && derivedEnd) {
+                var fdRange = new FormData();
+                fdRange.append('start_date', derivedStart);
+                fdRange.append('end_date',   derivedEnd);
+                fdRange.append('csrfmiddlewaretoken', _durCsrf);
+                fetch(_dateRangeSaveUrl, { method: 'POST', body: fdRange }).catch(function(){});
+            } else {
+                // No derived dates yet — just clear duration_days override
+                var fd = new FormData();
+                fd.append('duration_days', '');
+                fd.append('csrfmiddlewaretoken', _durCsrf);
+                fetch(_durSaveUrl, { method: 'POST', body: fd }).catch(function(){});
+            }
         } else {
             wrap.style.opacity = '';
             wrap.style.pointerEvents = '';
@@ -2146,10 +2158,7 @@
                     wrap.dataset.savedStart = start;
                     wrap.dataset.savedEnd   = end;
                 }
-                showDateRangeMsg('Saved.', '#4a7a80');
-                setTimeout(function() {
-                    showDateRangeMsg('', '');
-                }, 1500);
+                showDateRangeMsg('', '');
             })
             .catch(function(err) {
                 showDateRangeMsg(err && err.message ? err.message : 'Failed to save date range.', '#d84040');

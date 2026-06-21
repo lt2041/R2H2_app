@@ -640,13 +640,13 @@ def simulation_detail(request, sim_id):
 
     sim_settings = [
         {'name': 'Duration',             'value': sim.duration_days,        'unit': 'days', 'editable': 'duration_days'},
-        {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
         {'name': 'Date range',           'editable': 'date_range',
-         'start_date':         sim.datum_date.isoformat() if sim.datum_date else '',
-         'end_date':           _end_date.isoformat() if _end_date else '',
+         'start_date':         sim.start_date.isoformat() if sim.start_date else (sim.datum_date.isoformat() if sim.datum_date else ''),
+         'end_date':           sim.end_date.isoformat() if sim.end_date else (_end_date.isoformat() if _end_date else ''),
          'derived_start_date': _derived_start,
          'derived_end_date':   _derived_end,
          'mode':               'range' if sim.duration_days else 'all'},
+        {'name': 'Time step',            'value': sim.rTimeStep,            'unit': 's'},
     ]
     sim_hidden_settings = [
         {'name': 'Total time',           'value': sim.rTotalTime,           'unit': 's'},
@@ -2069,20 +2069,26 @@ def update_sim_1hz(request, sim_id):
 
 @require_POST
 def update_sim_duration(request, sim_id):
-    """POST: save duration_days override for a Simulation."""
+    """POST: save duration_days override for a Simulation.
+    When duration_days is cleared (mode='all'), also clear start_date/end_date
+    so the simulation uses the full wind dataset.
+    """
     from django.http import JsonResponse
     from django.shortcuts import get_object_or_404
     raw = request.POST.get('duration_days', '').strip()
     sim = get_object_or_404(Simulation, pk=sim_id)
     if raw == '' or raw is None:
         sim.duration_days = None
+        sim.start_date = None
+        sim.end_date = None
+        sim.save(update_fields=['duration_days', 'start_date', 'end_date'])
     else:
         try:
             days = int(raw)
             sim.duration_days = max(1, days)
         except ValueError:
             return JsonResponse({'error': 'Invalid value.'}, status=400)
-    sim.save(update_fields=['duration_days'])
+        sim.save(update_fields=['duration_days'])
     return JsonResponse({'duration_days': sim.duration_days})
 
 

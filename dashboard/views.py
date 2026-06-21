@@ -90,8 +90,8 @@ def _ensure_1hz_preset(sim, *, persist=False):
     - Enabled by default
     - Range defaults to first 3 months from datum_date (or simulation end if shorter)
     """
-    # Respect explicit user-off choice when a configured range already exists.
-    if (not sim.collect_1hz_data) and sim.collect_1hz_start_date and sim.collect_1hz_end_date:
+    # Respect explicit user-off choice — never re-enable if user turned it off.
+    if not sim.collect_1hz_data:
         return False
 
     needs_dates = (sim.collect_1hz_start_date is None or sim.collect_1hz_end_date is None)
@@ -1240,7 +1240,7 @@ def _run_simulation_thread(run_id):
                 hour_str = f'hour {done_steps+1}/{total_steps}'
             else:
                 hour_str = f'hour {hour+1}/{total_hours}'
-            msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str}')
+            msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str} @{elapsed:.1f}')
 
             if msg != _last_progress_msg:
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
@@ -1573,10 +1573,11 @@ def poll_simulation_run(request, sim_id, run_id):
     else:
         duration_str = ''
 
-    # Extract hours_done / total_hours from progress message for client progress bar
+    # Extract hours_done / total_hours / elapsed_at_write from progress message
     hours_done = None
     total_hours = None
     pct = None
+    elapsed_at_write = None
     msg = run.message or ''
     m = re.search(r'hour (\d+)/(\d+)', msg)
     if m:
@@ -1585,17 +1586,24 @@ def poll_simulation_run(request, sim_id, run_id):
     m2 = re.search(r'(\d+)\xa0?%', msg)
     if m2:
         pct = int(m2.group(1))
+    m3 = re.search(r'@([\d.]+)$', msg)
+    if m3:
+        elapsed_at_write = float(m3.group(1))
 
-    # Wall-clock elapsed since run started (for client-side duration ticker)
+    # elapsed_seconds: use write-time if available (matches hours_done), else current wall-clock
     elapsed_seconds = None
     if run.started_at is not None:
-        elapsed_seconds = (timezone.now() - run.started_at).total_seconds()
+        if elapsed_at_write is not None:
+            elapsed_seconds = elapsed_at_write
+        else:
+            elapsed_seconds = (timezone.now() - run.started_at).total_seconds()
 
     return JsonResponse({
         'status':           run.status,
         'message':          msg,
         'duration':         duration_str,
-        'elapsed_seconds':  elapsed_seconds,
+        'elapsed_seconds':  elapsed_seconds,          # elapsed at time of last progress write (for rate calc)
+        'current_elapsed':  (timezone.now() - run.started_at).total_seconds() if run.started_at else None,
         'hours_done':       hours_done,
         'total_hours':      total_hours,
         'pct':              pct,

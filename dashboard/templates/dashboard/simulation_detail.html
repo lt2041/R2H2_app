@@ -1050,15 +1050,6 @@
                 });
             }
 
-            // Extract local finish-time string from message, e.g. "done ~[2026-06-21T14:30:00Z]" → "14:30:00"
-            function extractFinishTime(msg) {
-                if (!msg) return null;
-                var m = msg.match(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\]/);
-                if (!m) return null;
-                var d = new Date(m[1]);
-                return isNaN(d) ? null : d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
-            }
-
             // ── Duration ticker (every 1 s, DOM only) ────────────────────────
             var tickerStarted = false;
 
@@ -1112,12 +1103,33 @@
             }
 
             // ── Poll ─────────────────────────────────────────────────────────
+            var prevHoursDone   = null;   // hours_done at previous data-bearing poll
+            var prevElapsedSec  = null;   // elapsed_seconds at previous data-bearing poll
+            var localFinishTime = null;   // computed from differential rate
+
+            function computeFinishTime(totalHours, hoursDone, elapsedSec) {
+                // Need two data points to compute differential rate
+                if (prevHoursDone === null || prevElapsedSec === null) return null;
+                var dHours = hoursDone - prevHoursDone;
+                var dSec   = elapsedSec - prevElapsedSec;
+                if (dSec <= 0 || dHours <= 0) return null;
+                var rate = dHours / dSec;  // sim-hours per wall-clock second
+                var hoursRemaining = totalHours - hoursDone;
+                var secRemaining = hoursRemaining / rate;
+                // Round finish time to nearest 30 s to avoid jitter
+                var finishMs = Date.now() + secRemaining * 1000;
+                finishMs = Math.round(finishMs / 30000) * 30000;
+                var d = new Date(finishMs);
+                return d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+            }
+
             function applyPollData(data) {
                 pollCount++;
 
-                // Anchor duration ticker to server-reported elapsed
-                if (data.elapsed_seconds != null) {
-                    elapsedAtLastPoll = data.elapsed_seconds;
+                // Anchor duration ticker to current server elapsed (not write-time)
+                var tickElapsed = data.current_elapsed != null ? data.current_elapsed : data.elapsed_seconds;
+                if (tickElapsed != null) {
+                    elapsedAtLastPoll = tickElapsed;
                     pollWallTime      = Date.now();
                     // First time we get a real elapsed value, replace spinner with ticker
                     if (!tickerStarted) { startTicker(); }
@@ -1127,14 +1139,26 @@
                     hasData = true;
                     var pct = data.pct != null ? data.pct
                             : Math.round(data.hours_done / data.total_hours * 100);
-                    var finishTime = extractFinishTime(data.message);
-                    renderBar(pct, finishTime);
+
+                    // Compute finish time from differential rate between last two polls
+                    if (data.elapsed_seconds != null) {
+                        var ft = computeFinishTime(data.total_hours, data.hours_done, data.elapsed_seconds);
+                        if (ft) localFinishTime = ft;
+                    }
+
+                    // Update previous anchors
+                    prevHoursDone  = data.hours_done;
+                    prevElapsedSec = data.elapsed_seconds != null ? data.elapsed_seconds : prevElapsedSec;
+
+                    renderBar(pct, localFinishTime);
                 } else {
                     // No progress data yet
                     var msgEl = document.getElementById('run-msg-' + RUN_ID);
                     if (msgEl && !msgEl.querySelector('.sim-progress-bar-wrap')) {
                         msgEl.innerHTML = '<span style="color:#4a7a80;font-style:italic;">Simulation starting\u2026</span>';
                     }
+                    // Still record elapsed anchor for next differential
+                    if (data.elapsed_seconds != null) prevElapsedSec = data.elapsed_seconds;
                 }
             }
 

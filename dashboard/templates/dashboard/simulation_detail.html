@@ -158,6 +158,13 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Force dd/mm/yyyy placeholder on empty date inputs across browsers */
+    input.date-dmy-placeholder:not([value])::-webkit-datetime-edit-day-field::before   { content: 'dd'; }
+    input.date-dmy-placeholder:not([value])::-webkit-datetime-edit-month-field::before { content: 'mm'; }
+    input.date-dmy-placeholder:not([value])::-webkit-datetime-edit-year-field::before  { content: 'yyyy'; }
+    input.date-dmy-placeholder[value=""]::-webkit-datetime-edit    { color: #aac0c2; }
+    input.date-dmy-placeholder[value=""]::-webkit-datetime-edit-text { color: #aac0c2; }
+
     .sim-run-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
@@ -1537,7 +1544,7 @@
                             <span class="pb-label">Date range</span>
                             <span class="pb-val" style="flex:1;max-width:none;">
                                 <div style="display:flex;flex-direction:row;align-items:center;gap:4px;">
-                                    <input type="date" id="ss-1hz-start-date" class="browser-default"
+                                    <input type="date" id="ss-1hz-start-date" class="browser-default date-dmy-placeholder"
                                            value="{% if sim.collect_1hz_start_date %}{{ sim.collect_1hz_start_date|date:'Y-m-d' }}{% endif %}"
                                            min="{{ sim.datum_date|date:'Y-m-d' }}"
                                            max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
@@ -1545,7 +1552,7 @@
                                            style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
                                            onchange="on1HzStartChange()" onblur="on1HzStartChange()">
                                     <span style="color:#4a7a80;font-size:0.8rem;">—</span>
-                                    <input type="date" id="ss-1hz-end-date" class="browser-default"
+                                    <input type="date" id="ss-1hz-end-date" class="browser-default date-dmy-placeholder"
                                            value="{% if sim.collect_1hz_end_date %}{{ sim.collect_1hz_end_date|date:'Y-m-d' }}{% endif %}"
                                            min="{{ sim.datum_date|date:'Y-m-d' }}"
                                            max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
@@ -2320,6 +2327,22 @@
     var _1hzSaveUrl = "{% url 'dashboard-update-sim-1hz' sim_id=sim.id %}";
     var _1hzSavePending = false;
 
+    // On page load: if 1Hz is disabled, swap inputs to text so Safari shows blank not today's date
+    (function() {
+        var modeEl = document.getElementById('ss-1hz-mode');
+        if (modeEl && modeEl.value !== 'save') {
+            var ids = ['ss-1hz-start-date', 'ss-1hz-end-date'];
+            ids.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el && el.type === 'date') {
+                    el.dataset.savedDate = el.value || '';
+                    el.type  = 'text';
+                    el.value = '';
+                }
+            });
+        }
+    })();
+
     // Helper: add N days to a Date (UTC-safe with ISO strings)
     function _addDays(isoStr, n) {
         var d = new Date(isoStr + 'T00:00:00Z');
@@ -2334,6 +2357,29 @@
         return val;
     }
 
+    // Swap date inputs to text (showing placeholder) when disabled, back to date when enabled.
+    // Safari always shows today's date for empty type="date" inputs.
+    function _set1HzDateInputsEnabled(enabled) {
+        var ids = ['ss-1hz-start-date', 'ss-1hz-end-date'];
+        ids.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            if (enabled) {
+                if (el.type === 'text') {
+                    var saved = el.dataset.savedDate || '';
+                    el.type = 'date';
+                    el.value = saved;
+                }
+            } else {
+                if (el.type === 'date') {
+                    el.dataset.savedDate = el.value || '';
+                    el.type = 'text';
+                    el.value = '';
+                }
+            }
+        });
+    }
+
     function on1HzModeChange(sel) {
         var rangeBadge = document.getElementById('ss-1hz-range-badge');
         var collecting = sel.value === 'save';
@@ -2342,6 +2388,7 @@
         var msgEl   = document.getElementById('ss-1hz-msg');
 
         if (collecting) {
+            _set1HzDateInputsEnabled(true);
             rangeBadge.style.opacity = '';
             rangeBadge.style.pointerEvents = '';
 
@@ -2360,10 +2407,9 @@
         } else {
             rangeBadge.style.opacity = '0.3';
             rangeBadge.style.pointerEvents = 'none';
-            // Clear date inputs and save disabled state
-            startEl.value = '';
-            endEl.value   = '';
             if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+            // Swap inputs to text showing placeholder before clearing values
+            _set1HzDateInputsEnabled(false);
             var fd = new FormData();
             fd.append('collect_1hz_data', '0');
             fd.append('collect_1hz_start_date', '');

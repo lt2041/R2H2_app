@@ -628,7 +628,8 @@ def simulation_detail(request, sim_id):
     )
     if sim.datum_date and _wind_total_hours > 0:
         new_end_date = sim.datum_date + _timedelta(days=int(_wind_total_hours / 24))
-        if sim.end_date != new_end_date:
+        # Only auto-update end_date when in full-duration mode (no specific range set)
+        if not sim.duration_days and sim.end_date != new_end_date:
             sim.end_date = new_end_date
             sim.save(update_fields=['end_date'])
 

@@ -1402,6 +1402,43 @@
                         {% endfor %}
                     </div>
                 </div>
+                <div class="badge-group">
+                    <div class="badge-group-name">1Hz Data Collection</div>
+                    <div class="badge-group-fields" style="flex-direction:row;align-items:center;flex-wrap:nowrap;">
+                        <span class="param-badge" style="width:20rem;">
+                            <span class="pb-label">Collect</span>
+                            <span class="pb-val" style="flex:1;max-width:none;">
+                                <select id="ss-1hz-mode" class="browser-default"
+                                        onchange="on1HzModeChange(this)"
+                                        style="border:none;background:transparent;font-size:0.82rem;padding:0;color:#1a2e30;cursor:pointer;outline:none;font-family:inherit;height:auto;display:inline-block;width:100%;">
+                                  <option value="none" {% if not sim.collect_1hz_data %}selected{% endif %}>Don't save 1Hz data</option>
+                                  <option value="save" {% if sim.collect_1hz_data %}selected{% endif %}>Save 1Hz data</option>
+                                </select>
+                            </span>
+                        </span>
+                        <span class="param-badge" id="ss-1hz-range-badge" style="flex-direction:row;align-items:center;width:20rem;{% if not sim.collect_1hz_data %}opacity:0.3;pointer-events:none;{% endif %}">
+                            <span class="pb-label">Date range</span>
+                            <span class="pb-val" style="flex:1;max-width:none;">
+                                <div style="display:flex;flex-direction:row;align-items:center;gap:4px;">
+                                    <input type="date" id="ss-1hz-start-date" class="browser-default"
+                                           value="{% if sim.collect_1hz_start_date %}{{ sim.collect_1hz_start_date|date:'Y-m-d' }}{% endif %}"
+                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
+                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
+                                           onblur="save1HzRange()">
+                                    <span style="color:#4a7a80;font-size:0.8rem;">—</span>
+                                    <input type="date" id="ss-1hz-end-date" class="browser-default"
+                                           value="{% if sim.collect_1hz_end_date %}{{ sim.collect_1hz_end_date|date:'Y-m-d' }}{% endif %}"
+                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
+                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
+                                           onblur="save1HzRange()">
+                                </div>
+                                <div id="ss-1hz-msg" style="font-size:0.75rem;color:#7b5555;margin-top:0.3rem;display:none;"></div>
+                            </span>
+                        </span>
+                    </div>
+                </div>
             </div>
             {% if sim_hidden_settings %}
             <div class="hidden-fields-wrap" style="margin-top:0.75rem;">
@@ -1422,62 +1459,6 @@
                 </div>
             </div>
             {% endif %}
-        </div>
-    </div>
-
-    <!-- 1Hz Data Collection Settings panel -->
-    <div class="sim-settings-panel">
-        <div class="sim-settings-header" onclick="toggleSettings(this)">
-            <span class="material-symbols-outlined" style="color:#22a6b3; font-size:1.15rem;">dataset</span>
-            <span class="ss-title">1Hz Data Collection</span>
-            <span class="material-symbols-outlined ss-toggle">expand_more</span>
-        </div>
-        <div class="sim-settings-body">
-            <div class="badge-groups-wrap">
-                <div class="badge-group">
-                    <div class="badge-group-fields" style="flex-direction:column;gap:0.8rem;">
-                        <span class="param-badge">
-                            <span class="pb-label" style="display:block;">Enable 1Hz Data Collection</span>
-                            <span class="pb-val" style="display:block;margin-top:0.4rem;">
-                                <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="ss-collect-1hz" 
-                                           {% if sim.collect_1hz_data %}checked{% endif %}
-                                           onchange="on1HzCollectionToggle()"
-                                           style="cursor:pointer;width:18px;height:18px;">
-                                    <span style="font-size:0.85rem;color:#1a2e30;">Collect per-second data (1Hz)</span>
-                                </label>
-                            </span>
-                        </span>
-                        
-                        <span class="param-badge" id="ss-1hz-range-badge"
-                              style="{% if not sim.collect_1hz_data %}opacity:0.4;pointer-events:none;{% endif %}">
-                            <span class="pb-label">Collection Period</span>
-                            <span class="pb-val">
-                                <div style="display:flex;flex-direction:row;align-items:center;gap:4px;">
-                                    <input type="date" id="ss-1hz-start-date"
-                                           value="{% if sim.collect_1hz_start_date %}{{ sim.collect_1hz_start_date|date:'Y-m-d' }}{% endif %}"
-                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
-                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
-                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
-                                           onblur="save1HzRange()">
-                                    <span style="color:#4a7a80;font-size:0.8rem;">—</span>
-                                    <input type="date" id="ss-1hz-end-date"
-                                           value="{% if sim.collect_1hz_end_date %}{{ sim.collect_1hz_end_date|date:'Y-m-d' }}{% endif %}"
-                                           min="{{ sim.datum_date|date:'Y-m-d' }}"
-                                           max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
-                                           style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
-                                           onblur="save1HzRange()">
-                                </div>
-                                <div id="ss-1hz-msg" style="font-size:0.75rem;color:#7b5555;margin-top:0.3rem;display:none;"></div>
-                            </span>
-                        </span>
-                        
-                        <span class="param-badge" style="font-size:0.78rem;color:#4a7a80;padding:0.5rem;background:#f0f8f9;border-radius:4px;border-left:3px solid #22a6b3;">
-                            <strong>Warning:</strong> Collecting 1Hz data can create very large output files. Periods longer than approximately 3 months should be used with care.
-                        </span>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -2221,27 +2202,27 @@
     var _1hzSaveUrl = "{% url 'dashboard-update-sim-1hz' sim_id=sim.id %}";
     var _1hzSavePending = false;
 
-    function on1HzCollectionToggle() {
-        var checkbox = document.getElementById('ss-collect-1hz');
+    function on1HzModeChange(sel) {
         var rangeBadge = document.getElementById('ss-1hz-range-badge');
-        if (checkbox.checked) {
-            rangeBadge.style.opacity = '1';
-            rangeBadge.style.pointerEvents = 'auto';
+        var collecting = sel.value === 'save';
+        if (collecting) {
+            rangeBadge.style.opacity = '';
+            rangeBadge.style.pointerEvents = '';
         } else {
-            rangeBadge.style.opacity = '0.4';
+            rangeBadge.style.opacity = '0.3';
             rangeBadge.style.pointerEvents = 'none';
         }
         // Save the state
         var fd = new FormData();
-        fd.append('collect_1hz_data', checkbox.checked ? '1' : '0');
+        fd.append('collect_1hz_data', collecting ? '1' : '0');
         fd.append('csrfmiddlewaretoken', _durCsrf);
         fetch(_1hzSaveUrl, { method: 'POST', body: fd })
             .catch(function() {});
     }
 
     function save1HzRange() {
-        var checkbox = document.getElementById('ss-collect-1hz');
-        if (!checkbox.checked) return;
+        var modeEl = document.getElementById('ss-1hz-mode');
+        if (!modeEl || modeEl.value !== 'save') return;
 
         var startEl = document.getElementById('ss-1hz-start-date');
         var endEl = document.getElementById('ss-1hz-end-date');

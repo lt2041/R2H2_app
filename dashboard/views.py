@@ -1203,8 +1203,8 @@ def _run_simulation_thread(run_id):
         run.run_end_date   = effective_end
         run.save(update_fields=['run_start_date', 'run_end_date'])
 
-        _progress_interval = 200  # update DB message every N simulation hours
-        _progress_db_min_seconds = 10  # minimum wall-clock spacing between DB writes
+        _progress_interval = None  # computed inside _on_progress from total_hours
+        _progress_db_min_seconds = 3   # minimum wall-clock spacing between DB writes
         _progress_start = timezone.now()
         _last_progress_write_at = _progress_start
         _last_progress_msg = None
@@ -1216,7 +1216,9 @@ def _run_simulation_thread(run_id):
             done_steps = year * total_hours + hour
             is_final_progress_tick = bool(total_steps) and done_steps + 1 >= total_steps
 
-            if hour % _progress_interval != 0 and not is_final_progress_tick:
+            # ~20 evenly-spaced updates across the sim, regardless of total length
+            interval = max(1, total_hours // 20)
+            if hour % interval != 0 and not is_final_progress_tick:
                 return
 
             now = timezone.now()
@@ -1556,6 +1558,7 @@ def _load_run_1hz_plot_data(run, *, start_iso=None, end_iso=None, max_points=400
 
 def poll_simulation_run(request, sim_id, run_id):
     """GET: return JSON status of a SimulationRun for client-side polling."""
+    import re
     from django.http import JsonResponse
     from django.shortcuts import get_object_or_404
     from django.utils import timezone
@@ -1569,13 +1572,36 @@ def poll_simulation_run(request, sim_id, run_id):
         duration_str = _fmt_duration(elapsed)
     else:
         duration_str = ''
+
+    # Extract hours_done / total_hours from progress message for client progress bar
+    hours_done = None
+    total_hours = None
+    pct = None
+    msg = run.message or ''
+    m = re.search(r'hour (\d+)/(\d+)', msg)
+    if m:
+        hours_done  = int(m.group(1))
+        total_hours = int(m.group(2))
+    m2 = re.search(r'(\d+)\xa0?%', msg)
+    if m2:
+        pct = int(m2.group(1))
+
+    # Wall-clock elapsed since run started (for client-side duration ticker)
+    elapsed_seconds = None
+    if run.started_at is not None:
+        elapsed_seconds = (timezone.now() - run.started_at).total_seconds()
+
     return JsonResponse({
-        'status':      run.status,
-        'message':     run.message or '',
-        'duration':    duration_str,
-        'output_path': run.output_path or '',
-        'has_1hz_data': run_1hz_info['has_1hz_data'],
-        'done':        run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
+        'status':           run.status,
+        'message':          msg,
+        'duration':         duration_str,
+        'elapsed_seconds':  elapsed_seconds,
+        'hours_done':       hours_done,
+        'total_hours':      total_hours,
+        'pct':              pct,
+        'output_path':      run.output_path or '',
+        'has_1hz_data':     run_1hz_info['has_1hz_data'],
+        'done':             run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
     })
 
 

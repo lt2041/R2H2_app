@@ -1013,58 +1013,174 @@
     {% if latest_run and latest_run.status == 'pending' or latest_run and latest_run.status == 'running' %}
     <script>
         (function() {
-            var pollUrl  = "{% url 'dashboard-poll-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
+            var RUN_ID      = '{{ latest_run.id }}';
+            var pollUrl     = "{% url 'dashboard-poll-simulation-run' sim_id=sim.id run_id=latest_run.id %}";
             var downloadUrl = "{% url 'dashboard-download-run-output' sim_id=sim.id run_id=latest_run.id %}";
-            var runBtn   = document.getElementById('sim-run-btn');
-            var stopBtn  = document.getElementById('sim-stop-btn');
-            var pollTimer = null;
-            var pollInFlight = false;
-            var pollingStopped = false;
+            var runBtn  = document.getElementById('sim-run-btn');
+            var stopBtn = document.getElementById('sim-stop-btn');
             if (runBtn)  runBtn.disabled = true;
             if (stopBtn) stopBtn.classList.add('visible');
 
-            function nextPollDelay(isError) {
-                if (document.hidden) return isError ? 12000 : 8000;
-                return isError ? 5000 : 2500;
-            }
+            // ── State ────────────────────────────────────────────────────────
+            var pollingStopped    = false;
+            var pollInFlight      = false;
+            var pollTimer         = null;
+            var pollCount         = 0;
+            var hasData           = false;   // true once server reports progress
 
-            function schedulePoll(delayMs) {
-                if (pollingStopped) return;
-                if (pollTimer) clearTimeout(pollTimer);
-                pollTimer = setTimeout(poll, delayMs);
+            // Runtime ticker — anchored to server elapsed_seconds on each poll
+            var elapsedAtLastPoll = 0;
+            var pollWallTime      = Date.now();
+            var tickTimer         = null;
+
+            // ── Helpers ──────────────────────────────────────────────────────
+            function fmtSeconds(s) {
+                s = Math.max(0, Math.floor(s));
+                var h = Math.floor(s / 3600);
+                var m = Math.floor((s % 3600) / 60);
+                var sec = s % 60;
+                return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
             }
 
             function localiseEta(text) {
                 if (!text) return text;
                 return text.replace(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\]/g, function(_, iso) {
                     var d = new Date(iso);
-                    return isNaN(d) ? iso : d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}) + ']';
+                    return isNaN(d) ? iso : d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
                 });
             }
 
+            // Extract local finish-time string from message, e.g. "done ~[2026-06-21T14:30:00Z]" → "14:30:00"
+            function extractFinishTime(msg) {
+                if (!msg) return null;
+                var m = msg.match(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\]/);
+                if (!m) return null;
+                var d = new Date(m[1]);
+                return isNaN(d) ? null : d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+            }
+
+            // ── Duration ticker (every 1 s, DOM only) ────────────────────────
+            var tickerStarted = false;
+
+            function startTicker() {
+                if (tickTimer) clearInterval(tickTimer);
+                tickerStarted = true;
+                tickTimer = setInterval(function() {
+                    if (pollingStopped) { clearInterval(tickTimer); return; }
+                    var durEl = document.getElementById('run-dur-' + RUN_ID);
+                    if (durEl) {
+                        var elapsed = elapsedAtLastPoll + (Date.now() - pollWallTime) / 1000;
+                        durEl.textContent = fmtSeconds(elapsed);
+                    }
+                }, 1000);
+            }
+
+            // ── Progress bar ─────────────────────────────────────────────────
+            function buildProgressBar(pct, finishTime) {
+                var c = Math.min(100, Math.max(0, Math.round(pct)));
+                var etaHtml = finishTime
+                    ? ' &nbsp;<span style="color:#7aabb0;">est. done\u00a0' + finishTime + '</span>'
+                    : '';
+                return '<div style="width:100%;background:#d0eef0;border-radius:3px;height:6px;overflow:hidden;margin-top:3px;">'
+                     + '<div style="height:100%;border-radius:3px;background:linear-gradient(90deg,#136b75,#22a6b3);width:' + c + '%;transition:width 2s ease;"></div>'
+                     + '</div>'
+                     + '<div style="font-size:0.72rem;color:#4a7a80;margin-top:3px;">' + c + '%' + etaHtml + '</div>';
+            }
+
+            function renderBar(pct, finishTime) {
+                var msgEl = document.getElementById('run-msg-' + RUN_ID);
+                if (!msgEl) return;
+                var wrap = msgEl.querySelector('.sim-progress-bar-wrap');
+                var html = buildProgressBar(pct, finishTime);
+                if (wrap) {
+                    wrap.innerHTML = html;
+                } else {
+                    msgEl.innerHTML = '<div class="sim-progress-bar-wrap">' + html + '</div>';
+                }
+            }
+
+            // ── Scheduling: 5 s until first data, then every 10 s ────────────
+            function nextDelay() {
+                if (document.hidden) return 15000;
+                return hasData ? 10000 : 5000;
+            }
+
+            function schedulePoll(delayMs) {
+                if (pollingStopped) return;
+                if (pollTimer) clearTimeout(pollTimer);
+                pollTimer = setTimeout(doPoll, delayMs != null ? delayMs : nextDelay());
+            }
+
+            // ── Poll ─────────────────────────────────────────────────────────
+            function applyPollData(data) {
+                pollCount++;
+
+                // Anchor duration ticker to server-reported elapsed
+                if (data.elapsed_seconds != null) {
+                    elapsedAtLastPoll = data.elapsed_seconds;
+                    pollWallTime      = Date.now();
+                    // First time we get a real elapsed value, replace spinner with ticker
+                    if (!tickerStarted) { startTicker(); }
+                }
+
+                if (data.total_hours && data.hours_done != null) {
+                    hasData = true;
+                    var pct = data.pct != null ? data.pct
+                            : Math.round(data.hours_done / data.total_hours * 100);
+                    var finishTime = extractFinishTime(data.message);
+                    renderBar(pct, finishTime);
+                } else {
+                    // No progress data yet
+                    var msgEl = document.getElementById('run-msg-' + RUN_ID);
+                    if (msgEl && !msgEl.querySelector('.sim-progress-bar-wrap')) {
+                        msgEl.innerHTML = '<span style="color:#4a7a80;font-style:italic;">Simulation starting\u2026</span>';
+                    }
+                }
+            }
+
+            function doPoll() {
+                if (pollingStopped) return;
+                if (pollInFlight) { schedulePoll(2000); return; }
+                pollInFlight = true;
+                fetch(pollUrl, { cache: 'no-store' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.done) {
+                            if (data.elapsed_seconds != null) {
+                                elapsedAtLastPoll = data.elapsed_seconds;
+                                pollWallTime      = Date.now();
+                            }
+                            markDone(data);
+                        } else {
+                            applyPollData(data);
+                            schedulePoll();
+                        }
+                    })
+                    .catch(function() { schedulePoll(document.hidden ? 15000 : 5000); })
+                    .finally(function() { pollInFlight = false; });
+            }
+
+            // ── Mark done ────────────────────────────────────────────────────
             function markDone(data) {
-                var runId = '{{ latest_run.id }}';
-                var badge = document.getElementById('run-badge-' + runId);
-                var dur   = document.getElementById('run-dur-'   + runId);
-                var msg   = document.getElementById('run-msg-'   + runId);
+                pollingStopped = true;
+                if (pollTimer) { clearTimeout(pollTimer);  pollTimer = null; }
+                if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+
+                var badge = document.getElementById('run-badge-' + RUN_ID);
+                var dur   = document.getElementById('run-dur-'   + RUN_ID);
+                var msg   = document.getElementById('run-msg-'   + RUN_ID);
                 if (badge) {
                     var icon = data.status === 'done' ? 'check_circle'
-                             : data.status === 'cancelled' ? 'cancel'
-                             : 'error';
+                             : data.status === 'cancelled' ? 'cancel' : 'error';
                     badge.className = 'run-status-badge ' + data.status;
                     badge.innerHTML = '<span class="material-symbols-outlined">' + icon + '</span>' + data.status;
                 }
                 if (dur) dur.textContent = data.duration || '';
-                if (msg) msg.innerHTML = localiseEta(data.message  || '—');
+                if (msg) msg.innerHTML = localiseEta(data.message || '—');
                 if (runBtn)  runBtn.disabled = false;
                 if (stopBtn) { stopBtn.disabled = false; stopBtn.classList.remove('visible'); }
-                pollingStopped = true;
-                if (pollTimer) {
-                    clearTimeout(pollTimer);
-                    pollTimer = null;
-                }
-                // Inject pencil + delete buttons into the actions cell
-                var actRow = document.getElementById('run-row-' + runId);
+
+                var actRow = document.getElementById('run-row-' + RUN_ID);
                 if (actRow) {
                     var lastCell = actRow.querySelector('td:last-child');
                     if (lastCell) {
@@ -1074,10 +1190,8 @@
                         if (!lastCell.querySelector('.run-edit-btn')) {
                             var editBtn = document.createElement('button');
                             editBtn.className = 'run-edit-btn';
-                            editBtn.dataset.runId = runId;
-                            editBtn.dataset.desc  = '';
-                            editBtn.dataset.url   = descUrl;
-                            editBtn.dataset.csrf  = csrf;
+                            editBtn.dataset.runId = RUN_ID; editBtn.dataset.desc = '';
+                            editBtn.dataset.url = descUrl;  editBtn.dataset.csrf = csrf;
                             editBtn.title = 'Edit note';
                             editBtn.innerHTML = '<span class="material-symbols-outlined">edit</span>';
                             if (window._attachEditBtn) { window._attachEditBtn(editBtn); }
@@ -1086,9 +1200,7 @@
                         if (!lastCell.querySelector('.run-delete-btn')) {
                             var delBtn = document.createElement('button');
                             delBtn.className = 'run-delete-btn';
-                            delBtn.dataset.runId = runId;
-                            delBtn.dataset.url   = deleteUrl;
-                            delBtn.dataset.csrf  = csrf;
+                            delBtn.dataset.runId = RUN_ID; delBtn.dataset.url = deleteUrl; delBtn.dataset.csrf = csrf;
                             delBtn.title = 'Delete this run';
                             delBtn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
                             delBtn.addEventListener('click', deleteRunHandler);
@@ -1096,9 +1208,8 @@
                         }
                     }
                 }
-                // Inject download link if output path was returned
                 if (data.output_path) {
-                    var dlCell = document.getElementById('run-dl-' + runId);
+                    var dlCell = document.getElementById('run-dl-' + RUN_ID);
                     if (dlCell) {
                         var view1HzUrl = "{% url 'dashboard-run-1hz' sim_id=sim.id run_id=latest_run.id %}";
                         var dlHtml = '<div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;">'
@@ -1109,13 +1220,12 @@
                         dlHtml += '</div>';
                         dlCell.innerHTML = dlHtml;
                     }
-                    // Make the row clickable
                     var resultsUrl = "{% url 'dashboard-run-results' sim_id=sim.id run_id=latest_run.id %}";
-                    var actRow2 = document.getElementById('run-row-' + runId);
+                    var actRow2 = document.getElementById('run-row-' + RUN_ID);
                     if (actRow2 && !actRow2.classList.contains('run-row-clickable')) {
                         actRow2.classList.add('run-row-clickable');
                         actRow2.dataset.resultsUrl = resultsUrl;
-                        actRow2.title = 'View results for run #' + runId;
+                        actRow2.title = 'View results for run #' + RUN_ID;
                         actRow2.addEventListener('click', function(e) {
                             if (e.target.closest('button, a')) return;
                             window.location.href = actRow2.dataset.resultsUrl;
@@ -1124,36 +1234,21 @@
                 }
             }
 
-            function poll() {
-                if (pollingStopped) return;
-                if (pollInFlight) {
-                    schedulePoll(nextPollDelay(false));
-                    return;
-                }
+            // ── Initialise ───────────────────────────────────────────────────
+            var msgEl0 = document.getElementById('run-msg-' + RUN_ID);
+            if (msgEl0) { msgEl0.innerHTML = '<span style="color:#4a7a80;font-style:italic;">Simulation starting\u2026</span>'; }
 
-                pollInFlight = true;
-                fetch(pollUrl, { cache: 'no-store' })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        // Update live progress message even while still running
-                        var msg = document.getElementById('run-msg-' + '{{ latest_run.id }}');
-                        if (msg && data.message) { msg.innerHTML = localiseEta(data.message); }
-                        var dur = document.getElementById('run-dur-' + '{{ latest_run.id }}');
-                        if (dur && data.duration) { dur.textContent = data.duration; }
-                        if (data.done) { markDone(data); }
-                        else           { schedulePoll(nextPollDelay(false)); }
-                    })
-                    .catch(function() { schedulePoll(nextPollDelay(true)); })
-                    .finally(function() { pollInFlight = false; });
-            }
-            schedulePoll(nextPollDelay(false));
+            // Show spinner in duration cell until server anchors elapsed_seconds
+            var durEl0 = document.getElementById('run-dur-' + RUN_ID);
+            if (durEl0) { durEl0.innerHTML = '<span class="run-dur-spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #b2d8db;border-top-color:#136b75;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;"></span>'; }
+
+            schedulePoll(5000);   // first poll at 5 s
 
             document.addEventListener('visibilitychange', function() {
-                if (!document.hidden && !pollingStopped) {
-                    schedulePoll(400);
-                }
+                if (!document.hidden && !pollingStopped) { schedulePoll(2000); }
             });
 
+            // ── Stop button ──────────────────────────────────────────────────
             if (stopBtn) {
                 stopBtn.addEventListener('click', function() {
                     stopBtn.disabled = true;
@@ -1165,9 +1260,7 @@
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         markDone(data);
-                        // Hide the "Simulation started" flash messages
                         document.querySelectorAll('[id^="sim-flash-msg-"]').forEach(function(el) { el.style.display = 'none'; });
-                        // Show orange cancelled notice then fade it out after 10 s
                         var notice = document.getElementById('sim-cancel-notice');
                         if (notice) {
                             notice.style.display = 'inline-flex';

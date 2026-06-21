@@ -1424,15 +1424,16 @@
                                            value="{% if sim.collect_1hz_start_date %}{{ sim.collect_1hz_start_date|date:'Y-m-d' }}{% endif %}"
                                            min="{{ sim.datum_date|date:'Y-m-d' }}"
                                            max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
+                                           data-prev-start="{% if sim.collect_1hz_start_date %}{{ sim.collect_1hz_start_date|date:'Y-m-d' }}{% endif %}"
                                            style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
-                                           onblur="save1HzRange()">
+                                           onchange="on1HzStartChange()" onblur="on1HzStartChange()">
                                     <span style="color:#4a7a80;font-size:0.8rem;">—</span>
                                     <input type="date" id="ss-1hz-end-date" class="browser-default"
                                            value="{% if sim.collect_1hz_end_date %}{{ sim.collect_1hz_end_date|date:'Y-m-d' }}{% endif %}"
                                            min="{{ sim.datum_date|date:'Y-m-d' }}"
                                            max="{{ sim.get_max_end_date|date:'Y-m-d' }}"
                                            style="border:none;background:transparent;font-size:0.82rem;padding:0;font-family:inherit;outline:none;color:#1a2e30;width:auto;"
-                                           onblur="save1HzRange()">
+                                           onchange="on1HzEndChange()" onblur="on1HzEndChange()">
                                 </div>
                                 <div id="ss-1hz-msg" style="font-size:0.75rem;color:#7b5555;margin-top:0.3rem;display:none;"></div>
                             </span>
@@ -2202,22 +2203,115 @@
     var _1hzSaveUrl = "{% url 'dashboard-update-sim-1hz' sim_id=sim.id %}";
     var _1hzSavePending = false;
 
+    // Helper: add N days to a Date (UTC-safe with ISO strings)
+    function _addDays(isoStr, n) {
+        var d = new Date(isoStr + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + n);
+        return d.toISOString().slice(0, 10);
+    }
+
+    // Helper: clamp an ISO date string between two ISO date strings
+    function _clampIso(val, min, max) {
+        if (min && val < min) return min;
+        if (max && val > max) return max;
+        return val;
+    }
+
     function on1HzModeChange(sel) {
         var rangeBadge = document.getElementById('ss-1hz-range-badge');
         var collecting = sel.value === 'save';
+        var startEl = document.getElementById('ss-1hz-start-date');
+        var endEl   = document.getElementById('ss-1hz-end-date');
+        var msgEl   = document.getElementById('ss-1hz-msg');
+
         if (collecting) {
             rangeBadge.style.opacity = '';
             rangeBadge.style.pointerEvents = '';
+
+            // Initialise defaults from sim start/end if inputs are blank
+            var simStart = document.getElementById('ss-start-date') ? document.getElementById('ss-start-date').value : '';
+            var simEnd   = document.getElementById('ss-end-date')   ? document.getElementById('ss-end-date').value   : '';
+            if (!startEl.value && simStart) {
+                startEl.value = simStart;
+            }
+            if (!endEl.value && startEl.value) {
+                var defaultEnd = _addDays(startEl.value, 3);
+                endEl.value = _clampIso(defaultEnd, startEl.value, simEnd || defaultEnd);
+            }
+            // Save dates together with enabled flag
+            _save1HzFull();
         } else {
             rangeBadge.style.opacity = '0.3';
             rangeBadge.style.pointerEvents = 'none';
+            // Clear date inputs and save disabled state
+            startEl.value = '';
+            endEl.value   = '';
+            if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+            var fd = new FormData();
+            fd.append('collect_1hz_data', '0');
+            fd.append('collect_1hz_start_date', '');
+            fd.append('collect_1hz_end_date', '');
+            fd.append('csrfmiddlewaretoken', _durCsrf);
+            fetch(_1hzSaveUrl, { method: 'POST', body: fd }).catch(function() {});
         }
-        // Save the state
+    }
+
+    function on1HzStartChange() {
+        var startEl  = document.getElementById('ss-1hz-start-date');
+        var endEl    = document.getElementById('ss-1hz-end-date');
+        var simEnd   = document.getElementById('ss-end-date') ? document.getElementById('ss-end-date').value : '';
+
+        if (!startEl.value) return;
+
+        // Clamp start within sim bounds
+        var simStart = document.getElementById('ss-start-date') ? document.getElementById('ss-start-date').value : '';
+        startEl.value = _clampIso(startEl.value, simStart || null, simEnd || null);
+
+        var prevStart = startEl.dataset.prevStart || startEl.value;
+        var prevEnd   = endEl.value;
+
+        // Nudge end by the same delta, keeping the same gap
+        if (prevEnd && prevStart) {
+            var gapDays = Math.round((new Date(prevEnd + 'T00:00:00Z') - new Date(prevStart + 'T00:00:00Z')) / 86400000);
+            var newEnd = _addDays(startEl.value, Math.max(0, gapDays));
+            newEnd = _clampIso(newEnd, startEl.value, simEnd || newEnd);
+            endEl.value = newEnd;
+        } else if (!prevEnd) {
+            var defaultEnd = _addDays(startEl.value, 3);
+            endEl.value = _clampIso(defaultEnd, startEl.value, simEnd || defaultEnd);
+        }
+
+        startEl.dataset.prevStart = startEl.value;
+        save1HzRange();
+    }
+
+    function on1HzEndChange() {
+        var startEl = document.getElementById('ss-1hz-start-date');
+        var endEl   = document.getElementById('ss-1hz-end-date');
+        var simEnd  = document.getElementById('ss-end-date') ? document.getElementById('ss-end-date').value : '';
+
+        if (!endEl.value) return;
+
+        // Don't allow end before start
+        if (startEl.value && endEl.value < startEl.value) {
+            endEl.value = startEl.value;
+        }
+        // Clamp within sim end
+        if (simEnd && endEl.value > simEnd) {
+            endEl.value = simEnd;
+        }
+        save1HzRange();
+    }
+
+    function _save1HzFull() {
+        var startEl = document.getElementById('ss-1hz-start-date');
+        var endEl   = document.getElementById('ss-1hz-end-date');
         var fd = new FormData();
-        fd.append('collect_1hz_data', collecting ? '1' : '0');
+        fd.append('collect_1hz_data', '1');
+        fd.append('collect_1hz_start_date', startEl ? startEl.value : '');
+        fd.append('collect_1hz_end_date',   endEl   ? endEl.value   : '');
         fd.append('csrfmiddlewaretoken', _durCsrf);
-        fetch(_1hzSaveUrl, { method: 'POST', body: fd })
-            .catch(function() {});
+        fetch(_1hzSaveUrl, { method: 'POST', body: fd }).catch(function() {});
     }
 
     function save1HzRange() {
@@ -2225,54 +2319,37 @@
         if (!modeEl || modeEl.value !== 'save') return;
 
         var startEl = document.getElementById('ss-1hz-start-date');
-        var endEl = document.getElementById('ss-1hz-end-date');
+        var endEl   = document.getElementById('ss-1hz-end-date');
         var start = (startEl || {}).value || '';
-        var end = (endEl || {}).value || '';
+        var end   = (endEl   || {}).value || '';
+        var msgEl = document.getElementById('ss-1hz-msg');
 
         if (!start || !end) {
-            document.getElementById('ss-1hz-msg').style.display = 'none';
+            if (msgEl) { msgEl.style.display = 'none'; }
             return;
         }
 
-        var msgEl = document.getElementById('ss-1hz-msg');
-        
-        // Validate dates
         var startDate = parseIsoDateStrict(start);
-        var endDate = parseIsoDateStrict(end);
-        
+        var endDate   = parseIsoDateStrict(end);
+
         if (!startDate || !endDate) {
-            msgEl.innerHTML = 'Invalid date format';
-            msgEl.style.display = 'block';
-            msgEl.style.color = '#d84040';
+            if (msgEl) { msgEl.innerHTML = 'Invalid date format'; msgEl.style.color = '#d84040'; msgEl.style.display = 'block'; }
             return;
         }
 
         if (startDate > endDate) {
-            msgEl.innerHTML = 'Start date must be before or equal to end date';
-            msgEl.style.display = 'block';
-            msgEl.style.color = '#d84040';
+            if (msgEl) { msgEl.innerHTML = 'Start date must be before or equal to end date'; msgEl.style.color = '#d84040'; msgEl.style.display = 'block'; }
             return;
         }
 
-        var daysDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (msgEl) { msgEl.style.display = 'none'; }
 
-        // Show info/warning message
-        var estGb = Math.round(daysDiff * 3600 * 8 / 1e9 * 10) / 10;
-        msgEl.innerHTML = daysDiff + ' days (~' + estGb + ' GB for 8 arrays)';
-        if (daysDiff > 90) {
-            msgEl.innerHTML += ' Warning: periods longer than approximately 3 months can create very large files. Use with care.';
-            msgEl.style.color = '#a46a00';
-        } else {
-            msgEl.style.color = '#4a7a80';
-        }
-        msgEl.style.display = 'block';
-
-        // Save
         if (_1hzSavePending) return;
         _1hzSavePending = true;
         var fd = new FormData();
+        fd.append('collect_1hz_data', '1');
         fd.append('collect_1hz_start_date', start);
-        fd.append('collect_1hz_end_date', end);
+        fd.append('collect_1hz_end_date',   end);
         fd.append('csrfmiddlewaretoken', _durCsrf);
         fetch(_1hzSaveUrl, { method: 'POST', body: fd })
             .catch(function() {})

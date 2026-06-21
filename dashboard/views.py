@@ -2017,55 +2017,45 @@ def update_sim_1hz(request, sim_id):
     from django.shortcuts import get_object_or_404
     from django.core.exceptions import ValidationError
     from datetime import date as _date
-    
+
     sim = get_object_or_404(Simulation, pk=sim_id)
-    
+
+    update_fields = []
+
     # Handle collect_1hz_data toggle
     if 'collect_1hz_data' in request.POST:
         collect_enabled = request.POST.get('collect_1hz_data', '0').strip() == '1'
         sim.collect_1hz_data = collect_enabled
-        if collect_enabled and (not sim.collect_1hz_start_date or not sim.collect_1hz_end_date):
-            start, end = _default_1hz_range(sim)
-            sim.collect_1hz_start_date = start
-            sim.collect_1hz_end_date = end
-            sim.save(update_fields=['collect_1hz_data', 'collect_1hz_start_date', 'collect_1hz_end_date'])
-            return JsonResponse({
-                'collect_1hz_data': sim.collect_1hz_data,
-                'collect_1hz_start_date': sim.collect_1hz_start_date.isoformat() if sim.collect_1hz_start_date else '',
-                'collect_1hz_end_date': sim.collect_1hz_end_date.isoformat() if sim.collect_1hz_end_date else '',
-            })
+        update_fields.append('collect_1hz_data')
 
-        sim.save(update_fields=['collect_1hz_data'])
-        return JsonResponse({'collect_1hz_data': sim.collect_1hz_data})
-    
-    # Handle date range updates
-    start_raw = request.POST.get('collect_1hz_start_date', '').strip()
-    end_raw = request.POST.get('collect_1hz_end_date', '').strip()
-    
-    if start_raw or end_raw:
+    # Handle date range (may be in the same request as the toggle)
+    start_raw = request.POST.get('collect_1hz_start_date', None)
+    end_raw   = request.POST.get('collect_1hz_end_date',   None)
+
+    if start_raw is not None or end_raw is not None:
         try:
-            start = _date.fromisoformat(start_raw) if start_raw else None
-            end = _date.fromisoformat(end_raw) if end_raw else None
+            start = _date.fromisoformat(start_raw.strip()) if start_raw and start_raw.strip() else None
+            end   = _date.fromisoformat(end_raw.strip())   if end_raw   and end_raw.strip()   else None
         except ValueError:
             return JsonResponse({'error': 'Invalid date format (expected YYYY-MM-DD).'}, status=400)
-        
-        # Set the fields
+
+        # If enabling collection and no dates supplied, fall back to defaults
+        if sim.collect_1hz_data and not start and not end and not sim.collect_1hz_start_date:
+            start, end = _default_1hz_range(sim)
+
         sim.collect_1hz_start_date = start
-        sim.collect_1hz_end_date = end
-        
-        # Validate using the model's clean() method
-        try:
-            sim.full_clean()
-        except ValidationError as e:
-            return JsonResponse({'error': str(e)}, status=400)
-        
-        sim.save(update_fields=['collect_1hz_start_date', 'collect_1hz_end_date'])
-        return JsonResponse({
-            'collect_1hz_start_date': sim.collect_1hz_start_date.isoformat() if sim.collect_1hz_start_date else '',
-            'collect_1hz_end_date': sim.collect_1hz_end_date.isoformat() if sim.collect_1hz_end_date else '',
-        })
-    
-    return JsonResponse({'error': 'No valid parameters provided.'}, status=400)
+        sim.collect_1hz_end_date   = end
+        update_fields += ['collect_1hz_start_date', 'collect_1hz_end_date']
+
+    if not update_fields:
+        return JsonResponse({'error': 'No valid parameters provided.'}, status=400)
+
+    sim.save(update_fields=update_fields)
+    return JsonResponse({
+        'collect_1hz_data':       sim.collect_1hz_data,
+        'collect_1hz_start_date': sim.collect_1hz_start_date.isoformat() if sim.collect_1hz_start_date else '',
+        'collect_1hz_end_date':   sim.collect_1hz_end_date.isoformat()   if sim.collect_1hz_end_date   else '',
+    })
 
 
 @require_POST

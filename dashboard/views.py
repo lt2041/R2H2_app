@@ -1177,7 +1177,7 @@ def _run_simulation_thread(run_id):
         if sim_obj.start_date and sim_obj.end_date and sim_obj.duration_days:
             datum = sim_obj.datum_date or _dt.date(sim_obj.start_date.year, 1, 1)
             start_hour = int((sim_obj.start_date - datum).days * 24)
-            end_hour   = int((sim_obj.end_date   - datum).days * 24)
+            end_hour   = int((sim_obj.end_date - datum).days * 24) + 24  # end_date inclusive: include all 24h
             start_hour = max(0, start_hour)
             if wi is not None and hasattr(wi, 'arPowerInput') and wi.arPowerInput is not None:
                 n_hours = wi.arPowerInput.shape[1]
@@ -1998,8 +1998,8 @@ def update_sim_date_range(request, sim_id):
 
     sim.start_date = start
     sim.end_date = end
-    if start and end and end > start:
-        sim.duration_days = (end - start).days
+    if start and end and end >= start:
+        sim.duration_days = (end - start).days + 1  # end_date inclusive: days in range
     else:
         sim.duration_days = None
     sim.save(update_fields=['start_date', 'end_date', 'duration_days'])

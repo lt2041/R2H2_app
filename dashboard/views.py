@@ -1677,6 +1677,34 @@ def _load_run_1hz_plot_data(run, *, start_iso=None, end_iso=None, max_points=400
     }
 
 
+def _get_run_1hz_meta(run):
+    """Read lightweight metadata from the 1Hz HDF5 file without loading data arrays."""
+    info = _get_run_1hz_info(run)
+    if not info['has_1hz_data'] or info['output_abspath'] is None:
+        return None
+    import h5py
+    try:
+        with h5py.File(info['output_abspath'], 'r') as h5_file:
+            if 'time_series_1hz' not in h5_file:
+                return None
+            ts_group = h5_file['time_series_1hz']
+            if 'time_indices' not in ts_group:
+                return None
+            plot_keys = _select_1hz_plot_keys(ts_group)
+            start_hour = int(ts_group.attrs.get('start_hour', 0))
+            end_hour = int(ts_group.attrs.get('end_hour', 0))
+            points_total = int(ts_group['time_indices'].shape[0])
+    except Exception:
+        return None
+    return {
+        'points_total': points_total,
+        'n_channels': len(plot_keys),
+        'start_hour': start_hour,
+        'end_hour': end_hour,
+        'output_name': info['output_abspath'].name,
+    }
+
+
 def _compute_eta_iso(checkpoints, total_hours):
     """Compute an ETA ISO string from progress checkpoints.
 
@@ -2064,32 +2092,14 @@ def view_run_results(request, sim_id, run_id):
         ref = (yd.get('arSoc') or yd.get('arTotalH2') or yd.get('arElecOnAv') or [])
         cumulative += len(ref)
 
-    # 1Hz inline preview (first 3 channels)
+    # 1Hz inline preview — load lightweight metadata only; actual data fetched async by browser
     run_1hz_info = _get_run_1hz_info(run)
     has_1hz_data = run_1hz_info['has_1hz_data']
-    hz_x_values_json = _json.dumps([])
-    hz_series_json   = _json.dumps([])
-    hz_plot_keys_json = _json.dumps([])
     hz_meta = {}
     if has_1hz_data:
-        _hz_pd = _load_run_1hz_plot_data(run, max_points=10_000_000)
-        if _hz_pd:
-            hz_x_values_json  = _json.dumps(_hz_pd['x_values'])
-            hz_series_json    = _json.dumps(_hz_pd['series'][:3])
-            hz_plot_keys_json = _json.dumps(_hz_pd['plot_keys'][:3])
-            hz_meta = {
-                'points_total':       _hz_pd['points_total'],
-                'points_shown':       _hz_pd['points_shown'],
-                'window_points':      _hz_pd['window_points'],
-                'downsample_step':    _hz_pd['downsample_step'],
-                'is_full_resolution': _hz_pd['is_full_resolution'],
-                'window_start':       _hz_pd['window_start'],
-                'window_end':         _hz_pd['window_end'],
-                'start_hour':         _hz_pd['start_hour'],
-                'end_hour':           _hz_pd['end_hour'],
-                'output_name':        _hz_pd['output_name'],
-                'n_channels':         len(_hz_pd['series']),
-            }
+        _hz_meta = _get_run_1hz_meta(run)
+        if _hz_meta:
+            hz_meta = _hz_meta
 
     context = {
         'run': run,
@@ -2104,12 +2114,48 @@ def view_run_results(request, sim_id, run_id):
         'update_xaxis_url': f'/simulations/{sim_id}/run/{run_id}/xaxis/',
         'has_wind': sim.wind_inputs.exists(),
         'has_1hz_data': has_1hz_data,
-        'hz_x_values_json': hz_x_values_json,
-        'hz_series_json': hz_series_json,
-        'hz_plot_keys_json': hz_plot_keys_json,
         'hz_meta': hz_meta,
+        'run_1hz_url': f'/simulations/{sim_id}/run/{run_id}/1hz-json/',
     }
     return render(request, 'dashboard/run_results.html', context)
+
+
+def run_1hz_json(request, sim_id, run_id):
+    """GET: Return 1Hz time-series data as JSON for async browser loading.
+
+    Query params:
+        start       ISO datetime string – window start (optional)
+        end         ISO datetime string – window end (optional)
+        max_points  int – max data points to return (default 2000, cap 100000)
+    """
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    run = get_object_or_404(SimulationRun, pk=run_id, simulation_id=sim_id)
+    start_iso = request.GET.get('start') or None
+    end_iso   = request.GET.get('end')   or None
+    try:
+        max_pts = int(request.GET.get('max_points', 2000))
+        max_pts = max(100, min(max_pts, 100_000))
+    except (ValueError, TypeError):
+        max_pts = 2000
+    try:
+        pd = _load_run_1hz_plot_data(run, start_iso=start_iso, end_iso=end_iso, max_points=max_pts)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    if pd is None:
+        return JsonResponse({'error': 'No 1Hz data available.'}, status=404)
+    return JsonResponse({
+        'x_values':          pd['x_values'],
+        'series':            pd['series'][:3],
+        'full_start':        pd['full_start'],
+        'full_end':          pd['full_end'],
+        'points_total':      pd['points_total'],
+        'points_shown':      pd['points_shown'],
+        'downsample_step':   pd['downsample_step'],
+        'is_full_resolution': pd['is_full_resolution'],
+    })
 
 
 @require_POST

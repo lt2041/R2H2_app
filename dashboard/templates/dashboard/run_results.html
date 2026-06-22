@@ -395,16 +395,12 @@
         <div class="hz-sub-hero-inner">
             <div class="hz-sub-meta">
                 <div class="hz-sub-meta-item">
-                    <span class="hz-sub-meta-label">Samples shown</span>
-                    <span class="hz-sub-meta-value">{{ hz_meta.points_shown }} / {{ hz_meta.points_total }}</span>
+                    <span class="hz-sub-meta-label">Total samples</span>
+                    <span class="hz-sub-meta-value">{{ hz_meta.points_total }}</span>
                 </div>
                 <div class="hz-sub-meta-item">
                     <span class="hz-sub-meta-label">Channels</span>
                     <span class="hz-sub-meta-value">{{ hz_meta.n_channels }}</span>
-                </div>
-                <div class="hz-sub-meta-item">
-                    <span class="hz-sub-meta-label">Window</span>
-                    <span class="hz-sub-meta-value">{{ hz_meta.window_points }} samples</span>
                 </div>
                 <div class="hz-sub-meta-item">
                     <span class="hz-sub-meta-label">Time range</span>
@@ -414,17 +410,18 @@
                     <span class="hz-sub-meta-label">File</span>
                     <span class="hz-sub-meta-value">{{ hz_meta.output_name }}</span>
                 </div>
-                {% if hz_meta.downsample_step > 1 %}
                 <div class="hz-sub-meta-item">
                     <span class="hz-sub-meta-label">Resolution</span>
-                    <span class="hz-sub-meta-value">1 / {{ hz_meta.downsample_step }} samples</span>
+                    <span class="hz-sub-meta-value" id="hz-res-label">Loading…</span>
                 </div>
-                {% endif %}
             </div>
-
         </div>
-        <div class="hz-sub-label">1&thinsp;Hz data — showing first 3 channels (preview)</div>
+        <div class="hz-sub-label">1&thinsp;Hz data — zoom in for higher resolution (live resampling)</div>
     </div>
+
+    <style>
+    @keyframes hz-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
 
     <div class="charts-grid">
         {% for i in "012" %}{% with forloop.counter0 as idx %}
@@ -433,7 +430,13 @@
                 <span class="material-symbols-outlined">monitoring</span>
                 <span id="hz-inline-title-{{ idx }}">1Hz channel {{ idx }}</span>
             </div>
-            <div class="chart-body"><div id="hz-inline-chart-{{ idx }}" style="height:280px;"></div></div>
+            <div class="chart-body" style="position:relative;">
+                <div id="hz-spinner-{{ idx }}" style="height:280px; display:flex; align-items:center; justify-content:center; color:#4a7a80; gap:0.5rem; font-size:0.82rem;">
+                    <span class="material-symbols-outlined" style="font-size:1.2rem; animation:hz-spin 1.2s linear infinite;">progress_activity</span>
+                    Loading 1Hz data…
+                </div>
+                <div id="hz-inline-chart-{{ idx }}" style="height:280px; display:none;"></div>
+            </div>
         </div>
         {% endwith %}{% endfor %}
     </div>
@@ -1133,38 +1136,118 @@
         });
     }
 
-    // ── Inline 1Hz preview charts ─────────────────────────────────────────
+    // ── Async 1Hz preview charts with live resampling ─────────────────────
     {% if has_1hz_data and hz_meta %}
     (function() {
-        var hzX    = {{ hz_x_values_json|safe }};
-        var hzSeries = {{ hz_series_json|safe }};
-        var hzKeys   = {{ hz_plot_keys_json|safe }};
+        var HZ_URL    = '{{ run_1hz_url }}';
+        var HZ_POINTS = 2000;  // points to render at any zoom level
+
+        var hzDivs   = [];
+        var hzTitles = [];
+        var _hzFullStart = null;
+        var _hzFullEnd   = null;
+        var _hzInitDone  = false;
+        var _hzFetchAbort = null;  // AbortController for in-flight request
+        var _hzZoomTimer  = null;
 
         var HZ_LAYOUT = Object.assign({}, LAYOUT_DEFAULTS, {
             xaxis: Object.assign({}, LAYOUT_DEFAULTS.xaxis, { type: 'date', automargin: true }),
             yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis),
             showlegend: false,
+            margin: Object.assign({}, LAYOUT_DEFAULTS.margin, { b: 36 }),
         });
 
-        var hzDivs = [];
+        // ── Show/hide spinners ────────────────────────────────────────────
+        function showSpinners() {
+            for (var i = 0; i < 3; i++) {
+                var sp = document.getElementById('hz-spinner-' + i);
+                var ch = document.getElementById('hz-inline-chart-' + i);
+                if (sp) sp.style.display = 'flex';
+                if (ch) ch.style.display = 'none';
+            }
+        }
 
-        hzSeries.forEach(function(s, i) {
-            var el = document.getElementById('hz-inline-chart-' + i);
-            var titleEl = document.getElementById('hz-inline-title-' + i);
-            if (!el) return;
-            if (titleEl) titleEl.textContent = s.key;
-            Plotly.newPlot(el, [{
-                x: hzX,
-                y: s.y,
-                type: 'scattergl',
-                mode: 'lines',
-                name: s.key,
-                line: { color: '#136b75', width: 1.2 },
-            }], Object.assign({}, HZ_LAYOUT, {
-                yaxis: Object.assign({}, HZ_LAYOUT.yaxis, { title: s.key }),
-            }), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
-            hzDivs.push(el);
-        });
+        function hideSpinners() {
+            for (var i = 0; i < 3; i++) {
+                var sp = document.getElementById('hz-spinner-' + i);
+                var ch = document.getElementById('hz-inline-chart-' + i);
+                if (sp) sp.style.display = 'none';
+                if (ch) ch.style.display = '';
+            }
+        }
+
+        // ── Fetch data from server and render / update charts ─────────────
+        function fetchAndRender(startIso, endIso) {
+            if (_hzFetchAbort) { try { _hzFetchAbort.abort(); } catch(e) {} }
+            _hzFetchAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+
+            var url = HZ_URL + '?max_points=' + HZ_POINTS;
+            if (startIso) url += '&start=' + encodeURIComponent(startIso);
+            if (endIso)   url += '&end='   + encodeURIComponent(endIso);
+
+            var fetchOpts = _hzFetchAbort ? { signal: _hzFetchAbort.signal } : {};
+            fetch(url, fetchOpts)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        console.warn('[1Hz]', data.error);
+                        hideSpinners();
+                        return;
+                    }
+                    _hzFullStart = _hzFullStart || data.full_start;
+                    _hzFullEnd   = _hzFullEnd   || data.full_end;
+
+                    // Update resolution label
+                    var resEl = document.getElementById('hz-res-label');
+                    if (resEl) {
+                        resEl = document.getElementById('hz-res-label');
+                        if (data.is_full_resolution) {
+                            resEl.textContent = '1 Hz (full)';
+                        } else {
+                            resEl.textContent = '1 / ' + data.downsample_step + ' samples';
+                        }
+                    }
+
+                    if (!_hzInitDone) {
+                        // First load — create charts
+                        hzDivs = [];
+                        data.series.forEach(function(s, i) {
+                            var el = document.getElementById('hz-inline-chart-' + i);
+                            var titleEl = document.getElementById('hz-inline-title-' + i);
+                            if (!el) return;
+                            if (titleEl) titleEl.textContent = s.key;
+                            var layout = Object.assign({}, HZ_LAYOUT, {
+                                yaxis: Object.assign({}, HZ_LAYOUT.yaxis, { title: s.key }),
+                            });
+                            Plotly.newPlot(el, [{
+                                x: data.x_values, y: s.y,
+                                type: 'scattergl', mode: 'lines',
+                                name: s.key,
+                                line: { color: '#136b75', width: 1.2 },
+                            }], layout, {
+                                responsive: true, displayModeBar: false,
+                                scrollZoom: false, doubleClick: 'reset',
+                            });
+                            hzDivs.push(el);
+                        });
+                        _hzInitDone = true;
+                        hideSpinners();
+                        linkHz1HzAxes();
+                    } else {
+                        // Subsequent fetches — update data in-place
+                        hzDivs.forEach(function(el, i) {
+                            var s = data.series[i];
+                            if (!s) return;
+                            Plotly.restyle(el, { x: [data.x_values], y: [s.y] }, [0]);
+                        });
+                    }
+                })
+                .catch(function(e) {
+                    if (e && e.name === 'AbortError') return; // intentionally cancelled
+                    console.warn('[1Hz] fetch failed:', e);
+                    hideSpinners();
+                });
+        }
 
         // ── Linked x-axis zoom across all 3 inline 1Hz charts ────────────
         var _hzSyncPending = 0;
@@ -1172,14 +1255,14 @@
         function linkHz1HzAxes() {
             hzDivs.forEach(function(source) {
                 source.on('plotly_relayout', function(ed) {
+                    // Sync zoom across sibling charts
                     if (_hzSyncPending > 0) return;
                     var x0 = ed['xaxis.range[0]'];
                     var x1 = ed['xaxis.range[1]'];
                     var autorange = ed['xaxis.autorange'];
                     if (x0 === undefined && x1 === undefined && !autorange) return;
-                    var update = autorange
-                        ? { 'xaxis.autorange': true }
-                        : { 'xaxis.range': [x0, x1] };
+
+                    var update = autorange ? { 'xaxis.autorange': true } : { 'xaxis.range': [x0, x1] };
                     var targets = hzDivs.filter(function(t) { return t !== source; });
                     _hzSyncPending += targets.length;
                     targets.forEach(function(t) {
@@ -1187,19 +1270,25 @@
                             _hzSyncPending = Math.max(0, _hzSyncPending - 1);
                         });
                     });
-                });
 
-                // Double-click on any chart resets all 3 to full range
-                source.on('plotly_doubleclick', function() {
-                    hzDivs.forEach(function(t) {
-                        Plotly.relayout(t, { 'xaxis.autorange': true });
-                    });
-                    return false; // prevent Plotly's own double-click reset (we handle it)
+                    // Live resampling on zoom
+                    if (_hzZoomTimer) clearTimeout(_hzZoomTimer);
+                    if (autorange) {
+                        // Zoomed out to full — reload overview
+                        _hzZoomTimer = setTimeout(function() {
+                            fetchAndRender(null, null);
+                        }, 300);
+                    } else if (x0 !== undefined && x1 !== undefined) {
+                        _hzZoomTimer = setTimeout(function() {
+                            fetchAndRender(x0, x1);
+                        }, 300);
+                    }
                 });
             });
         }
 
-        setTimeout(linkHz1HzAxes, 0);
+        // ── Initial load ─────────────────────────────────────────────────
+        fetchAndRender(null, null);
     })();
     {% endif %}
 

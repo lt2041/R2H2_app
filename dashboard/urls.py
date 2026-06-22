@@ -33,6 +33,7 @@ urlpatterns = [
     path('simulations/<int:sim_id>/run/<int:run_id>/download/',     views.download_run_output,      name='dashboard-download-run-output'),
     path('simulations/<int:sim_id>/run/<int:run_id>/results/',     views.view_run_results,         name='dashboard-run-results'),
     path('simulations/<int:sim_id>/run/<int:run_id>/xaxis/',      views.update_run_xaxis,          name='dashboard-update-run-xaxis'),
+    path('simulations/<int:sim_id>/run/<int:run_id>/1hz-json/',   views.run_1hz_json,             name='dashboard-run-1hz-json'),
     path('browse/<str:table_name>', views.browse, name='dashboard-browse'),
     path('browse/<str:table_name>/add', views.add_component, name='dashboard-add-component'),
     path('browse/<str:table_name>/<int:pk>/get', views.get_component, name='dashboard-get-component'),

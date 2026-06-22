@@ -180,7 +180,12 @@ def get_controllers_dir() -> Path:
     access.  If it is empty a copy of the built-in template is placed there so
     the user always has a working example to start from.
     """
-    cfg = load_config()
+    # Use get_or_create_config() so that a valid config (and data_root) is
+    # always established before we try to locate the controllers directory.
+    # Using bare load_config() would return None on a fresh Windows install
+    # (no config.yaml yet) and fall through to the site-packages fallback
+    # path, which is the wrong location and may be non-writable.
+    cfg = get_or_create_config()
     ctrl_dir: Path | None = None
     if cfg:
         data_root = cfg.get("paths", {}).get("data_root")

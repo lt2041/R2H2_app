@@ -1466,6 +1466,7 @@
         </div>
         <div class="sim-settings-body">
             <div class="badge-groups-wrap">
+                {% if has_wind_linked %}
                 <div class="badge-group">
                     <div class="badge-group-name">Simulation start &amp; end</div>
                     <div class="badge-group-fields" style="flex-direction:row;align-items:center;flex-wrap:nowrap;">
@@ -1521,6 +1522,8 @@
                         {% endfor %}
                     </div>
                 </div>
+                {% endif %}{# has_wind_linked — end of date range group #}
+                {% if has_wind_linked %}
                 <div class="badge-group">
                     <div class="badge-group-name">1Hz Data Collection</div>
                     <div class="badge-group-fields" style="flex-direction:row;align-items:center;flex-wrap:nowrap;">
@@ -1559,6 +1562,49 @@
                         </span>
                     </div>
                 </div>
+                {% endif %}{# has_wind_linked — end of 1Hz group #}
+
+                {% if not has_wind_linked %}
+                <div class="badge-group" style="border:1.5px dashed #b2e0e4; border-radius:8px; padding:0.9rem 1.1rem; background:#f5fdfe;">
+                    <div class="badge-group-name" style="color:#4a7a80;">Wind data required</div>
+                    <div style="font-size:0.82rem; color:#4a7a80; margin-bottom:0.8rem; line-height:1.5;">
+                        Link at least one Wind Input with an uploaded HDF5 file to enable simulation start &amp; end dates and 1Hz data collection settings.
+                    </div>
+                    {% if any_wind_exist %}
+                        {# Wind records exist — show add button that opens the multi-select modal #}
+                        <button type="button"
+                                class="gc-add-btn"
+                                data-group-label="WindInput"
+                                data-group-icon="air"
+                                style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.45rem 1rem;font-size:0.82rem;background:#22a6b3;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;"
+                                onclick="openAddComponentModal(this);">
+                            <span class="material-symbols-outlined" style="font-size:1rem;">add_circle</span>
+                            Add Wind Input
+                        </button>
+                        {# Provide avail JSON so the modal can populate — use same data as the linked WindInput group if present, otherwise the empty-group one #}
+                        {% for group in groups_empty %}{% if group.label == 'WindInput' %}
+                        <script type="application/json" id="avail-WindInput-settings">{{ group.available_json|safe }}</script>
+                        <script>
+                        (function(){
+                            var existing = document.getElementById('avail-WindInput');
+                            if (!existing) {
+                                var el = document.getElementById('avail-WindInput-settings');
+                                if (el) { var n = el.cloneNode(true); n.id = 'avail-WindInput'; document.head.appendChild(n); }
+                            }
+                        })();
+                        </script>
+                        {% endif %}{% endfor %}
+                    {% else %}
+                        {# No wind records at all — redirect to wind data page #}
+                        <a href="{% url 'dashboard-wind-data' %}"
+                           style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.45rem 1rem;font-size:0.82rem;background:#22a6b3;color:#fff;border-radius:6px;text-decoration:none;font-family:inherit;">
+                            <span class="material-symbols-outlined" style="font-size:1rem;">upload_file</span>
+                            Upload Wind Data
+                        </a>
+                    {% endif %}
+                </div>
+                {% endif %}{# not has_wind_linked #}
+
             </div>
             {% if sim_hidden_settings %}
             <div class="hidden-fields-wrap" style="margin-top:0.75rem;">

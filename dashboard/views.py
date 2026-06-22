@@ -706,6 +706,9 @@ def simulation_detail(request, sim_id):
     controller_objects = list(Controller.objects.order_by('name').values('id', 'name', 'file', 'author', 'verified'))
     controller_files_json = _json.dumps(controller_files)
 
+    _has_wind_linked  = sim.wind_inputs.exists()
+    _any_wind_exist   = WindInput.objects.exists()
+
     return render(request, 'dashboard/simulation_detail.html', {
         'sim': sim,
         'sim_settings': sim_settings,
@@ -723,6 +726,8 @@ def simulation_detail(request, sim_id):
         'current_ids_json': current_ids_json,
         'update_url': f'/simulations/{sim_id}/update/',
         'date_range_save_url': f'/simulations/{sim_id}/date-range/',
+        'has_wind_linked': _has_wind_linked,
+        'any_wind_exist':  _any_wind_exist,
     })
 
 

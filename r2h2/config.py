@@ -173,13 +173,26 @@ def update_wind_data_dir(new_path: str):
     return cfg
 
 
+# Module-level cache so filesystem resolution only happens once per process.
+_controllers_dir_cache: Path | None = None
+
+
 def get_controllers_dir() -> Path:
     """Return the directory where user-supplied controller Python files are stored.
 
     Defaults to ``<data_root>/controllers``.  The directory is created on first
     access.  If it is empty a copy of the built-in template is placed there so
     the user always has a working example to start from.
+
+    The resolved path is cached at module level so repeated calls (which happen
+    on every Django page render) do not hit the filesystem each time.  Call
+    ``invalidate_controllers_dir_cache()`` if the data_root is changed at
+    runtime.
     """
+    global _controllers_dir_cache
+    if _controllers_dir_cache is not None:
+        return _controllers_dir_cache
+
     # Use get_or_create_config() so that a valid config (and data_root) is
     # always established before we try to locate the controllers directory.
     # Using bare load_config() would return None on a fresh Windows install
@@ -208,7 +221,14 @@ def get_controllers_dir() -> Path:
             import shutil
             shutil.copy(template_src, default_dst)
 
+    _controllers_dir_cache = ctrl_dir
     return ctrl_dir
+
+
+def invalidate_controllers_dir_cache():
+    """Clear the cached controllers directory path (call after changing data_root)."""
+    global _controllers_dir_cache
+    _controllers_dir_cache = None
 
 
 def get_wind_data_dir() -> Path:

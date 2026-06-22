@@ -1306,6 +1306,15 @@ def _run_simulation_thread(run_id):
             run.message = f'Simulation \u201c{run.simulation.name}\u201d completed successfully.'
         run.finished_at = timezone.now()
         run.save(update_fields=['status', 'message', 'finished_at', 'output_path'])
+        # Flush the WAL file now that the simulation is done.  We disabled
+        # automatic checkpointing to avoid mid-run exclusive locks (which
+        # cause Windows UI freezes); manually checkpoint here instead.
+        try:
+            from django.db import connection as _db_conn
+            with _db_conn.cursor() as _cur:
+                _cur.execute('PRAGMA wal_checkpoint(TRUNCATE);')
+        except Exception:
+            pass
     except InterruptedError:
         # User cancelled — the cancel view already wrote CANCELLED status; nothing to do
         pass
@@ -1329,6 +1338,16 @@ def run_simulation(request, sim_id):
         sim = get_object_or_404(Simulation, pk=sim_id)
         run = SimulationRun.objects.create(simulation=sim, status=SimulationRun.PENDING)
         messages.success(request, f'Simulation \u201c{sim.name}\u201d started.')
+        # Pre-set status to RUNNING so the poll endpoint shows activity
+        # immediately.  On Windows, the 'spawn' subprocess takes 10–30 s to
+        # cold-import Django + numpy + h5py before it can set its own status,
+        # causing the UI to appear frozen.  The worker will overwrite this
+        # with its own started_at timestamp once it is actually running.
+        from django.utils import timezone as _tz
+        run.status = SimulationRun.RUNNING
+        run.message = 'Starting simulation process\u2026'
+        run.started_at = _tz.now()
+        run.save(update_fields=['status', 'message', 'started_at'])
         # Close inherited DB handles before child process starts.
         connections.close_all()
         from dashboard.simulation_worker import run as _worker_run

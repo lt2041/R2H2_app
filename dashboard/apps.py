@@ -29,6 +29,17 @@ def _configure_sqlite_connection(connection, **kwargs):
             with connection.cursor() as cursor:
                 cursor.execute('PRAGMA journal_mode=WAL;')
                 cursor.execute('PRAGMA synchronous=NORMAL;')
+                # Disable automatic WAL checkpointing.  SQLite's default
+                # (every 1000 pages ≈ 4 MB) causes a brief exclusive lock on
+                # the entire DB file — on Windows this manifests as a UI
+                # freeze because Windows uses mandatory file locking.
+                # We checkpoint manually on simulation completion instead.
+                cursor.execute('PRAGMA wal_autocheckpoint=0;')
+                # Use memory-mapped I/O (64 MB) so WAL reads don't require
+                # individual read() syscalls — noticeably faster on Windows.
+                cursor.execute('PRAGMA mmap_size=67108864;')
+                # Larger page cache reduces disk I/O on repeated reads.
+                cursor.execute('PRAGMA cache_size=-8000;')   # ~8 MB
     except Exception:
         pass
 

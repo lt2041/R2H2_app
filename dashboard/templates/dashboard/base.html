@@ -49,7 +49,7 @@
         <div class="nav-wrapper">
             <div class="col s12" style="display:flex; align-items:center; height:100%;">
                 <a href="{% url 'dashboard-landing' %}" class="brand-logo" style="margin-left:20px; font-size:1.5rem;">R2H2</a>
-                <div id="breadcrumb-container" style="margin-left:180px; flex-grow:1;">
+                <div id="breadcrumb-container" style="margin-left:292px; flex-grow:1;">
                     <!-- Breadcrumbs will be injected here by JS -->
                 </div>
                 <a href="#" data-target="slide-out" class="sidenav-trigger right" style="margin-right:20px;"><span class="material-symbols-outlined">menu</span></a>
@@ -122,13 +122,14 @@
             const parts = title.split('—').map(s => s.trim()).filter(Boolean);
             parts.forEach((part, i) => {
                 const a = document.createElement('a');
-                a.href = '#!'; // Not clickable for now
+                a.href = '#!';
                 a.className = 'breadcrumb';
                 a.textContent = part;
-                if (i === parts.length - 1) {
-                    a.style.color = '#fff';
-                    a.style.fontWeight = '500';
-                }
+                const isLast = i === parts.length - 1;
+                a.style.color = '#fff';
+                a.style.fontWeight = isLast ? '100' : '300';
+                a.style.fontSize = '1.5rem';
+                a.style.opacity = isLast ? '1' : '0.65';
                 breadcrumbContainer.appendChild(a);
             });
         }

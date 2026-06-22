@@ -3,13 +3,7 @@
 
 {% block content %}
 
-<div style="position: absolute; top: 0.9rem; left: 19rem; z-index: 1000;">
-    <h2 style="color: #ffffff; font-weight: 100; font-size: 1.1rem; line-height:1.4;">
-        <a href="{% url 'dashboard-simulations' %}" style="color: #ffffff; text-decoration: none;">Simulation</a>&ensp;&gt;&ensp;
-        <a href="{% url 'dashboard-simulation-detail' sim_id=sim.id %}" style="color: #ffffff; text-decoration: none;">{{ sim.name }}</a>&ensp;&gt;&ensp;
-        Run #{{ run.id }} Results
-    </h2>
-</div>
+
 
 <style>
 /* ── Page layout ── */

@@ -185,9 +185,11 @@ def _serve_waitress(host, port):
     django.setup()
     from waitress import serve
     from r2h2_ui.wsgi import application
+    from django.contrib.staticfiles.handlers import StaticFilesHandler
+    wsgi_app = StaticFilesHandler(application)
     # 8 threads handles concurrent browser tabs + simulation poll traffic
     # without any request-queue stalling.
-    serve(application, host=host, port=port, threads=8,
+    serve(wsgi_app, host=host, port=port, threads=8,
           # Increase connection backlog for burst traffic during simulation.
           backlog=64,
           # Tune for desktop use: long keepalive reduces reconnect overhead.
@@ -225,12 +227,17 @@ def _open_pywebview(url, title='R2H2'):
     # pywebview.start() blocks until the window is closed.
     # Use EdgeChromium (WebView2) on Windows for best performance.
     gui = 'edgechromium' if sys.platform == 'win32' else None
+
+    def _maximise():
+        try:
+            window.maximize()
+        except Exception:
+            pass
+
     try:
-        webview.start(gui=gui, debug=False)
+        webview.start(gui=gui, debug=False, func=_maximise)
     except Exception:
-        # EdgeChromium may not be available on very old Windows; let webview
-        # choose its own backend.
-        webview.start(debug=False)
+        webview.start(debug=False, func=_maximise)
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────

@@ -2055,7 +2055,7 @@ def view_run_results(request, sim_id, run_id):
     hz_plot_keys_json = _json.dumps([])
     hz_meta = {}
     if has_1hz_data:
-        _hz_pd = _load_run_1hz_plot_data(run)
+        _hz_pd = _load_run_1hz_plot_data(run, max_points=10_000_000)
         if _hz_pd:
             hz_x_values_json  = _json.dumps(_hz_pd['x_values'])
             hz_series_json    = _json.dumps(_hz_pd['series'][:3])

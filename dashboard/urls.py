@@ -43,6 +43,7 @@ urlpatterns = [
     path('wind-data/set-dir/', views.wind_data_set_dir, name='dashboard-wind-data-set-dir'),
     path('help/', views.help_page, name='dashboard-help'),
     path('help/git-pull/', views.git_pull, name='dashboard-git-pull'),
+    path('help/restart/', views.restart_app, name='dashboard-restart-app'),
     path('settings/', views.app_settings, name='dashboard-settings'),
     path('settings/save/', views.settings_save, name='dashboard-settings-save'),
 ]

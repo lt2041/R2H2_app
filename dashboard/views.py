@@ -294,6 +294,23 @@ def git_pull(request):
         return JsonResponse({'ok': False, 'output': str(exc), 'changed': False}, status=500)
 
 
+@require_POST
+def restart_app(request):
+    """POST: restart the R2H2 process by re-exec'ing the current Python interpreter."""
+    import os
+    import sys
+    import threading
+
+    def _do_restart():
+        import time
+        time.sleep(0.4)          # allow the JSON response to flush first
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    threading.Thread(target=_do_restart, daemon=True).start()
+    from django.http import JsonResponse
+    return JsonResponse({'ok': True})
+
+
 def create_simulation(request):
     """POST: create a new Simulation with name, description and optional M2M components."""
     from django.http import JsonResponse

@@ -269,7 +269,8 @@
             </ol>
         </div>
     </div>
-    <div class="modal-footer" style="padding:0.8rem 1.5rem;">
+    <div class="modal-footer" style="padding:0.8rem 1.5rem; display:flex; align-items:center; gap:0.75rem; justify-content:flex-end;">
+        <button id="update-restart-btn" onclick="restartApp()" style="display:none; background:#00695c; color:#fff; border:none; border-radius:6px; padding:0.45rem 1.1rem; font-size:0.9rem; font-weight:500; cursor:pointer;">Restart now</button>
         <a href="#!" class="modal-close btn-flat teal-text">Close</a>
     </div>
 </div>
@@ -289,15 +290,17 @@ function runGitPull() {
         const titleEl   = document.getElementById('update-modal-title');
         const summaryEl = document.getElementById('update-modal-summary');
         const outputEl  = document.getElementById('update-modal-output');
+        const restartBtn = document.getElementById('update-restart-btn');
         const restartEl = document.getElementById('update-restart-note');
         const winEl     = document.getElementById('update-windows-note');
 
         // Reset state
-        summaryEl.style.display = 'none';
-        summaryEl.textContent   = '';
-        outputEl.textContent    = '';
-        restartEl.style.display = 'none';
-        winEl.style.display     = 'none';
+        summaryEl.style.display  = 'none';
+        summaryEl.textContent    = '';
+        outputEl.textContent     = '';
+        restartEl.style.display  = 'none';
+        winEl.style.display      = 'none';
+        restartBtn.style.display = 'none';
 
         if (data.windows_locked) {
             // Windows file-lock case: friendly step-by-step, no raw pip output
@@ -313,7 +316,8 @@ function runGitPull() {
             titleEl.style.color = '#00695c';
             titleEl.textContent = 'Update complete';
             outputEl.textContent = data.output || '';
-            restartEl.style.display = 'block';
+            restartEl.style.display  = 'block';
+            restartBtn.style.display = 'inline-block';
         } else {
             titleEl.style.color = '#00695c';
             titleEl.textContent = 'Already up to date';
@@ -339,5 +343,23 @@ function runGitPull() {
 document.addEventListener('DOMContentLoaded', function() {
     M.Modal.init(document.getElementById('update-modal'));
 });
+
+function restartApp() {
+    const btn = document.getElementById('update-restart-btn');
+    btn.disabled = true;
+    btn.textContent = 'Restarting…';
+    fetch('{% url "dashboard-restart-app" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+    }).finally(function() {
+        // Poll until the server comes back up, then reload
+        function tryReload() {
+            fetch(window.location.href, { method: 'HEAD', cache: 'no-store' })
+                .then(function(r) { if (r.ok) window.location.reload(); else setTimeout(tryReload, 800); })
+                .catch(function() { setTimeout(tryReload, 800); });
+        }
+        setTimeout(tryReload, 1500);
+    });
+}
 </script>
 {% endblock %}

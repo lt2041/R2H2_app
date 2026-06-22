@@ -63,8 +63,15 @@ def create_config_file(data_root: str = None):
 
     if not data_root:
         default_base = Path.home()
-        val = input(f"Enter path to data root [{default_base}]: ").strip()
+        val = input(f"Enter path for R2H2 data [{default_base / 'r2h2_data'}]: ").strip()
         data_root = val or str(default_base)
+
+    # Always store data inside an 'r2h2_data' subfolder unless the user
+    # already ended their path with that name.
+    _p = Path(data_root).expanduser()
+    if _p.parts and _p.parts[-1].lower() != 'r2h2_data':
+        _p = _p / 'r2h2_data'
+    data_root = str(_p)
 
     resolved = Path(data_root).expanduser().resolve()
     already_existed = resolved.exists()
@@ -105,7 +112,7 @@ def get_or_create_config():
         return create_config_file(data_root=env_root)
     # Non-interactive context: don't prompt, use a safe default
     if not sys.stdin.isatty():
-        default_root = Path.home() / 'r2h2-data'
+        default_root = Path.home() / 'r2h2_data'
         return create_config_file(data_root=str(default_root))
     return create_config_file()
 

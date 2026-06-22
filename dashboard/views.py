@@ -2311,11 +2311,21 @@ def get_controller_file(request):
     from django.http import JsonResponse, Http404
     from r2h2.config import get_controllers_dir
     fname = request.GET.get('filename', '').strip()
-    if not fname or not fname.endswith('.py') or '/' in fname or '..' in fname:
+    if not fname or not fname.endswith('.py') or '/' in fname or '\\' in fname or '..' in fname:
         return JsonResponse({'error': 'Invalid filename.'}, status=400)
-    path = get_controllers_dir() / fname
+    ctrl_dir = get_controllers_dir()
+    path = ctrl_dir / fname
     if not path.exists():
-        raise Http404
+        # For default_controller.py, attempt to seed it now from the package
+        # template (handles Windows installs where seeding was skipped).
+        if fname == 'default_controller.py':
+            from pathlib import Path as _Path
+            template_src = _Path(__file__).resolve().parent.parent / 'r2h2' / 'defaults' / 'controller_template.py'
+            if template_src.exists():
+                import shutil as _shutil
+                _shutil.copy(template_src, path)
+        if not path.exists():
+            raise Http404
     return JsonResponse({'filename': fname, 'code': path.read_text(encoding='utf-8')})
 
 

@@ -583,10 +583,13 @@ def dynamicControl(units, battery, t_out, settings):
     # this proportional controller pushes SoC toward rControlTargetSoC
     # (default is typically 0.5 unless changed in simulation settings).
     soc_target = battery.rControlTargetSoC   # user-specified target SoC (0–1)
-    rBatteryProportion = np.clip(
-        soc_target - initial_soc,
-        -(1.0 - soc_target),
-        soc_target,
+    soc_error = soc_target - initial_soc
+    soc_error_abs = np.abs(soc_error)
+    # Apply battery correction only when SoC error magnitude exceeds deadband.
+    rBatteryProportion = np.where(
+        soc_error_abs > 0.1,
+        np.clip(soc_error, -(1.0 - soc_target), soc_target),
+        0.0,
     )
     # Positive demand charges the battery, negative demand discharges it.
     battery.arBatteryDemand = (

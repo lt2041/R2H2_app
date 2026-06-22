@@ -267,11 +267,9 @@ Default controller protection:
    - t_out.arTotalElectroDemand
    - t_out.aiIsOn
    - t_out.arProportionPower
-3. Optionally set:
+3. Optionally set (for logging):
   - t_out.arTotalElectroOn
-  - t_out.arElectroAvailablePowerA
   - t_out.arElectroAvailablePower
-  - battery.arBatteryDemand
 4. Test with a short simulation window first.
 5. Confirm no fallback warnings appear.
 6. Scale to longer runs only after behavior is stable.

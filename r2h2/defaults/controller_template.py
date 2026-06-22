@@ -61,47 +61,58 @@ import numpy as np
 
 
 def control(units, battery, t_out, settings):
-    """Default engineering controller.
+    """Built-in dispatch controller.
 
-    Implements battery SoC regulation, first-order power smoothing, and
-    degradation-priority electrolyser on/off dispatch.
+    Required outputs (for downstream simulation):
+    - t_out.arTotalElectroDemand: total electrolyser demand profile [W], length T.
+    - t_out.aiIsOn: ON/OFF status matrix, shape (num_units, T).
+    - t_out.arProportionPower: per-unit demand fractions, shape (num_units, T).
+
     """
     # ------------------------------------------------------------------
-    # Inputs
+    # Controller inputs (made explicit for readability)
     # ------------------------------------------------------------------
+    # 1) Total incoming power profile [W], length T (includes transient steps).
+    #    Downstream logging/output usually ignores the first rTransientSteps.
     total_available_power = np.asarray(t_out.arAvailablePower, dtype=float)
     T = len(total_available_power)
 
+    # 2) Electrolyser ON/OFF matrix [num_units, T].
+    #    Seed all timesteps from the previous known state (last column at entry)
+    #    so the controller starts from an explicit, fully populated baseline.
     num_units = len(units)
-
-    # Seed all timesteps from the last known ON/OFF state so the dispatch
-    # loop starts from a fully populated, consistent baseline.
     prev_on = np.asarray(t_out.aiIsOn[:, -1], dtype=int).reshape(num_units, 1)
     t_out.aiIsOn[:, :] = prev_on
 
-    # Degradation determines dispatch priority (least degraded turned on first,
-    # most degraded turned off first).
+    # 3) Total degradation per electrolyser unit, length num_units.
     degradation = np.array([u.rSummedDegradation for u in units], dtype=float)
 
-    initial_soc      = np.asarray(battery.arInitialSoC, dtype=float)
+    # 4) Battery SoC at controller entry.
+    initial_soc = np.asarray(battery.arInitialSoC, dtype=float)
+
+    # 5) Battery current usable capacity [J].
     battery_capacity = float(battery.rBatteryRating)
 
-    # ------------------------------------------------------------------
-    # 1. Battery SoC proportional regulator
-    # ------------------------------------------------------------------
-    soc_target = battery.rControlTargetSoC   # target SoC (0–1)
-    rBatteryProportion = np.clip(
-        soc_target - initial_soc,
-        -(1.0 - soc_target),
-        soc_target,
+    battery.arBatteryDemand = np.zeros_like(total_available_power)
+
+    # Battery SoC regulator (separate from electrolyser on/off dispatch):
+    # this proportional controller pushes SoC toward rControlTargetSoC
+    # (default is typically 0.5 unless changed in simulation settings).
+    soc_target = battery.rControlTargetSoC   # user-specified target SoC (0–1)
+    soc_error = soc_target - initial_soc
+    soc_error_abs = np.abs(soc_error)
+    # Apply battery correction only when SoC error magnitude exceeds deadband.
+    rBatteryProportion = np.where(
+        soc_error_abs > 0.1,
+        np.clip(soc_error, -(1.0 - soc_target), soc_target),
+        0.0,
     )
-    # Positive demand charges the battery; negative demand discharges it.
+    # Positive demand charges the battery, negative demand discharges it.
     battery.arBatteryDemand = (
         total_available_power * rBatteryProportion
     ) * battery.rBatteryProportionalGain
 
-    # Limit battery charge/discharge rate to 10 % of capacity per second
-    # and prevent discharging below zero SoC.
+    # Battery power-rate and SoC floor protection.
     per_sec_limit = 0.1 * battery_capacity / 3600.0
     battery.arBatteryDemand = np.clip(
         battery.arBatteryDemand, -per_sec_limit, per_sec_limit
@@ -109,37 +120,26 @@ def control(units, battery, t_out, settings):
     if float(np.atleast_1d(initial_soc).ravel()[-1]) <= 0.0:
         battery.arBatteryDemand = np.clip(battery.arBatteryDemand, 0.0, per_sec_limit)
 
-    # Power available to electrolysers after battery charging/discharging.
     t_out.arElectroAvailablePowerA = np.maximum(
         t_out.arAvailablePower - battery.arBatteryDemand, 0.0
     )
 
-    # ------------------------------------------------------------------
-    # 2. First-order exponential smoothing (τ = 30 s)
-    #    Smooths the power signal before dispatch decisions to avoid
-    #    rapid on/off cycling from wind fluctuations.
-    # ------------------------------------------------------------------
-    tau   = 30                          # time constant [s]
-    dt    = settings.rTimeStep
+    # Exponential smoothing (first-order low-pass)
+    tau = 30
+    dt = settings.rTimeStep
     alpha = dt / (tau + dt)
     t_out.arElectroAvailablePower = np.zeros_like(t_out.arElectroAvailablePowerA)
     t_out.arElectroAvailablePower[0] = t_out.arElectroAvailablePowerA[0]
-    for k in range(1, T):
+    for k in range(1, len(t_out.arElectroAvailablePowerA)):
         t_out.arElectroAvailablePower[k] = (
             alpha * t_out.arElectroAvailablePowerA[k]
             + (1.0 - alpha) * t_out.arElectroAvailablePower[k - 1]
         )
     t_out.rPreviousValue = float(t_out.arElectroAvailablePower[-1])
 
-    # ------------------------------------------------------------------
-    # 3. On/off dispatch
-    # ------------------------------------------------------------------
     rMin   = units[0].rMinPower_s
     rRated = units[0].rRatedPower_s
-
-    # Maximum units that could run given available power (floor ÷ min power).
     arMaxElectroSum = np.floor(t_out.arElectroAvailablePower / rMin).astype(int)
-    # Minimum units required to absorb available power (ceil ÷ rated power).
     arMinElectroSum = np.ceil(t_out.arElectroAvailablePower / rRated).astype(int)
 
     step0 = int(settings.rTransientSteps)
@@ -152,11 +152,10 @@ def control(units, battery, t_out, settings):
 
     for k in range(step0, T):
         t_out.aiIsOn[:, k] = t_out.aiIsOn[:, k - 1]
-        total_on_prev   = t_out.arTotalElectroOn[k - 1]
-        available_power = t_out.arElectroAvailablePower[k]
+        total_on_prev    = t_out.arTotalElectroOn[k - 1]
+        available_power  = t_out.arElectroAvailablePower[k]
 
         if arMinElectroSum[k] > total_on_prev and available_power > rMin * units[0].rDeadBandRatio:
-            # More power available — turn on least-degraded idle units first.
             rank = np.argsort(degradation)
             need = arMinElectroSum[k] - total_on_prev
             for idx in rank:
@@ -165,16 +164,13 @@ def control(units, battery, t_out, settings):
                 if t_out.aiIsOn[idx, k] == 0:
                     t_out.aiIsOn[idx, k] = 1
                     t_out.aiNumOn[idx] += 1
-                    # Mark warm-up window (10 min) for the newly started unit.
-                    endi = min(T, k + int(10 * 60 / dt))
+                    endi = min(T, k + int(10 * 60 / settings.rTimeStep))
                     t_out.aiWarmedUp[idx, k:endi] = 0
                     units[idx].rTotalTurnOns += 1
                     need -= 1
             t_out.arTotalElectroOn[k] = np.sum(t_out.aiIsOn[:, k])
 
         elif arMaxElectroSum[k] < total_on_prev:
-            # Power too low to keep all units above minimum — turn off
-            # most-degraded units first to protect healthier stacks.
             rank = np.argsort(degradation)
             need = int(total_on_prev - arMaxElectroSum[k])
             for idx in rank:
@@ -188,20 +184,15 @@ def control(units, battery, t_out, settings):
         else:
             t_out.arTotalElectroOn[k] = total_on_prev
 
-        # Equal sharing: each ON unit receives an equal fraction of total power.
         if t_out.arTotalElectroOn[k] > 0:
             t_out.arProportionPower[:, k] = (
                 t_out.aiIsOn[:, k] / t_out.arTotalElectroOn[k]
             )
 
-    # ------------------------------------------------------------------
-    # Required output: total demand profile clipped to physical bounds
-    # ------------------------------------------------------------------
+    # Required controller output: total demand profile.
     t_out.arTotalElectroDemand = np.clip(
         t_out.arElectroAvailablePower,
-        rMin   * t_out.arTotalElectroOn,
+        rMin * t_out.arTotalElectroOn,
         rRated * t_out.arTotalElectroOn,
     )
-
-    return units, t_out, battery
 

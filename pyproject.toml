@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "r2h2"
-version = "1.2.30"
+version = "1.2.31"
 description = "The Desktop App for R2H2."
 authors = [
     {name = "Renewable Tools Team", email = "r2h2@renewabletools.co.uk"},
@@ -21,6 +21,8 @@ dependencies = [
     "django>=5.2.12,<6",        # LTS (to Apr 2028)
     "scipy>=1.14.0",            # LTS-aligned; 1.14.x supports NumPy 2.x
     "h5py>=3.11.0",             # HDF5 file I/O for wind data
+    "waitress>=3.0.0",          # Production WSGI server (Windows-native, multi-threaded)
+    "pywebview>=5.0",           # Native desktop window (WebView2 on Windows, WebKit on macOS/Linux)
 ]
 
 [project.scripts]

@@ -243,9 +243,10 @@
 </div>
 
 <!-- Update result modal -->
-<div id="update-modal" class="modal" style="border-radius:8px; max-width:520px;">
+<div id="update-modal" class="modal" style="border-radius:8px; max-width:560px;">
     <div class="modal-content" style="padding:2rem;">
         <h5 id="update-modal-title" style="margin-top:0; color:#00695c;">Update complete</h5>
+        <p id="update-modal-summary" style="display:none; margin:0 0 0.8rem; font-size:0.95rem; color:#333; line-height:1.5; white-space:pre-wrap;"></p>
         <pre id="update-modal-output" style="background:#f5f7fa; border-radius:6px; padding:1rem; font-size:0.85rem; white-space:pre-wrap; word-break:break-all; max-height:260px; overflow-y:auto; color:#333;"></pre>
         <div id="update-restart-note" style="display:none; margin-top:1rem; padding:0.9rem 1rem; background:#e8f5e9; border-radius:6px; border-left:4px solid #43a047;">
             <strong style="color:#2e7d32;">Restart required</strong>
@@ -253,6 +254,19 @@
                 Press <kbd style="background:#e0e0e0; border-radius:3px; padding:0.1rem 0.4rem; font-family:monospace;">Ctrl+C</kbd> in the terminal where R2H2 is running, then restart with:
             </p>
             <pre style="margin:0.6rem 0 0; background:#fff; border-radius:4px; padding:0.5rem 0.8rem; font-size:0.9rem; color:#1b5e20;">r2h2</pre>
+        </div>
+        <div id="update-windows-note" style="display:none; margin-top:1rem; padding:0.9rem 1rem; background:#fff8e1; border-radius:6px; border-left:4px solid #f9a825;">
+            <strong style="color:#e65100;">Windows: manual step needed</strong>
+            <p style="margin:0.4rem 0 0; color:#444; font-size:0.95rem; line-height:1.5;">
+                The new version was downloaded but Windows is preventing the running executable from being replaced. To finish the upgrade:
+            </p>
+            <ol style="margin:0.5rem 0 0; padding-left:1.2rem; color:#444; font-size:0.92rem; line-height:1.8;">
+                <li>Close this window (stop R2H2)</li>
+                <li>Open a terminal / Anaconda Prompt and run:<br>
+                    <code style="background:#fff; border-radius:3px; padding:0.1rem 0.5rem; font-size:0.9rem;">pip install --upgrade r2h2</code>
+                </li>
+                <li>Restart R2H2</li>
+            </ol>
         </div>
     </div>
     <div class="modal-footer" style="padding:0.8rem 1.5rem;">
@@ -272,17 +286,48 @@ function runGitPull() {
     })
     .then(r => r.json())
     .then(data => {
-        document.getElementById('update-modal-title').textContent =
-            data.changed ? 'Update complete' : 'Already up to date';
-        document.getElementById('update-modal-output').textContent = data.output || '';
-        document.getElementById('update-restart-note').style.display =
-            data.changed ? 'block' : 'none';
+        const titleEl   = document.getElementById('update-modal-title');
+        const summaryEl = document.getElementById('update-modal-summary');
+        const outputEl  = document.getElementById('update-modal-output');
+        const restartEl = document.getElementById('update-restart-note');
+        const winEl     = document.getElementById('update-windows-note');
+
+        // Reset state
+        summaryEl.style.display = 'none';
+        summaryEl.textContent   = '';
+        outputEl.textContent    = '';
+        restartEl.style.display = 'none';
+        winEl.style.display     = 'none';
+
+        if (data.windows_locked) {
+            // Windows file-lock case: friendly step-by-step, no raw pip output
+            titleEl.style.color = '#e65100';
+            titleEl.textContent = 'Upgrade downloaded — one more step';
+            winEl.style.display = 'block';
+        } else if (!data.ok) {
+            // Generic failure
+            titleEl.style.color = '#c62828';
+            titleEl.textContent = 'Update failed';
+            outputEl.textContent = data.output || 'An unknown error occurred.';
+        } else if (data.changed) {
+            titleEl.style.color = '#00695c';
+            titleEl.textContent = 'Update complete';
+            outputEl.textContent = data.output || '';
+            restartEl.style.display = 'block';
+        } else {
+            titleEl.style.color = '#00695c';
+            titleEl.textContent = 'Already up to date';
+            outputEl.textContent = data.output || '';
+        }
+
         M.Modal.getInstance(document.getElementById('update-modal')).open();
     })
     .catch(err => {
+        document.getElementById('update-modal-title').style.color = '#c62828';
         document.getElementById('update-modal-title').textContent = 'Update failed';
         document.getElementById('update-modal-output').textContent = String(err);
         document.getElementById('update-restart-note').style.display = 'none';
+        document.getElementById('update-windows-note').style.display = 'none';
         M.Modal.getInstance(document.getElementById('update-modal')).open();
     })
     .finally(() => {

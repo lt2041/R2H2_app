@@ -86,35 +86,3 @@ class Run1HzViewTests(TestCase):
 
 		self.assertRedirects(response, reverse('dashboard-simulation-detail', args=[self.simulation.id]))
 
-	def test_run_1hz_data_endpoint_returns_full_resolution_for_small_zoom_window(self):
-		run = SimulationRun.objects.create(simulation=self.simulation, status=SimulationRun.DONE)
-		self._create_run_file(run, with_1hz=True, num_points=10)
-
-		response = self.client.get(
-			reverse('dashboard-run-1hz-data', args=[self.simulation.id, run.id]),
-			{
-				'start': '2024-03-09T00:00:02Z',
-				'end': '2024-03-09T00:00:04Z',
-			},
-		)
-
-		self.assertEqual(response.status_code, 200)
-		payload = response.json()
-		self.assertTrue(payload['is_full_resolution'])
-		self.assertEqual(payload['downsample_step'], 1)
-		self.assertEqual(payload['window_points'], 3)
-		self.assertEqual(payload['series'][0]['y'], [2.0, 3.0, 4.0])
-		self.assertEqual(payload['window_start'], '2024-03-09T00:00:02Z')
-
-	def test_run_1hz_data_endpoint_downsamples_large_window(self):
-		run = SimulationRun.objects.create(simulation=self.simulation, status=SimulationRun.DONE)
-		self._create_run_file(run, with_1hz=True, num_points=5001)
-
-		response = self.client.get(reverse('dashboard-run-1hz-data', args=[self.simulation.id, run.id]))
-
-		self.assertEqual(response.status_code, 200)
-		payload = response.json()
-		self.assertFalse(payload['is_full_resolution'])
-		self.assertGreater(payload['downsample_step'], 1)
-		self.assertEqual(payload['points_total'], 5001)
-		self.assertLessEqual(payload['points_shown'], 4000)

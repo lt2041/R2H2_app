@@ -972,13 +972,7 @@
                                style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;">
                                 <span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5
                             </a>
-                            {% if run.has_1hz_data %}
-                            <a href="{% url 'dashboard-run-1hz' sim_id=sim.id run_id=run.id %}"
-                               title="View 1Hz plots"
-                               style="color:#136b75;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;">
-                                <span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">monitoring</span>View 1Hz
-                            </a>
-                            {% endif %}
+
                         </div>
                         {% else %}
                         <span style="color:#ccc;font-size:0.8rem;">—</span>
@@ -1242,13 +1236,7 @@
                 if (data.output_path) {
                     var dlCell = document.getElementById('run-dl-' + RUN_ID);
                     if (dlCell) {
-                        var view1HzUrl = "{% url 'dashboard-run-1hz' sim_id=sim.id run_id=latest_run.id %}";
-                        var dlHtml = '<div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;">'
-                                   + '<a href="' + downloadUrl + '" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
-                        if (data.has_1hz_data) {
-                            dlHtml += '<a href="' + view1HzUrl + '" title="View 1Hz plots" style="color:#136b75;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">monitoring</span>View 1Hz</a>';
-                        }
-                        dlHtml += '</div>';
+                        var dlHtml = '<a href="' + downloadUrl + '" download title="Download HDF5 results" style="color:#00897b;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem;font-weight:600;"><span class="material-symbols-outlined" style="font-size:1rem;padding:0;transform:none;vertical-align:middle;">download</span>HDF5</a>';
                         dlCell.innerHTML = dlHtml;
                     }
                     var resultsUrl = "{% url 'dashboard-run-results' sim_id=sim.id run_id=latest_run.id %}";

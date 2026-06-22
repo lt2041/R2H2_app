@@ -1955,6 +1955,33 @@ def view_run_results(request, sim_id, run_id):
         ref = (yd.get('arSoc') or yd.get('arTotalH2') or yd.get('arElecOnAv') or [])
         cumulative += len(ref)
 
+    # 1Hz inline preview (first 3 channels)
+    run_1hz_info = _get_run_1hz_info(run)
+    has_1hz_data = run_1hz_info['has_1hz_data']
+    hz_x_values_json = _json.dumps([])
+    hz_series_json   = _json.dumps([])
+    hz_plot_keys_json = _json.dumps([])
+    hz_meta = {}
+    if has_1hz_data:
+        _hz_pd = _load_run_1hz_plot_data(run)
+        if _hz_pd:
+            hz_x_values_json  = _json.dumps(_hz_pd['x_values'])
+            hz_series_json    = _json.dumps(_hz_pd['series'][:3])
+            hz_plot_keys_json = _json.dumps(_hz_pd['plot_keys'][:3])
+            hz_meta = {
+                'points_total':       _hz_pd['points_total'],
+                'points_shown':       _hz_pd['points_shown'],
+                'window_points':      _hz_pd['window_points'],
+                'downsample_step':    _hz_pd['downsample_step'],
+                'is_full_resolution': _hz_pd['is_full_resolution'],
+                'window_start':       _hz_pd['window_start'],
+                'window_end':         _hz_pd['window_end'],
+                'start_hour':         _hz_pd['start_hour'],
+                'end_hour':           _hz_pd['end_hour'],
+                'output_name':        _hz_pd['output_name'],
+                'n_channels':         len(_hz_pd['series']),
+            }
+
     context = {
         'run': run,
         'sim': sim,
@@ -1967,6 +1994,11 @@ def view_run_results(request, sim_id, run_id):
         'xaxis_datetime': run.xaxis_datetime,
         'update_xaxis_url': f'/simulations/{sim_id}/run/{run_id}/xaxis/',
         'has_wind': sim.wind_inputs.exists(),
+        'has_1hz_data': has_1hz_data,
+        'hz_x_values_json': hz_x_values_json,
+        'hz_series_json': hz_series_json,
+        'hz_plot_keys_json': hz_plot_keys_json,
+        'hz_meta': hz_meta,
     }
     return render(request, 'dashboard/run_results.html', context)
 

@@ -213,6 +213,62 @@
     padding: 0.5rem 1rem; font-size: 0.88rem; cursor: pointer; color: #555;
 }
 #cs-modal-cancel:hover { border-color: #999; }
+
+/* ── 1Hz sub-hero banner ── */
+.hz-sub-hero {
+    background: linear-gradient(135deg, #0e5059 0%, #136b75 100%);
+    border-radius: 10px;
+    padding: 0.85rem 1.4rem 0.6rem;
+    box-shadow: 0 3px 12px rgba(19,107,117,0.22);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.hz-sub-hero-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem 2rem;
+}
+.hz-sub-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1.4rem;
+    flex: 1;
+}
+.hz-sub-meta-item { display: flex; flex-direction: column; gap: 0.1rem; }
+.hz-sub-meta-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #a8dde3;
+}
+.hz-sub-meta-value { font-size: 0.86rem; font-weight: 500; color: #ffffff; }
+.hz-sub-actions { margin-left: auto; flex-shrink: 0; }
+.hz-sub-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(255,255,255,0.15);
+    border: 1.5px solid rgba(255,255,255,0.4);
+    border-radius: 8px;
+    padding: 0.42rem 1rem;
+    color: #fff;
+    font-size: 0.81rem;
+    font-weight: 600;
+    text-decoration: none;
+    line-height: 1;
+    white-space: nowrap;
+}
+.hz-sub-btn:hover { background: rgba(255,255,255,0.25); color: #fff; }
+.hz-sub-btn .material-symbols-outlined { font-size: 0.95rem; padding: 0 !important; }
+.hz-sub-label {
+    font-size: 0.73rem;
+    color: rgba(200,240,243,0.75);
+    border-top: 1px solid rgba(255,255,255,0.12);
+    padding-top: 0.4rem;
+}
 </style>
 
 <!-- Load Plotly from CDN -->
@@ -339,7 +395,59 @@
 
     </div>
 
-    {% if has_wind %}
+    {% if has_1hz_data and hz_meta %}
+    <!-- ── 1 Hz inline preview ── -->
+    <div class="hz-sub-hero">
+        <div class="hz-sub-hero-inner">
+            <div class="hz-sub-meta">
+                <div class="hz-sub-meta-item">
+                    <span class="hz-sub-meta-label">Samples shown</span>
+                    <span class="hz-sub-meta-value">{{ hz_meta.points_shown }} / {{ hz_meta.points_total }}</span>
+                </div>
+                <div class="hz-sub-meta-item">
+                    <span class="hz-sub-meta-label">Channels</span>
+                    <span class="hz-sub-meta-value">{{ hz_meta.n_channels }}</span>
+                </div>
+                <div class="hz-sub-meta-item">
+                    <span class="hz-sub-meta-label">Window</span>
+                    <span class="hz-sub-meta-value">{{ hz_meta.window_points }} samples</span>
+                </div>
+                <div class="hz-sub-meta-item">
+                    <span class="hz-sub-meta-label">Time range</span>
+                    <span class="hz-sub-meta-value">Hour {{ hz_meta.start_hour }} – {{ hz_meta.end_hour }}</span>
+                </div>
+                <div class="hz-sub-meta-item">
+                    <span class="hz-sub-meta-label">File</span>
+                    <span class="hz-sub-meta-value">{{ hz_meta.output_name }}</span>
+                </div>
+                {% if hz_meta.downsample_step > 1 %}
+                <div class="hz-sub-meta-item">
+                    <span class="hz-sub-meta-label">Resolution</span>
+                    <span class="hz-sub-meta-value">1 / {{ hz_meta.downsample_step }} samples</span>
+                </div>
+                {% endif %}
+            </div>
+            <div class="hz-sub-actions">
+                <a class="hz-sub-btn" href="{% url 'dashboard-run-1hz' sim_id=sim.id run_id=run.id %}">
+                    <span class="material-symbols-outlined">open_in_new</span>Full 1Hz Viewer
+                </a>
+            </div>
+        </div>
+        <div class="hz-sub-label">1&thinsp;Hz data — showing first 3 channels (preview)</div>
+    </div>
+
+    <div class="charts-grid">
+        {% for i in "012" %}{% with forloop.counter0 as idx %}
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <span class="material-symbols-outlined">monitoring</span>
+                <span id="hz-inline-title-{{ idx }}">1Hz channel {{ idx }}</span>
+            </div>
+            <div class="chart-body"><div id="hz-inline-chart-{{ idx }}" style="height:280px;"></div></div>
+        </div>
+        {% endwith %}{% endfor %}
+    </div>
+    {% endif %}
     <!-- ── 1 Hz Wind Data card ── -->
     <!-- <div class="chart-card" id="wind-hz-card" style="margin-top: 0.5rem;">
         <div class="chart-card-header" id="wind-hz-header"
@@ -510,7 +618,6 @@
         }
     })();
     </script> -->
-    {% endif %}
 
     {% endif %}
 
@@ -1000,6 +1107,38 @@
             });
         });
     }
+
+    // ── Inline 1Hz preview charts ─────────────────────────────────────────
+    {% if has_1hz_data and hz_meta %}
+    (function() {
+        var hzX    = {{ hz_x_values_json|safe }};
+        var hzSeries = {{ hz_series_json|safe }};
+        var hzKeys   = {{ hz_plot_keys_json|safe }};
+
+        var HZ_LAYOUT = Object.assign({}, LAYOUT_DEFAULTS, {
+            xaxis: Object.assign({}, LAYOUT_DEFAULTS.xaxis, { type: 'date', automargin: true }),
+            yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis),
+            showlegend: false,
+        });
+
+        hzSeries.forEach(function(s, i) {
+            var el = document.getElementById('hz-inline-chart-' + i);
+            var titleEl = document.getElementById('hz-inline-title-' + i);
+            if (!el) return;
+            if (titleEl) titleEl.textContent = s.key;
+            Plotly.newPlot(el, [{
+                x: hzX,
+                y: s.y,
+                type: 'scattergl',
+                mode: 'lines',
+                name: s.key,
+                line: { color: '#136b75', width: 1.2 },
+            }], Object.assign({}, HZ_LAYOUT, {
+                yaxis: Object.assign({}, HZ_LAYOUT.yaxis, { title: s.key }),
+            }), { responsive: true, displayModeBar: false, scrollZoom: true });
+        });
+    })();
+    {% endif %}
 
     setTimeout(linkXaxes, 0);
 

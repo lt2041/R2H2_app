@@ -1585,11 +1585,18 @@ class R2H2():
         # ── Optionally pull DB values into component instances ───────────────
         if self.simulation_name is not None:
             self.map_to_db_objects()
-            # Override 1Hz collection settings from DB if not already set
-            if not _collect_1hz and self.simulation_name.collect_1hz_data:
-                collect_1hz_start_date = self.simulation_name.collect_1hz_start_date
-                collect_1hz_end_date = self.simulation_name.collect_1hz_end_date
+            # Override 1Hz collection settings from DB only when no explicit
+            # kwargs were supplied AND the DB says collection is enabled.
+            # Never re-enable collection when the DB says collect_1hz_data=False.
+            sim_db = self.simulation_name
+            if not _collect_1hz and getattr(sim_db, 'collect_1hz_data', False):
+                collect_1hz_start_date = sim_db.collect_1hz_start_date
+                collect_1hz_end_date = sim_db.collect_1hz_end_date
                 _collect_1hz = collect_1hz_start_date is not None and collect_1hz_end_date is not None
+            elif not getattr(sim_db, 'collect_1hz_data', True):
+                # Explicitly disabled in DB — ensure collection stays off even if
+                # dates were somehow passed in kwargs.
+                _collect_1hz = False
             # Override datum_date from DB if not already set
             if datum_date is None and hasattr(self.simulation_name, 'datum_date'):
                 datum_date = self.simulation_name.datum_date

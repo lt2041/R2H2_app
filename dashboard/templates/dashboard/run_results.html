@@ -684,6 +684,45 @@
 
     var baseMs = new Date(datumIso + 'T00:00:00Z').getTime();
 
+    // ── 1Hz shaded region on hourly charts ───────────────────────────────
+    // hz_meta.start_hour / end_hour are absolute hour indices from the run origin.
+    {% if has_1hz_data and hz_meta %}
+    var _hz1hzStartHour = {{ hz_meta.start_hour }};
+    var _hz1hzEndHour   = {{ hz_meta.end_hour }};
+    {% else %}
+    var _hz1hzStartHour = null;
+    var _hz1hzEndHour   = null;
+    {% endif %}
+
+    function hz1hzShape() {
+        if (_hz1hzStartHour === null || _hz1hzEndHour === null) return null;
+        var x0, x1;
+        if (useDateTime) {
+            x0 = new Date(baseMs + _hz1hzStartHour * 3600000).toISOString();
+            x1 = new Date(baseMs + (_hz1hzEndHour + 1) * 3600000).toISOString();
+        } else {
+            x0 = _hz1hzStartHour;
+            x1 = _hz1hzEndHour + 1;
+        }
+        return {
+            type: 'rect',
+            xref: 'x', yref: 'paper',
+            x0: x0, x1: x1,
+            y0: 0, y1: 1,
+            fillcolor: 'rgba(34,166,179,0.08)',
+            line: { width: 0 },
+            layer: 'below',
+        };
+    }
+
+    function withHz1hzShape(layout) {
+        var shape = hz1hzShape();
+        if (!shape) return layout;
+        var out = Object.assign({}, layout);
+        out.shapes = (layout.shapes || []).concat([shape]);
+        return out;
+    }
+
     // Build x values for a data array starting at cumulative hour offset
     function xvals(arr, cumHours) {
         if (!useDateTime) {
@@ -757,11 +796,11 @@
         });
         if (traces.length) {
             Plotly.newPlot('chart-h2', traces,
-                Object.assign({}, LAYOUT_DEFAULTS, {
+                withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 't H₂' }),
                     xaxis: xaxisLayout(),
                     showlegend: traces.length > 1,
-                }), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-h2').innerHTML = '<div class="no-data-notice">No H₂ production data.</div>';
         }
@@ -858,12 +897,12 @@
         });
         if (traces.length) {
             Plotly.newPlot('chart-eff', traces,
-                Object.assign({}, LAYOUT_DEFAULTS, {
+                withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
                               { title: '% of original', tickformat: '.1f', rangemode: 'tozero' }),
                     xaxis: xaxisLayout(),
                     showlegend: traces.length > 1,
-                }), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-eff').innerHTML = '<div class="no-data-notice">No electrolyser degradation data.</div>';
         }
@@ -907,12 +946,12 @@
         });
         if (traces.length) {
             Plotly.newPlot('chart-soc', traces,
-                Object.assign({}, LAYOUT_DEFAULTS, {
+                withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
                            { title: 'Fraction (0–1)', tickformat: '.3f' }),
                     xaxis: xaxisLayout(),
                     showlegend: true,
-                }), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-soc').innerHTML = '<div class="no-data-notice">No battery SoC data.</div>';
         }
@@ -939,12 +978,12 @@
         });
         if (traces.length) {
             Plotly.newPlot('chart-elec', traces,
-                Object.assign({}, LAYOUT_DEFAULTS, {
+                withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
                            { title: '% units on', range: [-5, 105] }),
                     xaxis: xaxisLayout(),
                     showlegend: traces.length > 1,
-                }), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-elec').innerHTML = '<div class="no-data-notice">No electrolyser availability data.</div>';
         }
@@ -989,11 +1028,11 @@
         });
         if (traces.length) {
             Plotly.newPlot('chart-power', traces,
-                Object.assign({}, LAYOUT_DEFAULTS, {
+                withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Power (W)' }),
                     xaxis: xaxisLayout(),
                     showlegend: true,
-                }), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-power').innerHTML = '<div class="no-data-notice">No power data available.</div>';
         }
@@ -1017,11 +1056,11 @@
         });
         if (traces.length) {
             Plotly.newPlot('chart-wind', traces,
-                Object.assign({}, LAYOUT_DEFAULTS, {
+                withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'm/s' }),
                     xaxis: xaxisLayout(),
                     showlegend: traces.length > 1,
-                }), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: true });
         } else {
             document.getElementById('chart-wind').innerHTML = '<div class="no-data-notice">No wind speed data.</div>';
         }
@@ -1121,6 +1160,8 @@
             showlegend: false,
         });
 
+        var hzDivs = [];
+
         hzSeries.forEach(function(s, i) {
             var el = document.getElementById('hz-inline-chart-' + i);
             var titleEl = document.getElementById('hz-inline-title-' + i);
@@ -1136,7 +1177,43 @@
             }], Object.assign({}, HZ_LAYOUT, {
                 yaxis: Object.assign({}, HZ_LAYOUT.yaxis, { title: s.key }),
             }), { responsive: true, displayModeBar: false, scrollZoom: true });
+            hzDivs.push(el);
         });
+
+        // ── Linked x-axis zoom across all 3 inline 1Hz charts ────────────
+        var _hzSyncPending = 0;
+
+        function linkHz1HzAxes() {
+            hzDivs.forEach(function(source) {
+                source.on('plotly_relayout', function(ed) {
+                    if (_hzSyncPending > 0) return;
+                    var x0 = ed['xaxis.range[0]'];
+                    var x1 = ed['xaxis.range[1]'];
+                    var autorange = ed['xaxis.autorange'];
+                    if (x0 === undefined && x1 === undefined && !autorange) return;
+                    var update = autorange
+                        ? { 'xaxis.autorange': true }
+                        : { 'xaxis.range': [x0, x1] };
+                    var targets = hzDivs.filter(function(t) { return t !== source; });
+                    _hzSyncPending += targets.length;
+                    targets.forEach(function(t) {
+                        Plotly.relayout(t, update).then(function() {
+                            _hzSyncPending = Math.max(0, _hzSyncPending - 1);
+                        });
+                    });
+                });
+
+                // Double-click on any chart resets all 3 to full range
+                source.on('plotly_doubleclick', function() {
+                    hzDivs.forEach(function(t) {
+                        Plotly.relayout(t, { 'xaxis.autorange': true });
+                    });
+                    return false; // prevent Plotly's own double-click reset (we handle it)
+                });
+            });
+        }
+
+        setTimeout(linkHz1HzAxes, 0);
     })();
     {% endif %}
 

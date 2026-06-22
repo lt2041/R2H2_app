@@ -600,6 +600,7 @@
             function doPlot() {
                 Plotly.newPlot(plotDiv, traces, layout, {
                     responsive: true, displaylogo: false,
+                    scrollZoom: false, doubleClick: 'reset',
                     modeBarButtonsToRemove: ['select2d','lasso2d','toImage'],
                 });
             }
@@ -776,27 +777,24 @@
     // ── Chart 1: H₂ Production (cumulative) ──────────────────────────────
     (function() {
         var traces = [];
-        yearsData.forEach(function(d, idx) {
-            if (!d.arTotalH2 || !d.arTotalH2.length) return;
-            var cumHours = yearCumulativeHours[idx] || 0;
-            var h2t = d.arTotalH2.map(function(v) { return v / 1e6; });
+        var _h2 = concatAllYears('arTotalH2', function(v) { return v / 1e6; });
+        if (_h2.x.length) {
             traces.push({
-                x: xvals(d.arTotalH2, cumHours), y: h2t,
+                x: _h2.x, y: _h2.y,
                 type: 'scatter', mode: 'lines',
-                fill: idx === 0 ? 'tozeroy' : 'none',
-                fillcolor: 'rgba(39,174,96,0.10)',
+                fill: 'tozeroy', fillcolor: 'rgba(39,174,96,0.10)',
                 line: { color: GREEN, width: 1.5 },
-                name: yearsData.length > 1 ? 'Year ' + (idx + 1) : 'Cumulative H₂',
-                hovertemplate: '%{y:.3f} t<extra>' + (yearsData.length > 1 ? 'Year ' + (idx + 1) : 'H₂') + '</extra>',
+                name: 'Cumulative H₂',
+                hovertemplate: '%{y:.3f} t<extra>H₂</extra>',
             });
-        });
+        }
         if (traces.length) {
             Plotly.newPlot('chart-h2', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 't H₂' }),
                     xaxis: xaxisLayout(),
-                    showlegend: traces.length > 1,
-                })), { responsive: true, displayModeBar: false, scrollZoom: true });
+                    showlegend: false,
+                })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
         } else {
             document.getElementById('chart-h2').innerHTML = '<div class="no-data-notice">No H₂ production data.</div>';
         }
@@ -843,35 +841,25 @@
             }
         });
 
+        var _peakXs = [], _peakYs = [], _sysXs = [], _sysYs = [];
         yearsData.forEach(function(d, idx) {
             var cumHours = yearCumulativeHours[idx] || 0;
             var peakEta = d.arEtaElPeak;
-
-            // Backward compatibility for older runs without arEtaElPeak in HDF5.
             if ((!peakEta || !peakEta.length) && d.arDegradationPerUnit && d.arDegradationPerUnit.length) {
                 var legacy = d.arDegradationPerUnit[0];
                 peakEta = legacy.map(function(v) { return Math.max(0, 1 - v); });
                 if (baselineEta == null) baselineEta = 1.0;
             }
-            if (!peakEta || !peakEta.length) return;
-
-            var effPct = peakEta.map(function(v) {
-                if (v == null || !isFinite(v) || v < 0) return null;
-                if (baselineEta == null || baselineEta <= 0) return v * 100;
-                return (v / baselineEta) * 100;
-            });
-            effPct = holdLastDuringOff(effPct, d.arElecOnAv);
-
-            var label = yearsData.length > 1 ? 'Year ' + (idx + 1) : 'Peak efficiency';
-            traces.push({
-                x: xvals(effPct, cumHours), y: effPct,
-                type: 'scatter', mode: 'lines',
-                line: { color: TEAL2, width: 1.4,
-                        dash: idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash') },
-                name: label,
-                hovertemplate: '%{y:.1f}%<extra>' + label + '</extra>',
-            });
-
+            if (peakEta && peakEta.length) {
+                var effPct = peakEta.map(function(v) {
+                    if (v == null || !isFinite(v) || v < 0) return null;
+                    if (baselineEta == null || baselineEta <= 0) return v * 100;
+                    return (v / baselineEta) * 100;
+                });
+                effPct = holdLastDuringOff(effPct, d.arElecOnAv);
+                _peakXs = _peakXs.concat(xvals(effPct, cumHours));
+                _peakYs = _peakYs.concat(effPct);
+            }
             var sysEta = d.arEtaSystemPeak;
             if (sysEta && sysEta.length) {
                 var sysPct = sysEta.map(function(v) {
@@ -880,17 +868,28 @@
                     return (v / baselineEta) * 100;
                 });
                 sysPct = holdLastDuringOff(sysPct, d.arElecOnAv);
-                var sysLabel = (yearsData.length > 1 ? 'Year ' + (idx + 1) + ' ' : '') + 'System';
-                traces.push({
-                    x: xvals(sysPct, cumHours), y: sysPct,
-                    type: 'scatter', mode: 'lines',
-                    line: { color: TEAL, width: 1.2,
-                            dash: idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash') },
-                    name: sysLabel,
-                    hovertemplate: '%{y:.1f}%<extra>' + sysLabel + '</extra>',
-                });
+                _sysXs = _sysXs.concat(xvals(sysPct, cumHours));
+                _sysYs = _sysYs.concat(sysPct);
             }
         });
+        if (_peakXs.length) {
+            traces.push({
+                x: _peakXs, y: _peakYs,
+                type: 'scatter', mode: 'lines',
+                line: { color: TEAL2, width: 1.4 },
+                name: 'Peak efficiency',
+                hovertemplate: '%{y:.1f}%<extra>Peak efficiency</extra>',
+            });
+        }
+        if (_sysXs.length) {
+            traces.push({
+                x: _sysXs, y: _sysYs,
+                type: 'scatter', mode: 'lines',
+                line: { color: TEAL, width: 1.2 },
+                name: 'System',
+                hovertemplate: '%{y:.1f}%<extra>System</extra>',
+            });
+        }
         if (traces.length) {
             Plotly.newPlot('chart-eff', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
@@ -898,7 +897,7 @@
                               { title: '% of original', tickformat: '.1f', rangemode: 'tozero' }),
                     xaxis: xaxisLayout(),
                     showlegend: traces.length > 1,
-                })), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
         } else {
             document.getElementById('chart-eff').innerHTML = '<div class="no-data-notice">No electrolyser degradation data.</div>';
         }
@@ -907,7 +906,7 @@
     // ── Chart 3: Battery SoC + rated capacity ────────────────────────────
     (function() {
         var traces = [];
-        var addedSocLabel = false, addedRatingLabel = false;
+        var _socXs = [], _socYs = [], _ratXs = [], _ratYs = [];
         yearsData.forEach(function(d, idx) {
             var cumHours = yearCumulativeHours[idx] || 0;
             var ratingFrac = null;
@@ -918,28 +917,32 @@
                 var socScaled = (ratingFrac && ratingFrac.length === d.arSoc.length)
                     ? d.arSoc.map(function(v, i) { return v * ratingFrac[i]; })
                     : d.arSoc;
-                var socLabel = yearsData.length > 1 ? 'SoC Y' + (idx + 1) : 'SoC';
-                traces.push({
-                    x: xvals(socScaled, cumHours), y: socScaled,
-                    type: 'scatter', mode: 'lines',
-                    line: { color: TEAL, width: 1.2,
-                            dash: idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash') },
-                    name: socLabel,
-                    hovertemplate: '%{y:.4f}<extra>' + socLabel + '</extra>',
-                });
+                _socXs = _socXs.concat(xvals(socScaled, cumHours));
+                _socYs = _socYs.concat(socScaled);
             }
             if (ratingFrac) {
-                var ratLabel = yearsData.length > 1 ? 'Capacity Y' + (idx + 1) : 'Rated capacity / original';
-                traces.push({
-                    x: xvals(ratingFrac, cumHours), y: ratingFrac,
-                    type: 'scatter', mode: 'lines',
-                    line: { color: AMBER, width: 1.4,
-                            dash: idx === 0 ? 'dash' : (idx === 1 ? 'longdash' : 'dashdot') },
-                    name: ratLabel,
-                    hovertemplate: '%{y:.4f}<extra>' + ratLabel + '</extra>',
-                });
+                _ratXs = _ratXs.concat(xvals(ratingFrac, cumHours));
+                _ratYs = _ratYs.concat(ratingFrac);
             }
         });
+        if (_socXs.length) {
+            traces.push({
+                x: _socXs, y: _socYs,
+                type: 'scatter', mode: 'lines',
+                line: { color: TEAL, width: 1.2 },
+                name: 'SoC',
+                hovertemplate: '%{y:.4f}<extra>SoC</extra>',
+            });
+        }
+        if (_ratXs.length) {
+            traces.push({
+                x: _ratXs, y: _ratYs,
+                type: 'scatter', mode: 'lines',
+                line: { color: AMBER, width: 1.4, dash: 'dash' },
+                name: 'Rated capacity / original',
+                hovertemplate: '%{y:.4f}<extra>Rated capacity</extra>',
+            });
+        }
         if (traces.length) {
             Plotly.newPlot('chart-soc', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
@@ -947,7 +950,7 @@
                            { title: 'Fraction (0–1)', tickformat: '.3f' }),
                     xaxis: xaxisLayout(),
                     showlegend: true,
-                })), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
         } else {
             document.getElementById('chart-soc').innerHTML = '<div class="no-data-notice">No battery SoC data.</div>';
         }
@@ -956,30 +959,33 @@
     // ── Chart 4: Electrolysers switched on % ─────────────────────────────
     (function() {
         var traces = [];
+        var _elecXs = [], _elecYs = [];
         yearsData.forEach(function(d, idx) {
             if (!d.arElecOnAv || !d.arElecOnAv.length) return;
             var cumHours = yearCumulativeHours[idx] || 0;
             var numUnits = d.iNumUnits || 1;
             var onPct = d.arElecOnAv.map(function(v) { return v / numUnits * 100; });
-            var label = yearsData.length > 1 ? 'Year ' + (idx + 1) : '% units on';
+            _elecXs = _elecXs.concat(xvals(onPct, cumHours));
+            _elecYs = _elecYs.concat(onPct);
+        });
+        if (_elecXs.length) {
             traces.push({
-                x: xvals(onPct, cumHours), y: onPct,
+                x: _elecXs, y: _elecYs,
                 type: 'scatter', mode: 'lines',
                 line: { color: AMBER, width: 1.2 },
-                fill: idx === 0 ? 'tozeroy' : 'none',
-                fillcolor: 'rgba(240,165,0,0.08)',
-                name: label,
-                hovertemplate: '%{y:.1f}%<extra>' + label + '</extra>',
+                fill: 'tozeroy', fillcolor: 'rgba(240,165,0,0.08)',
+                name: '% units on',
+                hovertemplate: '%{y:.1f}%<extra>% units on</extra>',
             });
-        });
+        }
         if (traces.length) {
             Plotly.newPlot('chart-elec', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
                            { title: '% units on', range: [-5, 105] }),
                     xaxis: xaxisLayout(),
-                    showlegend: traces.length > 1,
-                })), { responsive: true, displayModeBar: false, scrollZoom: true });
+                    showlegend: false,
+                })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
         } else {
             document.getElementById('chart-elec').innerHTML = '<div class="no-data-notice">No electrolyser availability data.</div>';
         }
@@ -988,47 +994,34 @@
     // ── Chart 5: Power ────────────────────────────────────────────────────
     (function() {
         var traces = [];
+        var _windXs = [], _windYs = [], _elPwrXs = [], _elPwrYs = [], _battXs = [], _battYs = [];
         yearsData.forEach(function(d, idx) {
             var cumHours = yearCumulativeHours[idx] || 0;
-            var ysfx = yearsData.length > 1 ? ' Y' + (idx + 1) : '';
-            var dash = idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash');
             if (d.arWindPower && d.arWindPower.length) {
-                traces.push({
-                    x: xvals(d.arWindPower, cumHours), y: d.arWindPower,
-                    type: 'scatter', mode: 'lines',
-                    line: { color: '#7ecbcf', width: 1.2, dash: dash },
-                    name: 'Wind' + ysfx,
-                    hovertemplate: '%{y:.3s}W<extra>Wind' + ysfx + '</extra>',
-                });
+                _windXs = _windXs.concat(xvals(d.arWindPower, cumHours));
+                _windYs = _windYs.concat(d.arWindPower);
             }
             if (d.arElectroPower && d.arElectroPower.length) {
-                traces.push({
-                    x: xvals(d.arElectroPower, cumHours), y: d.arElectroPower,
-                    type: 'scatter', mode: 'lines',
-                    line: { color: AMBER, width: 1.2, dash: dash },
-                    name: 'Electrolyser' + ysfx,
-                    hovertemplate: '%{y:.3s}W<extra>Electrolyser' + ysfx + '</extra>',
-                });
+                _elPwrXs = _elPwrXs.concat(xvals(d.arElectroPower, cumHours));
+                _elPwrYs = _elPwrYs.concat(d.arElectroPower);
             }
             if (d.arWindPower && d.arElectroPower &&
                     d.arWindPower.length === d.arElectroPower.length) {
                 var battPwr = d.arWindPower.map(function(v, i) { return v - d.arElectroPower[i]; });
-                traces.push({
-                    x: xvals(battPwr, cumHours), y: battPwr,
-                    type: 'scatter', mode: 'lines',
-                    line: { color: TEAL2, width: 1.2, dash: dash },
-                    name: 'Battery' + ysfx,
-                    hovertemplate: '%{y:.3s}W<extra>Battery' + ysfx + '</extra>',
-                });
+                _battXs = _battXs.concat(xvals(battPwr, cumHours));
+                _battYs = _battYs.concat(battPwr);
             }
         });
+        if (_windXs.length) traces.push({ x: _windXs, y: _windYs, type: 'scatter', mode: 'lines', line: { color: '#7ecbcf', width: 1.2 }, name: 'Wind', hovertemplate: '%{y:.3s}W<extra>Wind</extra>' });
+        if (_elPwrXs.length) traces.push({ x: _elPwrXs, y: _elPwrYs, type: 'scatter', mode: 'lines', line: { color: AMBER, width: 1.2 }, name: 'Electrolyser', hovertemplate: '%{y:.3s}W<extra>Electrolyser</extra>' });
+        if (_battXs.length) traces.push({ x: _battXs, y: _battYs, type: 'scatter', mode: 'lines', line: { color: TEAL2, width: 1.2 }, name: 'Battery', hovertemplate: '%{y:.3s}W<extra>Battery</extra>' });
         if (traces.length) {
             Plotly.newPlot('chart-power', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Power (W)' }),
                     xaxis: xaxisLayout(),
                     showlegend: true,
-                })), { responsive: true, displayModeBar: false, scrollZoom: true });
+                })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
         } else {
             document.getElementById('chart-power').innerHTML = '<div class="no-data-notice">No power data available.</div>';
         }
@@ -1037,26 +1030,29 @@
     // ── Chart 6: Wind speed ───────────────────────────────────────────────
     (function() {
         var traces = [];
+        var _wsXs = [], _wsYs = [];
         yearsData.forEach(function(d, idx) {
             if (!d.arWindSpeed || !d.arWindSpeed.length) return;
             var cumHours = yearCumulativeHours[idx] || 0;
-            var label = yearsData.length > 1 ? 'Year ' + (idx + 1) : 'Wind speed';
-            traces.push({
-                x: xvals(d.arWindSpeed, cumHours), y: d.arWindSpeed,
-                type: 'scatter', mode: 'lines',
-                line: { color: '#7ecbcf', width: 1,
-                        dash: idx === 0 ? 'solid' : (idx === 1 ? 'dot' : 'dash') },
-                name: label,
-                hovertemplate: '%{y:.2f} m/s<extra>' + label + '</extra>',
-            });
+            _wsXs = _wsXs.concat(xvals(d.arWindSpeed, cumHours));
+            _wsYs = _wsYs.concat(d.arWindSpeed);
         });
+        if (_wsXs.length) {
+            traces.push({
+                x: _wsXs, y: _wsYs,
+                type: 'scatter', mode: 'lines',
+                line: { color: '#7ecbcf', width: 1 },
+                name: 'Wind speed',
+                hovertemplate: '%{y:.2f} m/s<extra>Wind speed</extra>',
+            });
+        }
         if (traces.length) {
             Plotly.newPlot('chart-wind', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
                     yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'm/s' }),
                     xaxis: xaxisLayout(),
-                    showlegend: traces.length > 1,
-                })), { responsive: true, displayModeBar: false, scrollZoom: true });
+                    showlegend: false,
+                })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
         } else {
             document.getElementById('chart-wind').innerHTML = '<div class="no-data-notice">No wind speed data.</div>';
         }
@@ -1172,7 +1168,7 @@
                 line: { color: '#136b75', width: 1.2 },
             }], Object.assign({}, HZ_LAYOUT, {
                 yaxis: Object.assign({}, HZ_LAYOUT.yaxis, { title: s.key }),
-            }), { responsive: true, displayModeBar: false, scrollZoom: true });
+            }), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
             hzDivs.push(el);
         });
 

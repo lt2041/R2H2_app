@@ -1,0 +1,233 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<style>
+    .settings-card {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 12px rgba(34,166,179,0.10);
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .settings-card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.85rem 1.25rem;
+        background: linear-gradient(135deg, #136b75, #22a6b3);
+        color: #fff;
+        font-family: 'Ubuntu', sans-serif;
+        font-size: 1rem;
+        font-weight: 500;
+    }
+    .settings-card-body {
+        padding: 1.25rem 1.5rem;
+    }
+    .setting-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1.4rem;
+    }
+    .setting-row:last-child { margin-bottom: 0; }
+    .setting-label {
+        flex: 0 0 160px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #4a7a80;
+        padding-top: 0.55rem;
+    }
+    .setting-field {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+    .setting-input {
+        width: 100%;
+        max-width: 480px;
+        padding: 0.45rem 0.75rem;
+        border: 1.5px solid #b2e0e4;
+        border-radius: 6px;
+        font-size: 0.88rem;
+        font-family: monospace;
+        color: #1a2e30;
+        background: #f5fdfe;
+        outline: none;
+        transition: border-color 0.15s;
+    }
+    .setting-input:focus { border-color: #22a6b3; background: #fff; }
+    .setting-hint {
+        font-size: 0.75rem;
+        color: #7fadb5;
+        line-height: 1.4;
+    }
+    .setting-save-btn {
+        margin-top: 0.5rem;
+        padding: 0.4rem 1.1rem;
+        background: #22a6b3;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-family: 'Ubuntu', sans-serif;
+        cursor: pointer;
+        font-weight: 500;
+        transition: background 0.15s;
+    }
+    .setting-save-btn:hover { background: #1a8a96; }
+    .setting-save-btn:disabled { background: #a0d0d6; cursor: default; }
+    .setting-msg {
+        font-size: 0.78rem;
+        margin-top: 0.25rem;
+        min-height: 1.1em;
+    }
+    .info-row {
+        display: flex;
+        align-items: baseline;
+        gap: 1rem;
+        margin-bottom: 0.6rem;
+        font-size: 0.85rem;
+    }
+    .info-label { flex: 0 0 160px; color: #4a7a80; font-weight: 600; }
+    .info-val   { color: #1a2e30; font-family: monospace; word-break: break-all; }
+</style>
+
+<div style="max-width: 780px;">
+    <h5 style="font-family:'Ubuntu',sans-serif; color:#136b75; margin:0 0 1.5rem;">
+        <span class="material-symbols-outlined" style="vertical-align:middle; margin-right:0.3rem; color:#22a6b3;">settings</span>
+        Settings
+    </h5>
+
+    <!-- ── App info ── -->
+    <div class="settings-card">
+        <div class="settings-card-header">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;">info</span>
+            App info
+        </div>
+        <div class="settings-card-body">
+            <div class="info-row">
+                <span class="info-label">Version</span>
+                <span class="info-val">{{ app_version }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Config file</span>
+                <span class="info-val">{{ config_path }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Data root</span>
+                <span class="info-val">{{ data_root }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Controllers dir</span>
+                <span class="info-val">{{ controllers_dir }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Wind data dir</span>
+                <span class="info-val">{{ wind_data_dir }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Data root ── -->
+    <div class="settings-card">
+        <div class="settings-card-header">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;">folder_open</span>
+            Data root directory
+        </div>
+        <div class="settings-card-body">
+            <div class="setting-row">
+                <div class="setting-label">Path</div>
+                <div class="setting-field">
+                    <input id="data-root-input" class="setting-input"
+                           type="text" value="{{ data_root }}"
+                           placeholder="e.g. C:\Users\you\r2h2_data">
+                    <span class="setting-hint">
+                        Root folder where R2H2 stores the database, simulation outputs,
+                        controller files and wind data. Changing this requires a restart.
+                    </span>
+                    <div>
+                        <button class="setting-save-btn" onclick="saveDataRoot()">Save</button>
+                    </div>
+                    <div id="data-root-msg" class="setting-msg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Wind data dir ── -->
+    <div class="settings-card">
+        <div class="settings-card-header">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;">air</span>
+            Wind data directory
+        </div>
+        <div class="settings-card-body">
+            <div class="setting-row">
+                <div class="setting-label">Path</div>
+                <div class="setting-field">
+                    <input id="wind-dir-input" class="setting-input"
+                           type="text" value="{{ wind_data_dir }}"
+                           placeholder="e.g. C:\Users\you\r2h2_data\wind_data">
+                    <span class="setting-hint">
+                        Folder where uploaded HDF5 wind files are stored.
+                        Defaults to <code>wind_data</code> inside the data root.
+                        Changing this does not move existing files.
+                    </span>
+                    <div>
+                        <button class="setting-save-btn" onclick="saveWindDir()">Save</button>
+                    </div>
+                    <div id="wind-dir-msg" class="setting-msg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+var _csrf = '{{ csrf_token }}';
+
+function _post(url, body, msgEl, btn) {
+    btn.disabled = true;
+    msgEl.style.color = '#7fadb5';
+    msgEl.textContent = 'Saving…';
+    return fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': _csrf, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            msgEl.style.color = '#2e7d32';
+            msgEl.textContent = '✓ Saved. ' + (data.note || '');
+        } else {
+            msgEl.style.color = '#c62828';
+            msgEl.textContent = '✗ ' + (data.error || 'Failed to save.');
+        }
+    })
+    .catch(function(err) {
+        msgEl.style.color = '#c62828';
+        msgEl.textContent = '✗ ' + String(err);
+    })
+    .finally(function() { btn.disabled = false; });
+}
+
+function saveDataRoot() {
+    var val = document.getElementById('data-root-input').value.trim();
+    var msg = document.getElementById('data-root-msg');
+    var btn = event.target;
+    if (!val) { msg.style.color='#c62828'; msg.textContent='Path cannot be empty.'; return; }
+    _post('{% url "dashboard-settings-save" %}', { key: 'data_root', value: val }, msg, btn);
+}
+
+function saveWindDir() {
+    var val = document.getElementById('wind-dir-input').value.trim();
+    var msg = document.getElementById('wind-dir-msg');
+    var btn = event.target;
+    if (!val) { msg.style.color='#c62828'; msg.textContent='Path cannot be empty.'; return; }
+    _post('{% url "dashboard-settings-save" %}', { key: 'wind_data_dir', value: val }, msg, btn);
+}
+</script>
+{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "dashboard/base.html" %}
 {% load browse_extras %}
-{% block title %}{{ sim.name }}{% endblock %}
+{% block title %}Simulations — {{ sim.name }}{% endblock %}
 
 {% block extrahead %}
 <!-- CodeMirror 5 — Python syntax highlighting for the controller editor -->
@@ -2306,6 +2306,23 @@
                     wrap.dataset.savedEnd   = end;
                 }
                 showDateRangeMsg('', '');
+                // Nudge 1Hz dates if they are now out of bounds
+                var hzStartEl = document.getElementById('ss-1hz-start-date');
+                var hzEndEl   = document.getElementById('ss-1hz-end-date');
+                if (hzStartEl && hzStartEl.value && hzStartEl.value < start) {
+                    hzStartEl.value = start;
+                }
+                if (hzEndEl && hzEndEl.value && hzEndEl.value > end) {
+                    hzEndEl.value = end;
+                }
+                if (hzStartEl && hzStartEl.value && hzEndEl && hzEndEl.value && hzStartEl.value > hzEndEl.value) {
+                    hzEndEl.value = hzStartEl.value;
+                }
+                // Trigger a save for 1Hz if its mode is active
+                var hzModeEl = document.getElementById('ss-1hz-mode');
+                if (hzModeEl && hzModeEl.value === 'save') {
+                    save1HzRange();
+                }
             })
             .catch(function(err) {
                 showDateRangeMsg(err && err.message ? err.message : 'Failed to save date range.', '#d84040');

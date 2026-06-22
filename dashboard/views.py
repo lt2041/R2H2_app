@@ -34,6 +34,67 @@ def landing(request):
     return render(request, 'dashboard/landing.html', context)
 
 
+def app_settings(request):
+    """GET: render the settings page."""
+    from r2h2.config import (
+        get_config_path, load_config, get_controllers_dir, get_wind_data_dir,
+    )
+    from importlib.metadata import version as _pkg_version
+    try:
+        app_version = _pkg_version('r2h2')
+    except Exception:
+        app_version = 'dev'
+    cfg = load_config() or {}
+    data_root    = cfg.get('paths', {}).get('data_root', '')
+    wind_data_dir = cfg.get('paths', {}).get('wind_data_dir', '')
+    if not wind_data_dir:
+        try:
+            wind_data_dir = str(get_wind_data_dir())
+        except Exception:
+            wind_data_dir = ''
+    try:
+        controllers_dir = str(get_controllers_dir())
+    except Exception:
+        controllers_dir = ''
+    return render(request, 'dashboard/settings.html', {
+        'app_version':    app_version,
+        'config_path':    str(get_config_path()),
+        'data_root':      data_root,
+        'wind_data_dir':  wind_data_dir,
+        'controllers_dir': controllers_dir,
+    })
+
+
+@require_POST
+def settings_save(request):
+    """POST: persist a single settings key (data_root or wind_data_dir)."""
+    from django.http import JsonResponse
+    import json as _json
+    from r2h2.config import update_data_root, update_wind_data_dir, invalidate_controllers_dir_cache
+    try:
+        body = _json.loads(request.body)
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON.'}, status=400)
+    key   = body.get('key', '')
+    value = body.get('value', '').strip()
+    if not value:
+        return JsonResponse({'ok': False, 'error': 'Value cannot be empty.'}, status=400)
+    if key == 'data_root':
+        try:
+            update_data_root(value)
+            invalidate_controllers_dir_cache()
+            return JsonResponse({'ok': True, 'note': 'Restart R2H2 for the change to take full effect.'})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+    elif key == 'wind_data_dir':
+        try:
+            update_wind_data_dir(value)
+            return JsonResponse({'ok': True})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+    return JsonResponse({'ok': False, 'error': f'Unknown key: {key}'}, status=400)
+
+
 def help_page(request):
     """Help & guide page."""
     import sys

@@ -207,6 +207,25 @@ def git_pull(request):
         )
         output = (result.stdout + result.stderr).strip()
         ok = result.returncode == 0
+        # On Windows, pip may fail with PermissionError because the running
+        # r2h2.exe is locked.  Detect this and give a clear instruction.
+        import sys as _sys
+        if not ok and _sys.platform == 'win32' and (
+            'permissionerror' in output.lower()
+            or 'access is denied' in output.lower()
+            or '.exe' in output.lower() and 'error' in output.lower()
+        ):
+            summary = (
+                f'Upgrade to v{latest_tag} downloaded but could not replace the '
+                f'running executable — Windows locks files that are in use.\n\n'
+                f'To complete the upgrade:\n'
+                f'  1. Close R2H2 (stop the server).\n'
+                f'  2. Run: pip install --upgrade r2h2\n'
+                f'  3. Restart R2H2.\n\n'
+                f'Technical detail:\n{output}'
+            )
+            return JsonResponse({'ok': False, 'output': summary, 'changed': False,
+                                 'windows_locked': True})
         summary = (f'Updated v{current_version} → v{latest_tag}\n\n{output}'
                    if ok else output)
         return JsonResponse({'ok': ok, 'output': summary, 'changed': ok})

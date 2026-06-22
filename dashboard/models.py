@@ -351,7 +351,7 @@ class ElectrolyserUnit(models.Model):
     rAncillaryPowerFrac = models.FloatField(default=0.0, help_text="The fraction of the rated power that must always be provided for the system (for ancillary services and BOP)")
     rDeadBandRatio = models.FloatField(default=2.0, help_text="Used by the controller")
     # RAMP_LIMITS
-    rRampUp_W_s = models.FloatField(default=2.05e5, null=True, blank=True, help_text="Positive ramp rate limit for the electrolyser")
+    rRampUp_W_s = models.FloatField(default=5.0e5, null=True, blank=True, help_text="Positive ramp rate limit for the electrolyser")
     rRampDown_W_s = models.FloatField(default=5.05e5, null=True, blank=True, help_text="Negative ramp rate limit for the electrolyser")
     # DERIVED
     iNumUnits = models.PositiveIntegerField(default=None, blank=True, null=True, help_text="The number of units in the system (worked out by the code)")

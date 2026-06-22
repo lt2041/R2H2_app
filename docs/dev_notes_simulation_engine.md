@@ -122,7 +122,7 @@ _TECH_PRESETS = {
         "dynamics": {
             "rTimeConst": 30.0, "rDeadBandRatio": 2.0,
             "r_s": 1.42e-10, "r_f": 3.33e-7, "r_o": 1.47e-4,
-            "rRampUp_W_s": 2.0e5, "rRampDown_W_s": 5.0e5,
+            "rRampUp_W_s": 5.0e5, "rRampDown_W_s": 5.0e5,
         },
     },
 }

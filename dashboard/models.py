@@ -111,16 +111,29 @@ class Simulation(models.Model):
         help_text='End date for 1Hz data collection (inclusive). Must be after or equal to start_date. Long ranges create very large output files.')
 
     def clean(self):
-        """Validate 1Hz data collection settings."""
+        """Validate date ranges for simulation and 1Hz data collection."""
         from django.core.exceptions import ValidationError
-        
+
+        # 1. Simulation date range
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValidationError('Simulation start_date must be before or equal to end_date.')
+
+        # 2. 1Hz data collection settings
         if self.collect_1hz_data:
             if not self.collect_1hz_start_date or not self.collect_1hz_end_date:
                 raise ValidationError(
-                    'Both collect_1hz_start_date and collect_1hz_end_date must be set when collecting 1Hz data.')
+                    'Both start and end dates must be set when collecting 1Hz data.')
             if self.collect_1hz_start_date > self.collect_1hz_end_date:
                 raise ValidationError(
-                    'collect_1hz_start_date must be before or equal to collect_1hz_end_date.')
+                    '1Hz data collection start_date must be before or equal to end_date.')
+
+            # 1Hz range must be within the main simulation range, if specified.
+            if self.start_date and self.collect_1hz_start_date < self.start_date:
+                raise ValidationError(
+                    '1Hz data collection cannot start before the main simulation start date.')
+            if self.end_date and self.collect_1hz_end_date > self.end_date:
+                raise ValidationError(
+                    '1Hz data collection cannot end after the main simulation end date.')
 
     def __str__(self):
         return f"ID: {self.id}, Name: {self.name}"

@@ -1,7 +1,7 @@
 {% extends "dashboard/base.html" %}
 {% load static browse_extras %}
 
-{% block title %}Wind Data – R2H2{% endblock %}
+{% block title %}Wind Data{% endblock %}
 
 {% block content %}
 
@@ -89,29 +89,6 @@
     .sim-tip a { color: #a8e6ec; }
     .sim-tip a:hover { color: #fff; }
 </style>
-
-<!-- ── Storage directory card ───────────────────────────────────────────── -->
-<div style="margin-bottom:1.1rem;">
-    <div class="card z-depth-1" style="margin:0;">
-      <div class="card-content" style="padding-bottom:8px;">
-        <span class="card-title" style="font-size:1rem; font-weight:500;">
-          <span class="material-symbols-outlined" style="vertical-align:middle; font-size:1.2rem; margin-right:6px;">folder_open</span>
-          Storage directory
-        </span>
-        <div class="input-field" style="margin-top:8px; margin-bottom:4px;">
-          <input id="wind-dir-input" type="text" value="{{ wind_dir }}" style="font-family:monospace; font-size:0.9rem;">
-          <label for="wind-dir-input" class="active">Wind data directory (saved to config.yaml)</label>
-        </div>
-        <p id="dir-feedback" class="grey-text text-darken-1" style="font-size:0.82rem; min-height:1.2em;"></p>
-      </div>
-      <div class="card-action" style="padding-top:6px;">
-        <a id="save-dir-btn" class="btn-small teal lighten-1 waves-effect waves-light white-text">
-          <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">save</span>
-          Save directory
-        </a>
-      </div>
-    </div>
-</div>
 
 <!-- ── Dropzone card ────────────────────────────────────────────────────── -->
 <div style="margin-bottom:1.1rem;">
@@ -302,9 +279,6 @@
   const uploadList = document.getElementById('upload-list');
   const uploadBtn  = document.getElementById('upload-btn');
   const uploadStatus = document.getElementById('upload-status');
-  const saveDirBtn = document.getElementById('save-dir-btn');
-  const dirInput   = document.getElementById('wind-dir-input');
-  const dirFeedback = document.getElementById('dir-feedback');
 
   let pendingFiles = [];
 

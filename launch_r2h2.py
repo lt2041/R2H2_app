@@ -243,6 +243,12 @@ def main():
     # does a full process-tree kill — no ghost Python/simulation processes left.
     _setup_windows_ctrl_c()
 
+    # Set the console window title so it shows "R2H2" instead of "python"
+    # in the taskbar and Task Manager.
+    if sys.platform == 'win32':
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleTitleW('R2H2')
+
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'r2h2_ui.settings')
     print_colored(f"  Python  : {get_python_executable()}", Colors.NC)
 

@@ -45,10 +45,15 @@
 <body>
 
     <!-- Top Navbar -->
-    <nav class="teal lighten-2">
+    <nav class="teal lighten-2" style="height:56px; line-height:56px;">
         <div class="nav-wrapper">
-            <a href="{% url 'dashboard-landing' %}" class="brand-logo" style="margin-left:20px;">R2H2</a>
-            <a href="#" data-target="slide-out" class="sidenav-trigger right" style="margin-right:20px;"><span class="material-symbols-outlined">menu</span></a>
+            <div class="col s12" style="display:flex; align-items:center; height:100%;">
+                <a href="{% url 'dashboard-landing' %}" class="brand-logo" style="margin-left:20px; font-size:1.5rem;">R2H2</a>
+                <div id="breadcrumb-container" style="margin-left:180px; flex-grow:1;">
+                    <!-- Breadcrumbs will be injected here by JS -->
+                </div>
+                <a href="#" data-target="slide-out" class="sidenav-trigger right" style="margin-right:20px;"><span class="material-symbols-outlined">menu</span></a>
+            </div>
         </div>
     </nav>
 
@@ -81,6 +86,10 @@
             <span class="material-symbols-outlined">settings</span>
             Settings
         </a></li> -->
+        <li><a href="{% url 'dashboard-settings' %}" class="black-text">
+            <span class="material-symbols-outlined">settings</span>
+            Settings
+        </a></li>
         <li><a href="{% url 'dashboard-help' %}" class="black-text">
             <span class="material-symbols-outlined">help</span>
             Help
@@ -96,6 +105,7 @@
     <!-- Reformat UTC datetimes to browser local timezone (handles BST etc.) -->
     <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // Datetime formatter
         const fmtLong  = new Intl.DateTimeFormat(undefined, {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
         const fmtShort = new Intl.DateTimeFormat(undefined, {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false});
         document.querySelectorAll('time.local-dt').forEach(function (el) {
@@ -104,6 +114,24 @@
             const hasSec = el.textContent.split(':').length === 3;
             el.textContent = (hasSec ? fmtLong : fmtShort).format(dt).replace(/,/g, '');
         });
+
+        // Breadcrumb generator
+        const breadcrumbContainer = document.getElementById('breadcrumb-container');
+        if (breadcrumbContainer) {
+            const title = document.title;
+            const parts = title.split('—').map(s => s.trim()).filter(Boolean);
+            parts.forEach((part, i) => {
+                const a = document.createElement('a');
+                a.href = '#!'; // Not clickable for now
+                a.className = 'breadcrumb';
+                a.textContent = part;
+                if (i === parts.length - 1) {
+                    a.style.color = '#fff';
+                    a.style.fontWeight = '500';
+                }
+                breadcrumbContainer.appendChild(a);
+            });
+        }
     });
     </script>
     <!-- Materialize JS -->

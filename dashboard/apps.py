@@ -10,6 +10,16 @@ class DashboardConfig(AppConfig):
         connection_created.connect(_configure_sqlite_connection)
         post_migrate.connect(_seed_default_controller, sender=self)
         post_migrate.connect(_seed_main_model, sender=self)
+        # Mark any runs left in RUNNING state (e.g. server killed or system
+        # slept mid-run) as ERROR so the UI doesn't show stale spinners.
+        try:
+            from dashboard.models import SimulationRun
+            SimulationRun.objects.filter(status=SimulationRun.RUNNING).update(
+                status=SimulationRun.ERROR,
+                message='Interrupted — server was restarted before this run completed.',
+            )
+        except Exception:
+            pass  # DB may not exist yet on first migrate
 
 
 def _configure_sqlite_connection(connection, **kwargs):

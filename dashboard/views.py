@@ -1203,30 +1203,27 @@ def _run_simulation_thread(run_id):
         run.run_end_date   = effective_end
         run.save(update_fields=['run_start_date', 'run_end_date'])
 
-        _progress_interval = None  # computed inside _on_progress from total_hours
-        _progress_db_min_seconds = 3   # minimum wall-clock spacing between DB writes
+        _PROGRESS_INTERVAL_SECONDS = 10.0  # write a progress update every 10 s of wall time
         _progress_start = timezone.now()
-        _last_progress_write_at = _progress_start
         _last_progress_msg = None
+        _progress_write_count = 0  # counts DB writes made so far
 
         def _on_progress(year, total_years, hour, total_hours):
-            nonlocal _last_progress_write_at, _last_progress_msg
+            nonlocal _last_progress_msg, _progress_write_count
 
             total_steps = total_years * total_hours
             done_steps = year * total_hours + hour
             is_final_progress_tick = bool(total_steps) and done_steps + 1 >= total_steps
 
-            # ~20 evenly-spaced updates across the sim, regardless of total length
-            interval = max(1, total_hours // 20)
-            if hour % interval != 0 and not is_final_progress_tick:
-                return
-
             now = timezone.now()
-            if (now - _last_progress_write_at).total_seconds() < _progress_db_min_seconds and not is_final_progress_tick:
+            elapsed = (now - _progress_start).total_seconds()
+
+            # Write whenever elapsed crosses the next 10 s boundary
+            next_threshold = (_progress_write_count + 1) * _PROGRESS_INTERVAL_SECONDS
+            if elapsed < next_threshold and not is_final_progress_tick:
                 return
 
             pct = int(done_steps / total_steps * 100) if total_steps else 0
-            elapsed = (now - _progress_start).total_seconds()
             if done_steps > 0 and elapsed > 0:
                 total_s = elapsed / done_steps * total_steps
                 finish_at = _progress_start + timezone.timedelta(seconds=total_s)
@@ -1245,7 +1242,7 @@ def _run_simulation_thread(run_id):
             if msg != _last_progress_msg:
                 SimulationRun.objects.filter(pk=run.pk).update(message=msg)
                 _last_progress_msg = msg
-                _last_progress_write_at = now
+                _progress_write_count += 1
 
         # Prepare 1Hz collection parameters if enabled.
         # When the wind file is sliced to a simulation date range, the run's

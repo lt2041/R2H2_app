@@ -186,12 +186,15 @@ def get_controllers_dir() -> Path:
 
     ctrl_dir.mkdir(parents=True, exist_ok=True)
 
-    # Seed with the built-in template if the folder is empty
-    if not any(ctrl_dir.glob("*.py")):
+    # Always ensure default_controller.py is present — copy the built-in
+    # template if it is missing (handles first run, reinstall, or cases where
+    # the folder already exists but the file was never seeded).
+    default_dst = ctrl_dir / "default_controller.py"
+    if not default_dst.exists():
         template_src = Path(__file__).resolve().parent / "defaults" / "controller_template.py"
         if template_src.exists():
             import shutil
-            shutil.copy(template_src, ctrl_dir / "default_controller.py")
+            shutil.copy(template_src, default_dst)
 
     return ctrl_dir
 

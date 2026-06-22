@@ -471,21 +471,29 @@ def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
             raise ValueError(
                 f"controller returned {len(ret_units)} units, expected {num_units}"
             )
-        # Minimal required arrays: these define per-second dispatch state.
-        for arr_name in ('arElectroAvailablePower', 'aiIsOn'):
+        # Minimal required outputs from a controller:
+        #   1) t_out.arTotalElectroDemand: total electrolyser demand [W], length T
+        #   2) t_out.aiIsOn: per-unit ON/OFF matrix, shape (num_units, T)
+        #   3) t_out.arProportionPower: per-unit allocation fractions, shape (num_units, T)
+        for arr_name in ('arTotalElectroDemand', 'aiIsOn', 'arProportionPower'):
             arr = getattr(ret_t_out, arr_name, None)
             if arr is None:
                 raise ValueError(f"controller did not set t_out.{arr_name}")
-        if len(ret_t_out.arElectroAvailablePower) != T:
+        if len(ret_t_out.arTotalElectroDemand) != T:
             raise ValueError(
-                f"t_out.arElectroAvailablePower length {len(ret_t_out.arElectroAvailablePower)}, expected {T}"
+                f"t_out.arTotalElectroDemand length {len(ret_t_out.arTotalElectroDemand)}, expected {T}"
             )
         if np.shape(ret_t_out.aiIsOn) != (num_units, T):
             raise ValueError(
                 f"t_out.aiIsOn shape {np.shape(ret_t_out.aiIsOn)}, expected ({num_units},{T})"
             )
+        if np.shape(ret_t_out.arProportionPower) != (num_units, T):
+            raise ValueError(
+                f"t_out.arProportionPower shape {np.shape(ret_t_out.arProportionPower)}, expected ({num_units},{T})"
+            )
+
         # NaN / Inf guard on required arrays
-        for arr_name in ('arElectroAvailablePower', 'aiIsOn'):
+        for arr_name in ('arTotalElectroDemand', 'aiIsOn', 'arProportionPower'):
             arr = np.asarray(getattr(ret_t_out, arr_name), dtype=float)
             if np.any(~np.isfinite(arr)):
                 raise ValueError(f"t_out.{arr_name} contains NaN or Inf")
@@ -503,30 +511,16 @@ def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
             if np.any(~np.isfinite(arr_total)):
                 raise ValueError("t_out.arTotalElectroOn contains NaN or Inf")
 
-        if getattr(ret_t_out, 'arProportionPower', None) is None:
-            arr_prop = np.zeros((num_units, T), dtype=float)
-            on_mask = derived_total_on > 0
-            if np.any(on_mask):
-                arr_prop[:, on_mask] = (
-                    np.asarray(ret_t_out.aiIsOn, dtype=float)[:, on_mask]
-                    / derived_total_on[on_mask]
-                )
-            ret_t_out.arProportionPower = arr_prop
-        else:
-            if np.shape(ret_t_out.arProportionPower) != (num_units, T):
-                raise ValueError(
-                    f"t_out.arProportionPower shape {np.shape(ret_t_out.arProportionPower)}, expected ({num_units},{T})"
-                )
-            arr_prop = np.asarray(ret_t_out.arProportionPower, dtype=float)
-            if np.any(~np.isfinite(arr_prop)):
-                raise ValueError("t_out.arProportionPower contains NaN or Inf")
+        arr_prop = np.asarray(ret_t_out.arProportionPower, dtype=float)
+        if np.any(~np.isfinite(arr_prop)):
+            raise ValueError("t_out.arProportionPower contains NaN or Inf")
 
         # If battery demand is not provided, infer it for traceability.
         batt_demand = getattr(ret_battery, 'arBatteryDemand', None)
         if batt_demand is None or len(np.asarray(batt_demand).ravel()) != T:
             ref_elec_power = getattr(ret_t_out, 'arElectroAvailablePowerA', None)
             if ref_elec_power is None:
-                ref_elec_power = ret_t_out.arElectroAvailablePower
+                ref_elec_power = ret_t_out.arTotalElectroDemand
             ret_battery.arBatteryDemand = (
                 np.asarray(ret_t_out.arAvailablePower, dtype=float)
                 - np.asarray(ref_elec_power, dtype=float)
@@ -551,29 +545,60 @@ def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
 # ---------------------------------------------------------------------------
 
 def dynamicControl(units, battery, t_out, settings):
-    damage = np.array([u.rSummedDegradation for u in units], dtype=float)
-    battery.arBatteryDemand = np.zeros_like(t_out.arAvailablePower)
+    """Built-in dispatch controller.
+
+    Required outputs (for downstream simulation):
+    - t_out.arTotalElectroDemand: total electrolyser demand profile [W], length T.
+    - t_out.aiIsOn: ON/OFF status matrix, shape (num_units, T).
+    - t_out.arProportionPower: per-unit demand fractions, shape (num_units, T).
+
+    """
+    # ------------------------------------------------------------------
+    # Controller inputs (made explicit for readability)
+    # ------------------------------------------------------------------
+    # 1) Total incoming power profile [W], length T (includes transient steps).
+    #    Downstream logging/output usually ignores the first rTransientSteps.
+    total_available_power = np.asarray(t_out.arAvailablePower, dtype=float)
+    T = len(total_available_power)
+
+    # 2) Electrolyser ON/OFF matrix [num_units, T].
+    #    Seed all timesteps from the previous known state (last column at entry)
+    #    so the controller starts from an explicit, fully populated baseline.
+    num_units = len(units)
+    prev_on = np.asarray(t_out.aiIsOn[:, -1], dtype=int).reshape(num_units, 1)
+    t_out.aiIsOn[:, :] = prev_on
+
+    # 3) Total degradation per electrolyser unit, length num_units.
+    degradation = np.array([u.rSummedDegradation for u in units], dtype=float)
+
+    # 4) Battery SoC at controller entry.
+    initial_soc = np.asarray(battery.arInitialSoC, dtype=float)
+
+    # 5) Battery current usable capacity [J].
+    battery_capacity = float(battery.rBatteryRating)
+
+    battery.arBatteryDemand = np.zeros_like(total_available_power)
 
     # Battery SoC regulator (separate from electrolyser on/off dispatch):
     # this proportional controller pushes SoC toward rControlTargetSoC
     # (default is typically 0.5 unless changed in simulation settings).
     soc_target = battery.rControlTargetSoC   # user-specified target SoC (0–1)
     rBatteryProportion = np.clip(
-        soc_target - battery.arInitialSoC,
+        soc_target - initial_soc,
         -(1.0 - soc_target),
         soc_target,
     )
     # Positive demand charges the battery, negative demand discharges it.
     battery.arBatteryDemand = (
-        t_out.arAvailablePower * rBatteryProportion
+        total_available_power * rBatteryProportion
     ) * battery.rBatteryProportionalGain
 
     # Battery power-rate and SoC floor protection.
-    per_sec_limit = 0.1 * battery.rBatteryRating / 3600.0
+    per_sec_limit = 0.1 * battery_capacity / 3600.0
     battery.arBatteryDemand = np.clip(
         battery.arBatteryDemand, -per_sec_limit, per_sec_limit
     )
-    if battery.arInitialSoC <= 0.0:
+    if float(np.atleast_1d(initial_soc).ravel()[-1]) <= 0.0:
         battery.arBatteryDemand = np.clip(battery.arBatteryDemand, 0.0, per_sec_limit)
 
     t_out.arElectroAvailablePowerA = np.maximum(
@@ -598,7 +623,6 @@ def dynamicControl(units, battery, t_out, settings):
     arMaxElectroSum = np.floor(t_out.arElectroAvailablePower / rMin).astype(int)
     arMinElectroSum = np.ceil(t_out.arElectroAvailablePower / rRated).astype(int)
 
-    T = len(t_out.arElectroAvailablePower)
     step0 = int(settings.rTransientSteps)
     t_out.aiIsOn[:, step0 - 1] = t_out.aiIsOn[:, -1]
     t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
@@ -613,7 +637,7 @@ def dynamicControl(units, battery, t_out, settings):
         available_power  = t_out.arElectroAvailablePower[k]
 
         if arMinElectroSum[k] > total_on_prev and available_power > rMin * units[0].rDeadBandRatio:
-            rank = np.argsort(damage)
+            rank = np.argsort(degradation)
             need = arMinElectroSum[k] - total_on_prev
             for idx in rank:
                 if need <= 0:
@@ -628,7 +652,7 @@ def dynamicControl(units, battery, t_out, settings):
             t_out.arTotalElectroOn[k] = np.sum(t_out.aiIsOn[:, k])
 
         elif arMaxElectroSum[k] < total_on_prev:
-            rank = np.argsort(damage)
+            rank = np.argsort(degradation)
             need = int(total_on_prev - arMaxElectroSum[k])
             for idx in rank:
                 if need <= 0:
@@ -645,6 +669,13 @@ def dynamicControl(units, battery, t_out, settings):
             t_out.arProportionPower[:, k] = (
                 t_out.aiIsOn[:, k] / t_out.arTotalElectroOn[k]
             )
+
+    # Required controller output: total demand profile.
+    t_out.arTotalElectroDemand = np.clip(
+        t_out.arElectroAvailablePower,
+        rMin * t_out.arTotalElectroOn,
+        rRated * t_out.arTotalElectroOn,
+    )
     
     return units, t_out, battery
 
@@ -788,9 +819,18 @@ def runElectroStackStep1(
     except Exception:
         # Fall back to curve-derived rating if nominal metadata is unavailable.
         rated_power = rated_power_curve
+    # Controllers are expected to provide arTotalElectroDemand and aiIsOn.
+    # Keep a backward-compatible fallback for older custom controllers.
+    demand_in = getattr(t_out, 'arTotalElectroDemand', None)
+    if demand_in is None or len(np.asarray(demand_in).ravel()) != T:
+        demand_in = getattr(t_out, 'arElectroAvailablePower', None)
+        if demand_in is None or len(np.asarray(demand_in).ravel()) != T:
+            raise ValueError(
+                "Controller must set t_out.arTotalElectroDemand (length T)."
+            )
     t_out.arTotalElectroDemand = np.clip(
-        t_out.arElectroAvailablePower,
-        min_power  * t_out.arTotalElectroOn,
+        np.asarray(demand_in, dtype=float),
+        min_power * t_out.arTotalElectroOn,
         rated_power * t_out.arTotalElectroOn,
     )
     for i in range(num_units):

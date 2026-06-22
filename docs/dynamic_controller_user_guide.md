@@ -16,7 +16,7 @@ If a custom controller is selected for a simulation, R2H2 loads it and calls its
 For each simulation hour:
 
 1. The engine initializes hourly output arrays in t_out.
-2. The controller is called to set on/off and power-sharing behavior.
+2. The controller is called to set total demand, on/off state, and per-unit allocation.
 3. The electro-thermal step uses the controller outputs to compute current, voltage, hydrogen, heat, and thermal state.
 
 Controller entry points are implemented in r2h2/r2h2.py:
@@ -60,11 +60,13 @@ Your function receives four objects:
 3. t_out
 - Hourly per-second output container, pre-initialized before controller call.
 - Minimum arrays your controller must set:
-  - arElectroAvailablePower
+  - arTotalElectroDemand
   - aiIsOn
+  - arProportionPower
 - Common optional arrays:
   - arTotalElectroOn
-  - arProportionPower
+  - arElectroAvailablePowerA
+  - arElectroAvailablePower
 
 4. settings
 - Simulation settings.
@@ -87,26 +89,26 @@ R2H2 validates the returned data. If validation fails, it falls back to built-in
 Checks include:
 
 - Returned unit count must equal expected number of units.
-- t_out.arElectroAvailablePower must exist and have length T.
+- t_out.arTotalElectroDemand must exist and have length T.
 - t_out.aiIsOn must have shape (num_units, T).
+- t_out.arProportionPower must have shape (num_units, T).
 - t_out.arTotalElectroOn is optional. If omitted, it is derived from aiIsOn.
-- t_out.arProportionPower is optional. If omitted, it is derived from aiIsOn and arTotalElectroOn.
-- arElectroAvailablePower and aiIsOn must not contain NaN or Inf.
+- arTotalElectroDemand, aiIsOn, and arProportionPower must not contain NaN or Inf.
 - battery.arBatteryDemand is optional. If omitted, R2H2 infers it as:
   - arBatteryDemand = arAvailablePower - arElectroAvailablePowerA
-  - If arElectroAvailablePowerA is not provided, arElectroAvailablePower is used.
+  - If arElectroAvailablePowerA is not provided, arTotalElectroDemand is used.
 
 ### Minimal Required Controller Outputs
 
 In practice, the minimum outputs your controller must set are:
 
-- t_out.arElectroAvailablePower
+- t_out.arTotalElectroDemand
 - t_out.aiIsOn
+- t_out.arProportionPower
 
 R2H2 can derive these optional outputs when absent:
 
 - t_out.arTotalElectroOn
-- t_out.arProportionPower
 - battery.arBatteryDemand
 
 ### Power Consistency Notes
@@ -114,10 +116,17 @@ R2H2 can derive these optional outputs when absent:
 - In built-in dynamicControl, electrolyser input power before smoothing is computed as:
   - arElectroAvailablePowerA = max(arAvailablePower - arBatteryDemand, 0)
 - For custom controllers, arBatteryDemand is primarily a dispatch trace. If you do not set it,
-  R2H2 infers it from your power outputs for logging/debugging.
+  R2H2 infers it from your outputs for logging/debugging.
 - Battery state update is computed from residual power using:
   - P_batt = arAvailablePower - arTotalElectroDemand
   This happens in the battery step after controller dispatch.
+
+Per-unit demand mapping:
+
+- Initial per-unit demand target is computed as:
+  - arElectroDemand[i, :] = arProportionPower[i, :] * arTotalElectroDemand
+- Then physical guards/ramping can adjust per-unit demand and proportions to keep
+  execution feasible.
 
 ### Electrolyser Limits And Residual Handling
 
@@ -192,8 +201,7 @@ Dispatch state:
 
 ## Minimal Custom Controller Example
 
-This simple example sets only the required outputs. R2H2 derives optional
-arTotalElectroOn and arProportionPower automatically.
+This simple example sets the required outputs.
 
 ```python
 import numpy as np
@@ -201,15 +209,30 @@ import numpy as np
 
 def control(units, battery, t_out, settings):
     T = len(t_out.arAvailablePower)
-    # No battery action: all available power goes to electrolysers
-    t_out.arElectroAvailablePower = np.asarray(t_out.arAvailablePower, dtype=float).copy()
+  num_units = len(units)
 
-    # Keep previous on/off state
+  # Required output 1: total fleet demand [W], length T
+  t_out.arTotalElectroDemand = np.asarray(t_out.arAvailablePower, dtype=float).copy()
+
+  # Required output 2: ON/OFF matrix, shape (num_units, T)
+  t_out.aiIsOn[:, :] = 0
     step0 = int(settings.rTransientSteps)
     t_out.aiIsOn[:, step0 - 1] = t_out.aiIsOn[:, -1]
 
     for k in range(step0, T):
         t_out.aiIsOn[:, k] = t_out.aiIsOn[:, k - 1]
+
+  # Example: turn all units ON after transient
+  t_out.aiIsOn[:, step0:] = 1
+
+  # Required output 3: per-unit fractions, shape (num_units, T)
+  t_out.arProportionPower[:, :] = 0.0
+  on_count = np.sum(t_out.aiIsOn, axis=0).astype(float)
+  on_mask = on_count > 0
+  if np.any(on_mask):
+    t_out.arProportionPower[:, on_mask] = (
+      t_out.aiIsOn[:, on_mask] / on_count[on_mask]
+    )
 
     return units, t_out, battery
 ```
@@ -241,11 +264,13 @@ Default controller protection:
 
 1. Start from the minimal template above.
 2. Implement dispatch updates for:
+   - t_out.arTotalElectroDemand
    - t_out.aiIsOn
-   - t_out.arElectroAvailablePower
+   - t_out.arProportionPower
 3. Optionally set:
   - t_out.arTotalElectroOn
-  - t_out.arProportionPower
+  - t_out.arElectroAvailablePowerA
+  - t_out.arElectroAvailablePower
   - battery.arBatteryDemand
 4. Test with a short simulation window first.
 5. Confirm no fallback warnings appear.
@@ -268,7 +293,7 @@ What to check first:
 
 1. Controller file defines control(units, battery, t_out, settings).
 2. Returned tuple is exactly (units, t_out, battery).
-3. Required arrays (arElectroAvailablePower, aiIsOn) exist and have expected dimensions.
+3. Required arrays (arTotalElectroDemand, aiIsOn, arProportionPower) exist and have expected dimensions.
 4. No invalid numeric values are produced.
 
 Physical sanity checks:
@@ -392,14 +417,16 @@ Example:
 ```python
 def control(units, battery, t_out, settings):
     # Required outputs
-    t_out.arElectroAvailablePower = t_out.arAvailablePower.copy()
+  t_out.arTotalElectroDemand = t_out.arAvailablePower.copy()
     t_out.aiIsOn[:, :] = 1
+  n_on = np.sum(t_out.aiIsOn, axis=0).astype(float)
+  t_out.arProportionPower[:, :] = t_out.aiIsOn / n_on
 
     # Optional debug buffers
-    t_out.arBuffer1 = t_out.arElectroAvailablePower              # trace power to electrolysers
+  t_out.arBuffer1 = t_out.arTotalElectroDemand                 # total electrolyser demand
     t_out.arBuffer2 = battery.arInitialSoC                       # scalar -> broadcast by R2H2
     t_out.arBuffer3 = t_out.aiIsOn.sum(axis=0)                   # units on at each timestep
-    t_out.arBuffer4 = t_out.arAvailablePower - t_out.arElectroAvailablePower
+  t_out.arBuffer4 = t_out.arAvailablePower - t_out.arTotalElectroDemand
     # Leave arBuffer20 unset to get default arTotalElectroOn there
 
     return units, t_out, battery
@@ -415,11 +442,13 @@ def control(units, battery, t_out, settings):
     T = len(t_out.arAvailablePower)
 
     # Required outputs
-    t_out.arElectroAvailablePower = t_out.arAvailablePower.copy()
+    t_out.arTotalElectroDemand = t_out.arAvailablePower.copy()
     t_out.aiIsOn[:, :] = 1
+    n_on = np.sum(t_out.aiIsOn, axis=0).astype(float)
+    t_out.arProportionPower[:, :] = t_out.aiIsOn / n_on
 
     # Explicit debug arrays (recommended when building new controllers)
-    t_out.arBuffer1 = t_out.arElectroAvailablePower.copy()
+    t_out.arBuffer1 = t_out.arTotalElectroDemand.copy()
     t_out.arBuffer2 = np.full(T, float(battery.arInitialSoC))
     t_out.arBuffer3 = np.sum(t_out.aiIsOn, axis=0).astype(float)
 

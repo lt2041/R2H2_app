@@ -560,6 +560,18 @@ class SimulationRun(models.Model):
                                    help_text='Version of r2h2 that produced this run.')
     git_hash = models.CharField(max_length=40, blank=True, default='',
                                 help_text='Git commit hash of the code that produced this run.')
+    progress_checkpoints = models.JSONField(
+        default=list, blank=True,
+        help_text='List of {"t": <epoch_float>, "h": <sim_hours_done>} snapshots '
+                  'used to compute a robust ETA that is resilient to hibernation.')
+    progress_pct = models.IntegerField(
+        null=True, blank=True,
+        help_text='Last recorded percent complete (0–100); persisted so the UI can '
+                  'show a meaningful progress bar immediately on page load/reload.')
+    est_finish_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Last server-computed estimated finish time; persisted so the UI '
+                  'can show an ETA immediately on page load/reload.')
 
     class Meta:
         ordering = ['-started_at']

@@ -1022,12 +1022,26 @@
             if (runBtn)  runBtn.disabled = true;
             if (stopBtn) stopBtn.classList.add('visible');
 
+            // ── Seed initial values from server-rendered template ─────────────
+            // These come from persisted DB fields and are shown immediately on
+            // page load / reload, before the first poll response arrives.
+            var _seedPct    = {% if latest_run.progress_pct is not None %}{{ latest_run.progress_pct }}{% else %}null{% endif %};
+            var _seedEtaIso = {% if latest_run.est_finish_at %}"{{ latest_run.est_finish_at|date:'Y-m-d' }}T{{ latest_run.est_finish_at|time:'H:i:s' }}Z"{% else %}null{% endif %};
+
             // ── State ────────────────────────────────────────────────────────
             var pollingStopped    = false;
             var pollInFlight      = false;
             var pollTimer         = null;
             var pollCount         = 0;
-            var hasData           = false;   // true once server reports progress
+            var estimatedTotalSec = null;  // supplied by server; used for poll-interval decision
+            var hasData           = !!_seedPct;   // true once server reports progress (or seed available)
+
+            // ── Page reload every 10 min while running ────────────────────────
+            // Clears accumulated browser memory and resets JS state cleanly.
+            var _PAGE_RELOAD_INTERVAL_MS = 10 * 60 * 1000;
+            setTimeout(function() {
+                if (!pollingStopped) { window.location.reload(); }
+            }, _PAGE_RELOAD_INTERVAL_MS);
 
             // Runtime ticker — anchored to server elapsed_seconds on each poll
             var elapsedAtLastPoll = 0;
@@ -1043,12 +1057,11 @@
                 return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
             }
 
-            function localiseEta(text) {
-                if (!text) return text;
-                return text.replace(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\]/g, function(_, iso) {
-                    var d = new Date(iso);
-                    return isNaN(d) ? iso : d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
-                });
+            function localiseEta(isoStr) {
+                if (!isoStr) return null;
+                var d = new Date(isoStr);
+                if (isNaN(d)) return null;
+                return d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
             }
 
             // ── Duration ticker (every 1 s, DOM only) ────────────────────────
@@ -1091,10 +1104,14 @@
                 }
             }
 
-            // ── Scheduling: 5 s until first data, then every 10 s ────────────
+            // ── Scheduling ───────────────────────────────────────────────────
+            // 5 s until first data, then:
+            //   - 60 s if estimated total run time > 15 min
+            //   - 12 s otherwise
             function nextDelay() {
-                if (document.hidden) return 15000;
-                return hasData ? 10000 : 5000;
+                if (document.hidden) return 60000;
+                if (!hasData) return 5000;
+                return (estimatedTotalSec != null && estimatedTotalSec > 900) ? 60000 : 12000;
             }
 
             function schedulePoll(delayMs) {
@@ -1104,36 +1121,23 @@
             }
 
             // ── Poll ─────────────────────────────────────────────────────────
-            var prevHoursDone   = null;   // hours_done at previous data-bearing poll
-            var prevElapsedSec  = null;   // elapsed_seconds at previous data-bearing poll
-            var localFinishTime = null;   // computed from differential rate
-
-            function computeFinishTime(totalHours, hoursDone, elapsedSec) {
-                // Need two data points to compute differential rate
-                if (prevHoursDone === null || prevElapsedSec === null) return null;
-                var dHours = hoursDone - prevHoursDone;
-                var dSec   = elapsedSec - prevElapsedSec;
-                if (dSec <= 0 || dHours <= 0) return null;
-                var rate = dHours / dSec;  // sim-hours per wall-clock second
-                var hoursRemaining = totalHours - hoursDone;
-                var secRemaining = hoursRemaining / rate;
-                // Round finish time to nearest 30 s to avoid jitter
-                var finishMs = Date.now() + secRemaining * 1000;
-                finishMs = Math.round(finishMs / 30000) * 30000;
-                var d = new Date(finishMs);
-                return d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
-            }
+            var prevHoursDone   = null;
+            var localFinishTime = null;   // localised time string from server eta_iso
 
             function applyPollData(data) {
                 pollCount++;
 
-                // Anchor duration ticker to current server elapsed (not write-time)
+                // Anchor duration ticker to current server elapsed
                 var tickElapsed = data.current_elapsed != null ? data.current_elapsed : data.elapsed_seconds;
                 if (tickElapsed != null) {
                     elapsedAtLastPoll = tickElapsed;
                     pollWallTime      = Date.now();
-                    // First time we get a real elapsed value, replace spinner with ticker
                     if (!tickerStarted) { startTicker(); }
+                }
+
+                // Update poll-interval decision variable from server
+                if (data.estimated_total_sec != null) {
+                    estimatedTotalSec = data.estimated_total_sec;
                 }
 
                 if (data.total_hours && data.hours_done != null) {
@@ -1141,25 +1145,21 @@
                     var pct = data.pct != null ? data.pct
                             : Math.round(data.hours_done / data.total_hours * 100);
 
-                    // Compute finish time from differential rate between last two polls
-                    if (data.elapsed_seconds != null) {
-                        var ft = computeFinishTime(data.total_hours, data.hours_done, data.elapsed_seconds);
+                    // Use server-computed ETA (robust to hibernation)
+                    if (data.eta_iso) {
+                        var ft = localiseEta(data.eta_iso);
                         if (ft) localFinishTime = ft;
                     }
 
-                    // Update previous anchors
-                    prevHoursDone  = data.hours_done;
-                    prevElapsedSec = data.elapsed_seconds != null ? data.elapsed_seconds : prevElapsedSec;
+                    prevHoursDone = data.hours_done;
 
                     renderBar(pct, localFinishTime);
                 } else {
                     // No progress data yet
                     var msgEl = document.getElementById('run-msg-' + RUN_ID);
                     if (msgEl && !msgEl.querySelector('.sim-progress-bar-wrap')) {
-                        msgEl.innerHTML = '<span style="color:#4a7a80;font-style:italic;">Simulation starting\u2026</span>';
+                        msgEl.innerHTML = '<span style="color:#4a7a80;font-style:italic;">Simulation starting…</span>';
                     }
-                    // Still record elapsed anchor for next differential
-                    if (data.elapsed_seconds != null) prevElapsedSec = data.elapsed_seconds;
                 }
             }
 
@@ -1255,7 +1255,14 @@
 
             // ── Initialise ───────────────────────────────────────────────────
             var msgEl0 = document.getElementById('run-msg-' + RUN_ID);
-            if (msgEl0) { msgEl0.innerHTML = '<span style="color:#4a7a80;font-style:italic;">Simulation starting\u2026</span>'; }
+            // Show seed values immediately (from DB-persisted fields) so the UI
+            // shows meaningful progress on page load / reload before the first poll.
+            if (_seedPct !== null) {
+                var _seedFinishTime = localiseEta(_seedEtaIso);
+                renderBar(_seedPct, _seedFinishTime);
+            } else {
+                if (msgEl0) { msgEl0.innerHTML = '<span style="color:#4a7a80;font-style:italic;">Simulation starting\u2026</span>'; }
+            }
 
             // Show spinner in duration cell until server anchors elapsed_seconds
             var durEl0 = document.getElementById('run-dur-' + RUN_ID);

@@ -1207,6 +1207,7 @@ def _run_simulation_thread(run_id):
         _progress_start = timezone.now()
         _last_progress_msg = None
         _progress_write_count = 0  # counts DB writes made so far
+        _checkpoints = []  # [{"t": epoch_float, "h": sim_hours_done}, ...]
 
         def _on_progress(year, total_years, hour, total_hours):
             nonlocal _last_progress_msg, _progress_write_count
@@ -1224,23 +1225,25 @@ def _run_simulation_thread(run_id):
                 return
 
             pct = int(done_steps / total_steps * 100) if total_steps else 0
-            if done_steps > 0 and elapsed > 0:
-                total_s = elapsed / done_steps * total_steps
-                finish_at = _progress_start + timezone.timedelta(seconds=total_s)
-                # Encode ETA as ISO UTC so the browser can convert to local time
-                finish_iso = finish_at.strftime('%Y-%m-%dT%H:%M:%SZ')
-                eta_str = (f' [est. {_fmt_duration(total_s)}, done ~[{finish_iso}]]')
-            else:
-                eta_str = ''
             year_str = f'Year {year+1}/{total_years} — ' if total_years > 1 else ''
             if total_years > 1:
                 hour_str = f'hour {done_steps+1}/{total_steps}'
             else:
                 hour_str = f'hour {hour+1}/{total_hours}'
-            msg = (f'{year_str}{hour_str}<br>{pct}\u00a0%{eta_str} @{elapsed:.1f}')
+            msg = (f'{year_str}{hour_str}<br>{pct}\u00a0% @{elapsed:.1f}')
 
-            if msg != _last_progress_msg:
-                SimulationRun.objects.filter(pk=run.pk).update(message=msg)
+            # Record checkpoint: wall epoch + sim-hours done (used by poll view for robust ETA)
+            import time as _wall_time
+            _checkpoints.append({'t': _wall_time.time(), 'h': int(done_steps)})
+
+            # Compute ETA now so it can be persisted to DB for page-reload use
+            _eta_iso = _compute_eta_iso(_checkpoints, total_steps) if len(_checkpoints) >= 2 else None
+            _update = {'message': msg, 'progress_checkpoints': _checkpoints, 'progress_pct': pct}
+            if _eta_iso:
+                from datetime import datetime as _dt2, timezone as _tz2
+                _update['est_finish_at'] = _dt2.strptime(_eta_iso, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=_tz2.utc)
+            if msg != _last_progress_msg or _eta_iso:
+                SimulationRun.objects.filter(pk=run.pk).update(**_update)
                 _last_progress_msg = msg
                 _progress_write_count += 1
 
@@ -1553,6 +1556,57 @@ def _load_run_1hz_plot_data(run, *, start_iso=None, end_iso=None, max_points=400
     }
 
 
+def _compute_eta_iso(checkpoints, total_hours):
+    """Compute an ETA ISO string from progress checkpoints.
+
+    Each checkpoint is {"t": epoch_float, "h": sim_hours_done}.
+    Consecutive pairs give a sim-hours/sec rate for that chunk.
+    Chunks where the rate is less than half the median are treated as
+    outliers (e.g. system hibernated during that window) and excluded.
+    Returns an ISO-8601 UTC string, or None if insufficient data.
+    """
+    import statistics
+    import time as _time
+
+    if len(checkpoints) < 2:
+        return None
+
+    # Compute per-chunk rates
+    rates = []
+    for i in range(1, len(checkpoints)):
+        dt = checkpoints[i]['t'] - checkpoints[i - 1]['t']
+        dh = checkpoints[i]['h'] - checkpoints[i - 1]['h']
+        if dt > 0 and dh >= 0:
+            rates.append(dh / dt)  # sim-hours per wall-clock second
+
+    if not rates:
+        return None
+
+    # Filter outliers: exclude any chunk whose rate is < half the median
+    # (catches hibernation/sleep gaps where wall time elapsed but sim did not advance)
+    median_rate = statistics.median(rates)
+    if median_rate <= 0:
+        return None
+    clean_rates = [r for r in rates if r >= median_rate / 2]
+    if not clean_rates:
+        return None
+
+    avg_rate = statistics.mean(clean_rates)  # sim-hours / wall-sec
+    if avg_rate <= 0:
+        return None
+
+    hours_done = checkpoints[-1]['h']
+    hours_remaining = total_hours - hours_done
+    if hours_remaining <= 0:
+        return None
+
+    secs_remaining = hours_remaining / avg_rate
+    # Anchor to current wall time (not start time — robust to hibernation)
+    finish_epoch = _time.time() + secs_remaining
+    from datetime import datetime, timezone as _tz
+    return datetime.fromtimestamp(finish_epoch, tz=_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
 def poll_simulation_run(request, sim_id, run_id):
     """GET: return JSON status of a SimulationRun for client-side polling."""
     import re
@@ -1570,11 +1624,10 @@ def poll_simulation_run(request, sim_id, run_id):
     else:
         duration_str = ''
 
-    # Extract hours_done / total_hours / elapsed_at_write from progress message
+    # Extract hours_done / total_hours / pct from progress message
     hours_done = None
     total_hours = None
     pct = None
-    elapsed_at_write = None
     msg = run.message or ''
     m = re.search(r'hour (\d+)/(\d+)', msg)
     if m:
@@ -1583,30 +1636,56 @@ def poll_simulation_run(request, sim_id, run_id):
     m2 = re.search(r'(\d+)\xa0?%', msg)
     if m2:
         pct = int(m2.group(1))
-    m3 = re.search(r'@([\d.]+)$', msg)
-    if m3:
-        elapsed_at_write = float(m3.group(1))
 
-    # elapsed_seconds: use write-time if available (matches hours_done), else current wall-clock
+    # Compute robust ETA from checkpoints stored by _on_progress.
+    # Fall back to the persisted est_finish_at if checkpoints are sparse.
+    checkpoints = run.progress_checkpoints or []
+    eta_iso = None
+    estimated_total_sec = None
+    if total_hours and checkpoints:
+        eta_iso = _compute_eta_iso(checkpoints, total_hours)
+        if eta_iso and hours_done and hours_done > 0 and len(checkpoints) >= 2:
+            import time as _time
+            from datetime import datetime, timezone as _tz
+            finish_epoch = datetime.strptime(eta_iso, '%Y-%m-%dT%H:%M:%SZ').replace(
+                tzinfo=_tz.utc).timestamp()
+            estimated_total_sec = finish_epoch - checkpoints[0]['t']
+    # If live computation not possible, serve the last persisted estimate
+    if not eta_iso and run.est_finish_at:
+        from datetime import datetime, timezone as _tz
+        eta_iso = run.est_finish_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+    # Use persisted pct as fallback if message parse failed
+    if pct is None and run.progress_pct is not None:
+        pct = run.progress_pct
+
+    # elapsed_seconds: derived from checkpoints (most recent wall time), avoids
+    # start_time which may be wrong after hibernation
     elapsed_seconds = None
+    current_elapsed = None
     if run.started_at is not None:
-        if elapsed_at_write is not None:
-            elapsed_seconds = elapsed_at_write
+        import time as _time
+        if checkpoints:
+            # Use wall-clock delta between first and last checkpoint + elapsed at first checkpoint
+            # Actually just show seconds since started_at; this is only for the duration ticker
+            current_elapsed = (timezone.now() - run.started_at).total_seconds()
         else:
-            elapsed_seconds = (timezone.now() - run.started_at).total_seconds()
+            current_elapsed = (timezone.now() - run.started_at).total_seconds()
+        elapsed_seconds = current_elapsed
 
     return JsonResponse({
-        'status':           run.status,
-        'message':          msg,
-        'duration':         duration_str,
-        'elapsed_seconds':  elapsed_seconds,          # elapsed at time of last progress write (for rate calc)
-        'current_elapsed':  (timezone.now() - run.started_at).total_seconds() if run.started_at else None,
-        'hours_done':       hours_done,
-        'total_hours':      total_hours,
-        'pct':              pct,
-        'output_path':      run.output_path or '',
-        'has_1hz_data':     run_1hz_info['has_1hz_data'],
-        'done':             run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
+        'status':               run.status,
+        'message':              msg,
+        'duration':             duration_str,
+        'elapsed_seconds':      elapsed_seconds,
+        'current_elapsed':      current_elapsed,
+        'hours_done':           hours_done,
+        'total_hours':          total_hours,
+        'pct':                  pct,
+        'eta_iso':              eta_iso,           # ISO UTC string for frontend localisation
+        'estimated_total_sec':  estimated_total_sec,  # for frontend poll-interval decision
+        'output_path':          run.output_path or '',
+        'has_1hz_data':         run_1hz_info['has_1hz_data'],
+        'done':                 run.status in (SimulationRun.DONE, SimulationRun.ERROR, SimulationRun.CANCELLED),
     })
 
 

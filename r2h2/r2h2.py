@@ -832,6 +832,8 @@ def runElectroStackStep1(
     t_out.arQ_lost_total            = np.zeros(T)
     t_out.arQ_cool_total            = np.zeros(T)
     t_out.arP_cool_elec_total       = np.zeros(T)
+    t_out.aiIsOn_clean                 = np.zeros((num_units, T), dtype=int)
+    t_out.aiAssignmentError              = np.zeros(T, dtype=int)
 
     # ── Dynamic control pass ─────────────────────────────────────────────────
     if controller_fn is not None:
@@ -845,6 +847,21 @@ def runElectroStackStep1(
     min_power = float(units[0].rMinPower_s)
     rated_power_curve = float(units[0].rRatedPower_s)
     rated_power = rated_power_curve
+
+    # Assume aiIsOn is a NumPy array of shape (num_units, T)
+
+    # Identify invalid entries (anything not 0 or 1)
+    invalid_mask = (aiIsOn != 0) & (aiIsOn != 1)
+
+    # Count how many invalid values per time step (column-wise)
+    t_out.aiAssignmentError = np.sum(invalid_mask, axis=0)
+
+    # Replace invalid values with 0
+    t_out.aiIsOn_clean = np.where(invalid_mask, 0, aiIsOn)
+
+    # Sum across units for each time step
+    t_out.arTotalElectroOn = np.sum(t_out.aiIsOn_clean, axis=0)
+
     # Use at least nominal nameplate power for guard limits. The electro-curve
     # endpoint can be lower than nameplate and otherwise caps default models
     # below expected plant rating (for example ~19.5 MW instead of ~25 MW).

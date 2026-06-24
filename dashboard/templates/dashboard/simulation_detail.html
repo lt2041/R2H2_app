@@ -1186,6 +1186,11 @@
                 if (pollTimer) { clearTimeout(pollTimer);  pollTimer = null; }
                 if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
 
+                // Refresh the page so all run history, buttons, and derived UI
+                // are rebuilt from the final persisted server state.
+                window.location.reload();
+                return;
+
                 var badge = document.getElementById('run-badge-' + RUN_ID);
                 var dur   = document.getElementById('run-dur-'   + RUN_ID);
                 var msg   = document.getElementById('run-msg-'   + RUN_ID);
@@ -1554,6 +1559,22 @@
                                 </div>
                                 <div id="ss-1hz-msg" style="font-size:0.75rem;color:#7b5555;margin-top:0.3rem;display:none;"></div>
                             </span>
+                        </span>
+                    </div>
+                    <!-- Variables badge (shown in its own row below) -->
+                    <div id="ss-1hz-vars-row" style="{% if not sim.collect_1hz_data %}opacity:0.3;pointer-events:none;{% endif %}margin-top:0.5rem;">
+                        <span class="param-badge" style="flex-direction:column;align-items:flex-start;width:100%;min-width:30rem;max-width:52rem;">
+                            <div style="display:flex;align-items:center;gap:0.5rem;width:100%;">
+                                <span class="pb-label" style="white-space:nowrap;">Variables</span>
+                                <span style="font-size:0.73rem;color:#7ab8be;flex:1;">Select the 1-D t_out arrays to capture at 1Hz. If none are selected, no 1Hz data will be retained or plotted.</span>
+                                <button type="button" id="ss-1hz-vars-load-btn"
+                                        onclick="load1HzVars()"
+                                        style="font-size:0.72rem;background:#22a6b3;color:#fff;border:none;border-radius:5px;padding:0.22rem 0.65rem;cursor:pointer;white-space:nowrap;font-family:inherit;">
+                                    Detect from controller
+                                </button>
+                            </div>
+                            <div id="ss-1hz-vars-badges" style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.45rem;min-height:1.6rem;"></div>
+                            <div id="ss-1hz-vars-msg" style="font-size:0.72rem;color:#4a7a80;margin-top:0.2rem;display:none;"></div>
                         </span>
                     </div>
                 </div>
@@ -2377,8 +2398,105 @@
     });
 
     // ── 1Hz Data Collection Settings ─────────────────────────────────────────
-    var _1hzSaveUrl = "{% url 'dashboard-update-sim-1hz' sim_id=sim.id %}";
+    var _1hzSaveUrl  = "{% url 'dashboard-update-sim-1hz' sim_id=sim.id %}";
+    var _1hzVarsUrl  = "{% url 'dashboard-sim-1hz-vars' sim_id=sim.id %}";
     var _1hzSavePending = false;
+
+    // ── 1Hz variable multi-select badge list ──────────────────────────────
+    var _hz_selected = {{ sim.hz_variables|default:"[]"|safe }};
+    var _hz_available = [];
+    var _hz_varsLoaded = false;
+
+    function _render1HzVarBadges(available, selected) {
+        var container = document.getElementById('ss-1hz-vars-badges');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!available || !available.length) {
+            container.innerHTML = '<span style="font-size:0.75rem;color:#9acdd2;">No variables detected. Click "Detect from controller".</span>';
+            return;
+        }
+        available.forEach(function(name) {
+            var isOn = selected.indexOf(name) !== -1;
+            var badge = document.createElement('span');
+            badge.style.cssText = 'display:inline-flex;align-items:center;gap:0.25rem;padding:0.2rem 0.6rem;border-radius:20px;font-size:0.73rem;font-family:monospace;cursor:pointer;border:1.5px solid;transition:all 0.12s;user-select:none;';
+            if (isOn) {
+                badge.style.background = '#e0f8f8';
+                badge.style.borderColor = '#22a6b3';
+                badge.style.color = '#136b75';
+                badge.style.fontWeight = '600';
+            } else {
+                badge.style.background = '#f5fdfe';
+                badge.style.borderColor = '#cce8eb';
+                badge.style.color = '#7ab8be';
+                badge.style.fontWeight = '400';
+            }
+            var icon = document.createElement('span');
+            icon.className = 'material-symbols-outlined';
+            icon.style.cssText = 'font-size:0.75rem;padding:0!important;';
+            icon.textContent = isOn ? 'check_circle' : 'radio_button_unchecked';
+            badge.appendChild(icon);
+            badge.appendChild(document.createTextNode(name));
+            badge.title = isOn ? 'Click to deselect' : 'Click to select';
+            badge.onclick = function() {
+                var idx = _hz_selected.indexOf(name);
+                if (idx !== -1) { _hz_selected.splice(idx, 1); }
+                else            { _hz_selected.push(name); }
+                _render1HzVarBadges(_hz_available, _hz_selected);
+                _save1HzVars();
+            };
+            container.appendChild(badge);
+        });
+        // "Clear all" link if any selected
+        if (selected.length) {
+            var clearBtn = document.createElement('span');
+            clearBtn.style.cssText = 'font-size:0.72rem;color:#4a7a80;cursor:pointer;align-self:center;text-decoration:underline;margin-left:0.4rem;';
+            clearBtn.textContent = 'Clear all';
+            clearBtn.onclick = function() {
+                _hz_selected = [];
+                _render1HzVarBadges(_hz_available, _hz_selected);
+                _save1HzVars();
+            };
+            container.appendChild(clearBtn);
+        }
+    }
+
+    function _save1HzVars() {
+        var fd = new FormData();
+        fd.append('hz_variables', JSON.stringify(_hz_selected));
+        fd.append('csrfmiddlewaretoken', _durCsrf);
+        fetch(_1hzSaveUrl, { method: 'POST', body: fd }).catch(function() {});
+    }
+
+    function load1HzVars() {
+        var msgEl = document.getElementById('ss-1hz-vars-msg');
+        var btn   = document.getElementById('ss-1hz-vars-load-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+        if (msgEl) { msgEl.style.display = 'none'; }
+        fetch(_1hzVarsUrl)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                _hz_available = data.available || [];
+                _hz_selected  = data.selected  || _hz_selected;
+                _hz_varsLoaded = true;
+                _render1HzVarBadges(_hz_available, _hz_selected);
+                if (msgEl && data.controller_extra && data.controller_extra.length) {
+                    msgEl.textContent = data.controller_extra.length + ' extra variable(s) detected from controller code.';
+                    msgEl.style.display = 'block';
+                }
+            })
+            .catch(function(e) {
+                if (msgEl) { msgEl.textContent = 'Could not load variables: ' + e; msgEl.style.display = 'block'; }
+            })
+            .finally(function() {
+                if (btn) { btn.disabled = false; btn.textContent = 'Detect from controller'; }
+            });
+    }
+
+    // Auto-load variables on page load if 1Hz is enabled
+    (function() {
+        var modeEl = document.getElementById('ss-1hz-mode');
+        if (modeEl && modeEl.value === 'save') { load1HzVars(); }
+    })();
 
     // On page load: if 1Hz is disabled, swap inputs to text so Safari shows blank not today's date
     (function() {
@@ -2435,6 +2553,7 @@
 
     function on1HzModeChange(sel) {
         var rangeBadge = document.getElementById('ss-1hz-range-badge');
+        var varsRow    = document.getElementById('ss-1hz-vars-row');
         var collecting = sel.value === 'save';
         var startEl = document.getElementById('ss-1hz-start-date');
         var endEl   = document.getElementById('ss-1hz-end-date');
@@ -2444,6 +2563,8 @@
             _set1HzDateInputsEnabled(true);
             rangeBadge.style.opacity = '';
             rangeBadge.style.pointerEvents = '';
+            if (varsRow) { varsRow.style.opacity = ''; varsRow.style.pointerEvents = ''; }
+            if (!_hz_varsLoaded) { load1HzVars(); }
 
             // Initialise defaults from sim start/end if inputs are blank
             var simStart = document.getElementById('ss-start-date') ? document.getElementById('ss-start-date').value : '';
@@ -2460,6 +2581,7 @@
         } else {
             rangeBadge.style.opacity = '0.3';
             rangeBadge.style.pointerEvents = 'none';
+            if (varsRow) { varsRow.style.opacity = '0.3'; varsRow.style.pointerEvents = 'none'; }
             if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
             // Swap inputs to text showing placeholder before clearing values
             _set1HzDateInputsEnabled(false);

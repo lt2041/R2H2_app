@@ -8,6 +8,7 @@ import copy
 import socket
 import time
 import datetime
+import ast
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -430,6 +431,46 @@ def _apply_end_hour_buffer_map(
                     flush=True,
                 )
     return out
+
+
+def _parse_controller_buffer_alias_map(source_text: str) -> Dict[str, Tuple[str, str]]:
+    """Parse `buffer = {'alias': battery.attr|t_out.attr, ...}` alias definitions.
+
+    Returns a mapping of alias key -> (source_name, attribute_name), where
+    source_name is either `battery` or `t_out`.
+    """
+    alias_map: Dict[str, Tuple[str, str]] = {}
+    if not source_text:
+        return alias_map
+
+    try:
+        tree = ast.parse(source_text)
+    except Exception:
+        return alias_map
+
+    def _consume_dict(node):
+        if not isinstance(node, ast.Dict):
+            return
+        for k_node, v_node in zip(node.keys, node.values):
+            if not isinstance(k_node, ast.Constant) or not isinstance(k_node.value, str):
+                continue
+            if (
+                isinstance(v_node, ast.Attribute)
+                and isinstance(v_node.value, ast.Name)
+                and v_node.value.id in ("battery", "t_out")
+            ):
+                alias_map[k_node.value] = (v_node.value.id, v_node.attr)
+
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign):
+            for tgt in n.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "buffer":
+                    _consume_dict(n.value)
+        elif isinstance(n, ast.AnnAssign):
+            if isinstance(n.target, ast.Name) and n.target.id == "buffer":
+                _consume_dict(n.value)
+
+    return alias_map
 
 
 def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
@@ -1612,6 +1653,7 @@ class R2H2():
         _collect_1hz_start_hour = None
         _collect_1hz_end_hour = None
         _1hz_time_series_data = {}  # Will hold accumulated 1Hz data
+        _hz_variables: list = []  # empty = default channels; non-empty = user selection
 
         def _is_cancelled():
             """Return True if the DB run record has been marked cancelled."""
@@ -1640,6 +1682,8 @@ class R2H2():
                 # Explicitly disabled in DB — ensure collection stays off even if
                 # dates were somehow passed in kwargs.
                 _collect_1hz = False
+            # Read user-specified variable list for 1Hz capture (may be empty list meaning defaults)
+            _hz_variables = list(getattr(sim_db, 'hz_variables', None) or [])
             # Override datum_date from DB if not already set
             if datum_date is None and hasattr(self.simulation_name, 'datum_date'):
                 datum_date = self.simulation_name.datum_date
@@ -1687,6 +1731,7 @@ class R2H2():
         # ── Load custom engineering controller (if configured) ───────────────
         _controller_fn = None
         _ctrl_end_hour_buffer_map = None
+        _ctrl_buffer_alias_map: Dict[str, Tuple[str, str]] = {}
         _ctrl_obj  = getattr(self.simulation_name, 'controller', None) if self.simulation_name is not None else None
         _ctrl_file = _ctrl_obj.filename if _ctrl_obj is not None else None
         if _ctrl_file:
@@ -1712,6 +1757,11 @@ class R2H2():
                     _ctrl_end_hour_buffer_map = None
                 if _controller_fn is None:
                     raise AttributeError(f"Controller file '{_ctrl_file}' has no 'control' function.")
+                try:
+                    _ctrl_src = Path(ctrl_path).read_text(encoding='utf-8', errors='replace')
+                    _ctrl_buffer_alias_map = _parse_controller_buffer_alias_map(_ctrl_src)
+                except Exception:
+                    _ctrl_buffer_alias_map = {}
                 if self.verbose:
                     print(f"  [run] Using custom controller: {_ctrl_file}", flush=True)
             except Exception as _ctrl_err:
@@ -1723,6 +1773,7 @@ class R2H2():
                 )
                 _controller_fn = None
                 _ctrl_end_hour_buffer_map = None
+                _ctrl_buffer_alias_map = {}
 
         # ── Bank thermal states ──────────────────────────────────────────────
         el = self.electrolyserunit
@@ -1854,6 +1905,10 @@ class R2H2():
                 if _feedback:
                     _cooling_feedback_prev = t_out.arP_cool_elec_total.copy()
 
+                # Update battery first so battery.* aliases (e.g. battery.arSoC)
+                # are available for this hour's 1Hz collection.
+                battery = runBattery1(t_out, battery, settings)
+
                 _collected_hour_start = None
                 _collected_hour_len = 0
 
@@ -1869,24 +1924,6 @@ class R2H2():
                         # Initialize 1Hz arrays on first collection
                         if not _1hz_time_series_data:
                             _1hz_time_series_data['time_indices'] = []
-                            # Existing key process outputs
-                            _1hz_time_series_data['arAvailablePower'] = []
-                            _1hz_time_series_data['arTotalElectroDemand'] = []
-                            _1hz_time_series_data['arProducedH2Dot'] = []
-                            _1hz_time_series_data['arTotalElectroOn'] = []
-                            _1hz_time_series_data['arEta_el_total'] = []
-                            _1hz_time_series_data['arT_stack'] = []
-                            _1hz_time_series_data['arV_cell_avg'] = []
-                            # Controller debug traces (inputs/outputs at 1 Hz)
-                            _1hz_time_series_data['controller_input_arAvailablePower'] = []
-                            _1hz_time_series_data['controller_input_aiIsOn'] = []
-                            _1hz_time_series_data['controller_input_initial_soc'] = []
-                            _1hz_time_series_data['controller_output_arBatteryDemand'] = []
-                            _1hz_time_series_data['controller_output_arElectroAvailablePowerA'] = []
-                            _1hz_time_series_data['controller_output_arElectroAvailablePower'] = []
-                            _1hz_time_series_data['controller_output_arTotalElectroOn'] = []
-                            _1hz_time_series_data['controller_output_aiIsOn'] = []
-                            _1hz_time_series_data['controller_output_arProportionPower'] = []
                         
                         # Append transient-trimmed 1Hz data for this hour.
                         # Build indices from the last appended sample so the
@@ -1901,108 +1938,64 @@ class R2H2():
                         _1hz_time_series_data['time_indices'].extend(
                             range(t_idx, t_idx + n_hz)
                         )
-                        _1hz_time_series_data['arAvailablePower'].extend(
-                            np.asarray(t_out.arAvailablePower).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['arTotalElectroDemand'].extend(
-                            np.asarray(t_out.arTotalElectroDemand).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['arProducedH2Dot'].extend(
-                            np.asarray(t_out.arH2Dot_total).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['arTotalElectroOn'].extend(
-                            np.asarray(t_out.arTotalElectroOn).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['arEta_el_total'].extend(
-                            np.asarray(t_out.arEta_el_total).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['arT_stack'].extend(
-                            np.asarray(t_out.arT_stack).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['arV_cell_avg'].extend(
-                            np.asarray(t_out.arV_cell_avg).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['controller_input_arAvailablePower'].extend(
-                            np.asarray(t_out.arAvailablePower).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['controller_input_aiIsOn'].extend(
-                            np.tile(
-                                ctrl_input_ai_is_on_prev,
-                                (n_hz, 1),
-                            ).tolist()
-                        )
-                        _1hz_time_series_data['controller_input_initial_soc'].extend(
-                            np.full(
-                                n_hz,
-                                ctrl_input_initial_soc,
-                                dtype=np.float64,
-                            )
-                        )
-                        _1hz_time_series_data['controller_output_arBatteryDemand'].extend(
-                            np.asarray(battery.arBatteryDemand).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['controller_output_arElectroAvailablePowerA'].extend(
-                            np.asarray(t_out.arElectroAvailablePowerA).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['controller_output_arElectroAvailablePower'].extend(
-                            np.asarray(t_out.arElectroAvailablePower).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['controller_output_arTotalElectroOn'].extend(
-                            np.asarray(t_out.arTotalElectroOn).ravel()[hz_start:]
-                        )
-                        _1hz_time_series_data['controller_output_aiIsOn'].extend(
-                            np.asarray(t_out.aiIsOn, dtype=np.int8).T[hz_start:, :].tolist()
-                        )
-                        _1hz_time_series_data['controller_output_arProportionPower'].extend(
-                            np.asarray(t_out.arProportionPower).T[hz_start:, :].tolist()
-                        )
 
-                        # Optional user debug buffers from custom controllers.
-                        # Log only buffers that were explicitly populated.
-                        for i_buf in range(1, 21):
-                            buf_name = f'arBuffer{i_buf}'
-                            buf_val = getattr(t_out, buf_name, None)
+                        # Capture only user-selected 1Hz variables from t_out.
+                        # Empty selection means retain no 1Hz channel data.
+                        _n_full_axis = len(t_out.arAvailablePower)
+
+                        def _resolve_hz_selected_value(selected_name):
+                            mapping = _ctrl_buffer_alias_map.get(selected_name)
+                            if mapping is not None:
+                                src_name, attr_name = mapping
+                                if src_name == 'battery':
+                                    return getattr(battery, attr_name, None)
+                                if src_name == 't_out':
+                                    return getattr(t_out, attr_name, None)
+                                return None
+                            return getattr(t_out, selected_name, None)
+
+                        for var_name in _hz_variables:
+                            buf_val = _resolve_hz_selected_value(var_name)
                             if buf_val is None:
                                 continue
-
                             buf_arr = np.asarray(buf_val)
                             if buf_arr.ndim == 0:
-                                buf_arr = np.full(
-                                    n_hz,
-                                    float(buf_arr),
-                                    dtype=np.float64,
-                                )
-                            else:
-                                buf_arr = np.ravel(buf_arr).astype(np.float64, copy=False)
-
-                            if buf_arr.size == 0:
-                                continue
-                            if buf_arr.size == len(t_out.arAvailablePower):
-                                buf_arr = buf_arr[hz_start:]
-                            elif buf_arr.size != n_hz:
+                                # Allow scalar aliases by broadcasting over this hour.
+                                try:
+                                    scalar_val = float(buf_arr)
+                                except Exception:
+                                    continue
+                                buf_arr = np.full(n_hz, scalar_val, dtype=np.float64)
+                            elif buf_arr.ndim != 1:
                                 if self.verbose:
                                     print(
-                                        f"  [run] Skipping {buf_name}: length {buf_arr.size} "
-                                        f"does not match trimmed 1Hz axis {n_hz} "
-                                        f"(or full axis {len(t_out.arAvailablePower)})",
+                                        f"  [run] Skipping {var_name}: expected a 1-D time array, got ndim={buf_arr.ndim}",
                                         flush=True,
                                     )
                                 continue
-
-                            if buf_name not in _1hz_time_series_data:
-                                _1hz_time_series_data[buf_name] = []
-                            _1hz_time_series_data[buf_name].extend(buf_arr)
-
-                        # Reserve arBuffer20 for a standard non-essential trace
-                        # if the controller did not provide it explicitly.
-                        if getattr(t_out, 'arBuffer20', None) is None:
-                            if 'arBuffer20' not in _1hz_time_series_data:
-                                _1hz_time_series_data['arBuffer20'] = []
-                            _1hz_time_series_data['arBuffer20'].extend(
-                                np.asarray(t_out.arTotalElectroOn).ravel()[hz_start:].astype(np.float64, copy=False)
-                            )
-
-                battery = runBattery1(t_out, battery, settings)
+                            buf_arr = buf_arr.astype(np.float64, copy=False)
+                            if buf_arr.size == 0:
+                                continue
+                            if buf_arr.size == _n_full_axis:
+                                buf_arr = buf_arr[hz_start:]
+                            elif buf_arr.size == n_hz + 1:
+                                # Battery arrays (e.g. arSoC) are computed from
+                                # rTransientSteps-1, giving one extra leading sample.
+                                buf_arr = buf_arr[1:]
+                            elif buf_arr.size == 1:
+                                buf_arr = np.full(n_hz, float(buf_arr[0]), dtype=np.float64)
+                            elif buf_arr.size != n_hz:
+                                if self.verbose:
+                                    print(
+                                        f"  [run] Skipping {var_name}: length {buf_arr.size} "
+                                        f"does not match trimmed 1Hz axis {n_hz} "
+                                        f"(or full axis {_n_full_axis})",
+                                        flush=True,
+                                    )
+                                continue
+                            if var_name not in _1hz_time_series_data:
+                                _1hz_time_series_data[var_name] = []
+                            _1hz_time_series_data[var_name].extend(buf_arr)
                 # Expose end-of-hour battery SoC on t_out so controller-level
                 # end-hour buffer mapping can reference it directly.
                 t_out.arBatterySoC = float(getattr(battery, 'arInitialSoC', np.nan))
@@ -2026,6 +2019,8 @@ class R2H2():
                     seg0 = _collected_hour_start
                     seg1 = _collected_hour_start + _collected_hour_len
                     for buf_name, val in mapped_vals.items():
+                        if buf_name not in _hz_variables:
+                            continue
                         if buf_name not in _1hz_time_series_data:
                             _1hz_time_series_data[buf_name] = [np.nan] * total_points
                         elif len(_1hz_time_series_data[buf_name]) < total_points:
@@ -2087,7 +2082,7 @@ class R2H2():
         # Free the list immediately after conversion to avoid holding both
         # the Python list and the numpy array in memory simultaneously.
         time_series_output = None
-        if _collect_1hz and _1hz_time_series_data:
+        if _collect_1hz and _1hz_time_series_data and _hz_variables:
             def _pop_array(key, dtype):
                 arr = np.array(_1hz_time_series_data.pop(key, []), dtype=dtype)
                 return arr
@@ -2095,33 +2090,23 @@ class R2H2():
             time_series_output = {
                 'start_hour': int(_collect_1hz_start_hour) if _collect_1hz_start_hour is not None else 0,
                 'end_hour': int(_collect_1hz_end_hour) if _collect_1hz_end_hour is not None else 0,
-                'time_indices':                          _pop_array('time_indices',                          np.int64),
-                'arAvailablePower':                      _pop_array('arAvailablePower',                      np.float64),
-                'arTotalElectroDemand':                  _pop_array('arTotalElectroDemand',                  np.float64),
-                'arProducedH2Dot':                       _pop_array('arProducedH2Dot',                       np.float64),
-                'arTotalElectroOn':                      _pop_array('arTotalElectroOn',                      np.float64),
-                'arEta_el_total':                        _pop_array('arEta_el_total',                        np.float64),
-                'arT_stack':                             _pop_array('arT_stack',                             np.float64),
-                'arV_cell_avg':                          _pop_array('arV_cell_avg',                          np.float64),
-                'controller_input_arAvailablePower':     _pop_array('controller_input_arAvailablePower',     np.float64),
-                'controller_input_aiIsOn':               _pop_array('controller_input_aiIsOn',               np.int8),
-                'controller_input_initial_soc':          _pop_array('controller_input_initial_soc',          np.float64),
-                'controller_output_arBatteryDemand':     _pop_array('controller_output_arBatteryDemand',     np.float64),
-                'controller_output_arElectroAvailablePowerA': _pop_array('controller_output_arElectroAvailablePowerA', np.float64),
-                'controller_output_arElectroAvailablePower':  _pop_array('controller_output_arElectroAvailablePower',  np.float64),
-                'controller_output_arTotalElectroOn':    _pop_array('controller_output_arTotalElectroOn',    np.float64),
-                'controller_output_aiIsOn':              _pop_array('controller_output_aiIsOn',              np.int8),
-                'controller_output_arProportionPower':   _pop_array('controller_output_arProportionPower',   np.float64),
+                'time_indices': _pop_array('time_indices', np.int64),
             }
 
-            # Include optional user debug buffers that were populated.
-            for i_buf in range(1, 21):
-                buf_name = f'arBuffer{i_buf}'
-                if buf_name in _1hz_time_series_data and _1hz_time_series_data[buf_name]:
-                    time_series_output[buf_name] = _pop_array(buf_name, np.float64)
+            # Include only the user-selected variables that were actually collected.
+            for var_name in list(_1hz_time_series_data.keys()):
+                if var_name not in time_series_output and _1hz_time_series_data[var_name]:
+                    time_series_output[var_name] = _pop_array(var_name, np.float64)
+
+            # If no selected channels produced valid 1Hz arrays, do not retain a 1Hz payload.
+            if len(time_series_output) <= 3:
+                time_series_output = None
             if self.verbose:
-                n_points = len(time_series_output['time_indices'])
-                print(f"  [run] Collected {n_points} 1Hz data points", flush=True)
+                if time_series_output is None:
+                    print("  [run] No selected 1Hz channels produced valid time-series output", flush=True)
+                else:
+                    n_points = len(time_series_output['time_indices'])
+                    print(f"  [run] Collected {n_points} 1Hz data points", flush=True)
 
         return {
             "YearResults":          zYearResults,

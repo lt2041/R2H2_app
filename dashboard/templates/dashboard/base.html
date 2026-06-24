@@ -118,20 +118,84 @@
         // Breadcrumb generator
         const breadcrumbContainer = document.getElementById('breadcrumb-container');
         if (breadcrumbContainer) {
-            const title = document.title;
-            const parts = title.split('—').map(s => s.trim()).filter(Boolean);
-            parts.forEach((part, i) => {
-                const a = document.createElement('a');
-                a.href = '#!';
-                a.className = 'breadcrumb';
-                a.textContent = part;
-                const isLast = i === parts.length - 1;
-                a.style.color = '#fff';
-                a.style.fontWeight = isLast ? '100' : '300';
-                a.style.fontSize = '1.5rem';
-                a.style.opacity = isLast ? '1' : '0.65';
-                breadcrumbContainer.appendChild(a);
-            });
+            const path = window.location.pathname.replace(/\/+$/, '') || '/';
+            const titleParts = document.title.split('—').map(s => s.trim()).filter(Boolean);
+            const staticUrls = {
+                home: "{% url 'dashboard-landing' %}",
+                models: "{% url 'dashboard-simulations' %}",
+                library: "{% url 'dashboard-home' %}",
+                wind: "{% url 'dashboard-wind-data' %}",
+                settings: "{% url 'dashboard-settings' %}",
+                help: "{% url 'dashboard-help' %}",
+            };
+
+            function appendCrumb(label, href, isLast) {
+                const node = document.createElement(isLast || !href ? 'span' : 'a');
+                if (!isLast && href) {
+                    node.href = href;
+                    node.className = 'breadcrumb';
+                } else {
+                    node.className = 'breadcrumb';
+                    node.style.cursor = 'default';
+                }
+                node.textContent = label;
+                node.style.color = '#fff';
+                node.style.fontWeight = isLast ? '100' : '300';
+                node.style.fontSize = '1.5rem';
+                node.style.opacity = isLast ? '1' : '0.65';
+                breadcrumbContainer.appendChild(node);
+            }
+
+            function renderCrumbs(crumbs) {
+                crumbs.forEach(function(crumb, i) {
+                    appendCrumb(crumb.label, crumb.href, i === crumbs.length - 1);
+                });
+            }
+
+            let crumbs = null;
+            const simDetailMatch = path.match(/^\/simulations\/(\d+)$/);
+            const runResultsMatch = path.match(/^\/simulations\/(\d+)\/run\/(\d+)\/results$/);
+            const browseMatch = path.match(/^\/browse\/([^/]+)$/);
+
+            if (path === '/' || path === staticUrls.home.replace(/\/+$/, '')) {
+                crumbs = [{ label: 'Home', href: staticUrls.home }];
+            } else if (path === staticUrls.models.replace(/\/+$/, '')) {
+                crumbs = [{ label: 'Models', href: staticUrls.models }];
+            } else if (simDetailMatch) {
+                crumbs = [
+                    { label: 'Models', href: staticUrls.models },
+                    { label: titleParts[1] || 'Simulation', href: path + '/' },
+                ];
+            } else if (runResultsMatch) {
+                const simPath = '/simulations/' + runResultsMatch[1] + '/';
+                crumbs = [
+                    { label: 'Models', href: staticUrls.models },
+                    { label: titleParts[2] || 'Simulation', href: simPath },
+                    { label: titleParts[1] || 'Run', href: simPath },
+                    { label: titleParts[0] || 'Results', href: path + '/' },
+                ];
+            } else if (path === staticUrls.library.replace(/\/+$/, '')) {
+                crumbs = [{ label: 'Component Library', href: staticUrls.library }];
+            } else if (browseMatch) {
+                crumbs = [
+                    { label: 'Component Library', href: staticUrls.library },
+                    { label: titleParts[1] || titleParts[0] || 'Browse', href: path + '/' },
+                ];
+            } else if (path === staticUrls.wind.replace(/\/+$/, '')) {
+                crumbs = [{ label: 'Wind Data', href: staticUrls.wind }];
+            } else if (path === staticUrls.settings.replace(/\/+$/, '')) {
+                crumbs = [{ label: 'Settings', href: staticUrls.settings }];
+            } else if (path === staticUrls.help.replace(/\/+$/, '')) {
+                crumbs = [{ label: 'Help', href: staticUrls.help }];
+            }
+
+            if (!crumbs) {
+                crumbs = titleParts.map(function(part, idx) {
+                    return { label: part, href: idx === titleParts.length - 1 ? null : null };
+                });
+            }
+
+            renderCrumbs(crumbs);
         }
     });
     </script>

@@ -109,6 +109,10 @@ class Simulation(models.Model):
     collect_1hz_end_date = models.DateField(
         null=True, blank=True,
         help_text='End date for 1Hz data collection (inclusive). Must be after or equal to start_date. Long ranges create very large output files.')
+    hz_variables = models.JSONField(
+        default=list, blank=True,
+        help_text='List of t_out attribute names to capture at 1Hz. Empty list means capture all default channels. '
+                  'Only arrays of length T (time) are valid.')
 
     def clean(self):
         """Validate date ranges for simulation and 1Hz data collection."""

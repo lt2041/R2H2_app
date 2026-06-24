@@ -1461,14 +1461,7 @@ def _fmt_duration(seconds):
     return f'{h:02d}:{m:02d}:{sec:02d}'
 
 
-_DEFAULT_1HZ_PLOT_KEYS = [
-    'arBuffer1', 'arBuffer2', 'arBuffer3', 'arBuffer4', 'arBuffer5',
-    'arBuffer6', 'arBuffer7', 'arBuffer8', 'arBuffer9', 'arBuffer10',
-    'arBuffer11', 'arBuffer12', 'arBuffer13', 'arBuffer14', 'arBuffer15',
-    'arBuffer16', 'arBuffer17', 'arBuffer18', 'arBuffer19', 'arBuffer20',
-    'controller_output_arBatteryDemand',
-    'controller_output_arElectroAvailablePower',
-]
+_DEFAULT_1HZ_PLOT_KEYS = []
 
 
 def _get_run_output_abspath(run):
@@ -1517,11 +1510,19 @@ def _parse_1hz_request_time(raw_value):
 
 
 def _select_1hz_plot_keys(ts_group):
-    """Return the preferred ordered set of plottable 1Hz dataset keys."""
-    plot_keys = [key for key in _DEFAULT_1HZ_PLOT_KEYS if key in ts_group]
-    if plot_keys:
-        return plot_keys
-    return [key for key in sorted(ts_group.keys()) if key != 'time_indices']
+    """Return plottable saved 1Hz dataset keys.
+
+    Only 1-D datasets other than ``time_indices`` are considered plottable.
+    The saved HDF5 content is already restricted to user-selected variables.
+    """
+    plot_keys = []
+    for key in sorted(ts_group.keys()):
+        if key == 'time_indices':
+            continue
+        ds = ts_group[key]
+        if getattr(ds, 'ndim', None) == 1:
+            plot_keys.append(key)
+    return plot_keys
 
 
 def _get_run_datetime_origin(run):
@@ -1695,6 +1696,8 @@ def _get_run_1hz_meta(run):
             end_hour = int(ts_group.attrs.get('end_hour', 0))
             points_total = int(ts_group['time_indices'].shape[0])
     except Exception:
+        return None
+    if points_total <= 0 or not plot_keys:
         return None
     return {
         'points_total': points_total,
@@ -2100,6 +2103,8 @@ def view_run_results(request, sim_id, run_id):
         _hz_meta = _get_run_1hz_meta(run)
         if _hz_meta:
             hz_meta = _hz_meta
+        else:
+            has_1hz_data = False
 
     context = {
         'run': run,
@@ -2115,6 +2120,7 @@ def view_run_results(request, sim_id, run_id):
         'has_wind': sim.wind_inputs.exists(),
         'has_1hz_data': has_1hz_data,
         'hz_meta': hz_meta,
+        'hz_channel_range': range(hz_meta.get('n_channels', 0)),
         'run_1hz_url': f'/simulations/{sim_id}/run/{run_id}/1hz-json/',
     }
     return render(request, 'dashboard/run_results.html', context)
@@ -2146,9 +2152,11 @@ def run_1hz_json(request, sim_id, run_id):
         return JsonResponse({'error': str(e)}, status=500)
     if pd is None:
         return JsonResponse({'error': 'No 1Hz data available.'}, status=404)
+    if not pd['series']:
+        return JsonResponse({'error': 'No saved 1Hz channels available for plotting.'}, status=404)
     return JsonResponse({
         'x_values':          pd['x_values'],
-        'series':            pd['series'][:3],
+        'series':            pd['series'],
         'full_start':        pd['full_start'],
         'full_end':          pd['full_end'],
         'points_total':      pd['points_total'],
@@ -2268,6 +2276,23 @@ def update_sim_1hz(request, sim_id):
         sim.collect_1hz_end_date   = end
         update_fields += ['collect_1hz_start_date', 'collect_1hz_end_date']
 
+    # Handle hz_variables list (JSON array of variable name strings)
+    hz_vars_raw = request.POST.get('hz_variables', None)
+    if hz_vars_raw is not None:
+        import json as _json_mod
+        try:
+            hz_vars = _json_mod.loads(hz_vars_raw)
+        except (ValueError, TypeError):
+            # Accept comma-separated fallback
+            hz_vars = [v.strip() for v in hz_vars_raw.split(',') if v.strip()]
+        if not isinstance(hz_vars, list):
+            return JsonResponse({'error': 'hz_variables must be a JSON array.'}, status=400)
+        # Sanitise: only allow safe identifier-like strings
+        import re as _re
+        hz_vars = [v for v in hz_vars if isinstance(v, str) and _re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', v)]
+        sim.hz_variables = hz_vars
+        update_fields.append('hz_variables')
+
     if not update_fields:
         return JsonResponse({'error': 'No valid parameters provided.'}, status=400)
 
@@ -2276,6 +2301,111 @@ def update_sim_1hz(request, sim_id):
         'collect_1hz_data':       sim.collect_1hz_data,
         'collect_1hz_start_date': sim.collect_1hz_start_date.isoformat() if sim.collect_1hz_start_date else '',
         'collect_1hz_end_date':   sim.collect_1hz_end_date.isoformat()   if sim.collect_1hz_end_date   else '',
+        'hz_variables':           sim.hz_variables or [],
+    })
+
+
+def sim_1hz_variables(request, sim_id):
+    """GET: Return the list of available t_out variable names for 1Hz capture.
+
+    If the simulation has a linked controller, parse the Python source to find
+    all ``t_out.<name>`` assignments where <name> looks like an array attribute.
+    Always include the built-in TimeOutputs array attributes too.
+    """
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    import re as _re
+
+    sim = get_object_or_404(Simulation, pk=sim_id)
+
+    # Built-in 1-D t_out array attributes from TimeOutputs (arrays of length T)
+    _BUILTIN = [
+        'arWindPowerFilt',
+        'arAvailablePower',
+        'arElectroAvailablePowerA',
+        'arElectroAvailablePower',
+        'arTotalElectroDemand',
+        'arTotalElectroOn',
+        'arP_el_total',
+        'arT_stack',
+        'arH2Dot_total',
+        'arV_cell_avg',
+        'arEta_el_total',
+        'arEta_system_total',
+        'arQ_gain_total',
+        'arQ_lost_total',
+        'arQ_cool_total',
+        'arP_cool_elec_total',
+    ]
+
+    def _parse_buffer_aliases_from_source(src_text):
+        """Parse `buffer = {'alias': battery.arSoC, ...}` aliases from controller code."""
+        import ast as _ast
+
+        aliases = []
+        try:
+            tree = _ast.parse(src_text)
+        except Exception:
+            return aliases
+
+        def _dict_from_node(value_node):
+            if not isinstance(value_node, _ast.Dict):
+                return
+            for k_node, v_node in zip(value_node.keys, value_node.values):
+                if not isinstance(k_node, _ast.Constant) or not isinstance(k_node.value, str):
+                    continue
+                # Support battery.<attr> or t_out.<attr> sources
+                if (
+                    isinstance(v_node, _ast.Attribute)
+                    and isinstance(v_node.value, _ast.Name)
+                    and v_node.value.id in ('battery', 't_out')
+                ):
+                    aliases.append(k_node.value)
+
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, _ast.Name) and tgt.id == 'buffer':
+                        _dict_from_node(node.value)
+            elif isinstance(node, _ast.AnnAssign):
+                if isinstance(node.target, _ast.Name) and node.target.id == 'buffer':
+                    _dict_from_node(node.value)
+
+        # Keep stable order and uniqueness
+        out = []
+        seen = set()
+        for a in aliases:
+            if a not in seen:
+                seen.add(a)
+                out.append(a)
+        return out
+
+    # Parse controller source for additional t_out.* array assignments and
+    # aliases defined in a `buffer` dict.
+    controller_vars = []
+    buffer_aliases = []
+    if sim.controller and sim.controller.file:
+        try:
+            from r2h2.config import get_controllers_dir
+            import pathlib
+            ctrl_path = pathlib.Path(get_controllers_dir()) / sim.controller.file.name
+            if ctrl_path.exists():
+                src = ctrl_path.read_text(encoding='utf-8', errors='replace')
+                buffer_aliases = _parse_buffer_aliases_from_source(src)
+                # Match t_out.<identifier> = ... where identifier starts with 'ar'
+                found = _re.findall(r'\bt_out\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=', src)
+                # Keep only array-like names (starting with 'ar') not already in built-ins
+                for name in found:
+                    if name.startswith('ar') and name not in _BUILTIN and name not in controller_vars:
+                        controller_vars.append(name)
+        except Exception:
+            pass
+
+    all_vars = _BUILTIN + controller_vars + [a for a in buffer_aliases if a not in _BUILTIN and a not in controller_vars]
+    return JsonResponse({
+        'available': all_vars,
+        'controller_extra': controller_vars + buffer_aliases,
+        'selected': sim.hz_variables or [],
     })
 
 

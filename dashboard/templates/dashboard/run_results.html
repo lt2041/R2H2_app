@@ -89,7 +89,8 @@
     color: #136b75;
 }
 .chart-card-header .material-symbols-outlined { font-size: 1.05rem; padding: 0 !important; }
-.chart-body { padding: 0.5rem 0.25rem; }
+.chart-body { padding: 0.5rem 0.25rem; width: 100%; box-sizing: border-box; overflow: hidden; }
+.chart-body > div { max-width: 100%; overflow: hidden; }
 
 /* ── Charts grid ── */
 .charts-grid {
@@ -424,7 +425,7 @@
     </style>
 
     <div class="charts-grid">
-        {% for i in "012" %}{% with forloop.counter0 as idx %}
+        {% for idx in hz_channel_range %}
         <div class="chart-card">
             <div class="chart-card-header">
                 <span class="material-symbols-outlined">monitoring</span>
@@ -435,10 +436,10 @@
                     <span class="material-symbols-outlined" style="font-size:1.2rem; animation:hz-spin 1.2s linear infinite;">progress_activity</span>
                     Loading 1Hz data…
                 </div>
-                <div id="hz-inline-chart-{{ idx }}" style="height:280px; display:none;"></div>
+                <div id="hz-inline-chart-{{ idx }}" style="height:280px; width:93%; margin:0 auto; display:none;"></div>
             </div>
         </div>
-        {% endwith %}{% endfor %}
+        {% endfor %}
     </div>
     {% endif %}
     <!-- ── 1 Hz Wind Data card ── -->
@@ -662,7 +663,7 @@
         plot_bgcolor:  '#f7fcfd',
         font: { family: 'Ubuntu, sans-serif', size: 11, color: '#4a7a80' },
         xaxis: { gridcolor: '#d4eef0', zeroline: false, ticklen: 6, tickcolor: 'transparent' },
-        yaxis: { gridcolor: '#d4eef0', zeroline: false, exponentformat: 'e', minexponent: 4 },
+        yaxis: { gridcolor: '#d4eef0', zeroline: false, exponentformat: 'e', minexponent: 4, automargin: true },
         legend: { orientation: 'h', y: 1.08, yanchor: 'bottom', x: 0.5, xanchor: 'center', font: { size: 10 } },
         hovermode: 'x unified',
         dragmode: 'zoom',
@@ -737,6 +738,14 @@
         return base;
     }
 
+    function yaxisLayout(titleText, extra) {
+        var base = Object.assign({}, LAYOUT_DEFAULTS.yaxis, extra || {});
+        if (titleText) {
+            base.title = { text: titleText, standoff: 14 };
+        }
+        return base;
+    }
+
     function fmtNum(v, dec) {
         if (v == null || isNaN(v)) return '—';
         return v.toFixed(dec != null ? dec : 2);
@@ -788,7 +797,7 @@
         if (traces.length) {
             Plotly.newPlot('chart-h2', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 't H₂' }),
+                    yaxis: yaxisLayout('t H₂'),
                     xaxis: xaxisLayout(),
                     showlegend: false,
                 })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
@@ -890,8 +899,7 @@
         if (traces.length) {
             Plotly.newPlot('chart-eff', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                              { title: '% of original', tickformat: '.1f', rangemode: 'tozero' }),
+                    yaxis: yaxisLayout('% of original', { tickformat: '.1f', rangemode: 'tozero' }),
                     xaxis: xaxisLayout(),
                     showlegend: traces.length > 1,
                 })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
@@ -943,8 +951,7 @@
         if (traces.length) {
             Plotly.newPlot('chart-soc', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                           { title: 'Fraction (0–1)', tickformat: '.3f' }),
+                    yaxis: yaxisLayout('Fraction (0–1)', { tickformat: '.3f' }),
                     xaxis: xaxisLayout(),
                     showlegend: true,
                 })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
@@ -978,8 +985,7 @@
         if (traces.length) {
             Plotly.newPlot('chart-elec', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis,
-                           { title: '% units on', range: [-5, 105] }),
+                    yaxis: yaxisLayout('% units on', { range: [-5, 105] }),
                     xaxis: xaxisLayout(),
                     showlegend: false,
                 })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
@@ -1015,7 +1021,7 @@
         if (traces.length) {
             Plotly.newPlot('chart-power', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'Power (W)' }),
+                    yaxis: yaxisLayout('Power (W)'),
                     xaxis: xaxisLayout(),
                     showlegend: true,
                 })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
@@ -1046,7 +1052,7 @@
         if (traces.length) {
             Plotly.newPlot('chart-wind', traces,
                 withHz1hzShape(Object.assign({}, LAYOUT_DEFAULTS, {
-                    yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { title: 'm/s' }),
+                    yaxis: yaxisLayout('m/s'),
                     xaxis: xaxisLayout(),
                     showlegend: false,
                 })), { responsive: true, displayModeBar: false, scrollZoom: false, doubleClick: 'reset' });
@@ -1141,6 +1147,7 @@
     (function() {
         var HZ_URL    = '{{ run_1hz_url }}';
         var HZ_POINTS = 2000;  // points to render at any zoom level
+        var HZ_CHANNEL_COUNT = {{ hz_meta.n_channels|default:0 }};
 
         var hzDivs   = [];
         var hzTitles = [];
@@ -1152,14 +1159,14 @@
 
         var HZ_LAYOUT = Object.assign({}, LAYOUT_DEFAULTS, {
             xaxis: Object.assign({}, LAYOUT_DEFAULTS.xaxis, { type: 'date', automargin: true }),
-            yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis),
+            yaxis: Object.assign({}, LAYOUT_DEFAULTS.yaxis, { automargin: true }),
             showlegend: false,
-            margin: Object.assign({}, LAYOUT_DEFAULTS.margin, { b: 36 }),
+            margin: Object.assign({}, LAYOUT_DEFAULTS.margin, { l: 50, r: 32, b: 36 }),
         });
 
         // ── Show/hide spinners ────────────────────────────────────────────
         function showSpinners() {
-            for (var i = 0; i < 3; i++) {
+            for (var i = 0; i < HZ_CHANNEL_COUNT; i++) {
                 var sp = document.getElementById('hz-spinner-' + i);
                 var ch = document.getElementById('hz-inline-chart-' + i);
                 if (sp) sp.style.display = 'flex';
@@ -1168,7 +1175,7 @@
         }
 
         function hideSpinners() {
-            for (var i = 0; i < 3; i++) {
+            for (var i = 0; i < HZ_CHANNEL_COUNT; i++) {
                 var sp = document.getElementById('hz-spinner-' + i);
                 var ch = document.getElementById('hz-inline-chart-' + i);
                 if (sp) sp.style.display = 'none';
@@ -1216,15 +1223,12 @@
                             var titleEl = document.getElementById('hz-inline-title-' + i);
                             if (!el) return;
                             if (titleEl) titleEl.textContent = s.key;
-                            var layout = Object.assign({}, HZ_LAYOUT, {
-                                yaxis: Object.assign({}, HZ_LAYOUT.yaxis, { title: s.key }),
-                            });
                             Plotly.newPlot(el, [{
                                 x: data.x_values, y: s.y,
                                 type: 'scattergl', mode: 'lines',
                                 name: s.key,
                                 line: { color: '#136b75', width: 1.2 },
-                            }], layout, {
+                            }], HZ_LAYOUT, {
                                 responsive: true, displayModeBar: false,
                                 scrollZoom: false, doubleClick: 'reset',
                             });

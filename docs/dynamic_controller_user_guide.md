@@ -153,14 +153,6 @@ def control(units, battery, t_out, settings):
     return units, t_out, battery
 ```
 
-## Custom Controller Loading
-
-At run start, R2H2 loads the selected controller module and reads:
-
-- `control` callable (required)
-- `end_hour_buffer_map` or `END_HOUR_BUFFER_MAP` (optional)
-
-If `end_hour_buffer_map` exists but is not a `dict`, it is ignored.
 
 ## 1 Hz Collection Model (Current Behavior)
 
@@ -170,17 +162,9 @@ Important current behavior:
 
 - If `hz_variables` is empty, no 1 Hz channel datasets are produced.
 - `time_indices` is always sequential across collected hours.
-- Only successfully resolved and shape-compatible variables are stored.
+- **Only successfully resolved and shape-compatible variables are stored.**
 - If no selected channels produce data, `TimeSeriesOutput` is omitted.
 
-### Variable Resolution Order
-
-For each selected variable name:
-
-1. If it matches a controller alias from `buffer = {...}` mapping, resolve from:
-   - `battery.<attr>` or
-   - `t_out.<attr>`
-2. Otherwise resolve from `t_out.<selected_name>` directly.
 
 ### Accepted Shapes for Selected Variables
 
@@ -199,7 +183,7 @@ Skipped:
 
 ## `buffer = {...}` Alias Map for 1 Hz Selection
 
-R2H2 parses controller source for a top-level variable named `buffer`:
+R2H2 parses controller source for a top-level variable named `buffer`. As an example:
 
 ```python
 buffer = {
@@ -213,31 +197,8 @@ If you add alias keys there, those keys can be selected in `hz_variables` and re
 Notes:
 
 - Parser accepts assignments to `buffer` in `Assign` or `AnnAssign` forms.
-- Alias values must be attribute references on `battery` or `t_out`.
+- *Alias values must be attribute references on `battery` or `t_out`.* - To be clear `"my_var":my_var` won't work, `"my_var":t_out.my_var` will (assuming the variable has the right size!)
 
-## End-Of-Hour Buffer Mapping (`arBuffer1`..`arBuffer20`)
-
-Optional in controller module:
-
-```python
-end_hour_buffer_map = {
-    "arBuffer1": "arEta_system_total",
-    "arBuffer2": "arT_stack",
-    "arBuffer3": lambda t: np.mean(t.arTotalElectroOn),
-}
-```
-
-Behavior:
-
-- Applied after hourly post-processing, including `runBattery1`.
-- Also exposes `t_out.arBatterySoC` (end-of-hour value) before mapping.
-- Mapping values may be:
-  - `str`: attribute name on `t_out`
-  - `callable`: `fn(t_out)`
-  - scalar/array-like: last element used
-- Each mapped value must resolve to a finite scalar.
-- Mapping only affects 1 Hz output if that buffer name is selected in `hz_variables`.
-- Mapping fills the collected hour segment with the resolved scalar value.
 
 ## Recommended Workflow
 

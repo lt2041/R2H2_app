@@ -114,15 +114,6 @@
                     color:#ffffff; letter-spacing:0.08em;">R2H2</span>
     <p>Simulate green hydrogen production from wind energy — configure components,
        upload wind data, and run multi-year transient simulations.</p>
-    <a href="{% url 'dashboard-simulations' %}" class="btn white teal-text text-darken-2 waves-effect waves-teal"
-       style="font-weight:600; margin-right:1rem;">
-        <span class="material-symbols-outlined" style="font-size:1.1rem;padding:0 6px 0 0;transform:none;vertical-align:middle;">rocket_launch</span>
-        Get Started
-    </a>
-    <a href="{% url 'dashboard-wind-data' %}" class="btn-flat white-text waves-effect waves-light"
-       style="border:1px solid rgba(255,255,255,0.5); border-radius:4px;">
-        Upload Wind Data
-    </a>
 </div>
 
 <!-- ── Quick stats ────────────────────────────────────────────── -->
@@ -167,14 +158,14 @@
 
     <div class="col s12 m6 l3" style="margin-bottom:1rem;">
         <div class="card z-depth-1" style="height:100%;margin:0;">
-            <div class="step-card">
+            <div class="step-card" style="height: 250px;">
                 <div class="step-num">1</div>
                 <div class="step-body">
                     <span class="material-symbols-outlined step-icon">air</span>
                     <h6>Upload Wind Data</h6>
                     <p>Import an HDF5 file containing turbine power time-series. Time step and duration are auto-detected.</p>
                     <br>
-                    <a href="{% url 'dashboard-wind-data-upload' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                    <a href="{% url 'dashboard-wind-data' %}" class="teal-text text-darken-2" style="position:absolute;bottom:30px;font-size:0.85rem;font-weight:600;">
                         Go to Wind Data →
                     </a>
                 </div>
@@ -184,14 +175,14 @@
 
     <div class="col s12 m6 l3" style="margin-bottom:1rem;">
         <div class="card z-depth-1" style="height:100%;margin:0;">
-            <div class="step-card">
+            <div class="step-card" style="height: 250px;">
                 <div class="step-num">2</div>
                 <div class="step-body">
                     <span class="material-symbols-outlined step-icon">deployed_code</span>
                     <h6>Configure Components</h6>
                     <p>Set up batteries, electrolysers, PEM cells, and thermal properties that describe your system.</p>
                     <br>
-                    <a href="{% url 'dashboard-home' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                    <a href="{% url 'dashboard-home' %}" class="teal-text text-darken-2" style="position:absolute;bottom:30px;font-size:0.85rem;font-weight:600;">
                         Go to Components →
                     </a>
                 </div>
@@ -201,14 +192,14 @@
 
     <div class="col s12 m6 l3" style="margin-bottom:1rem;">
         <div class="card z-depth-1" style="height:100%;margin:0;">
-            <div class="step-card">
+            <div class="step-card" style="height: 250px;">
                 <div class="step-num">3</div>
                 <div class="step-body">
                     <span class="material-symbols-outlined step-icon">flowchart</span>
                     <h6>Build a Simulation</h6>
                     <p>Create a simulation model that links your components and wind input together into a run configuration.</p>
                     <br>
-                    <a href="{% url 'dashboard-simulations' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                    <a href="{% url 'dashboard-simulations' %}" class="teal-text text-darken-2" style="position:absolute;bottom:30px;font-size:0.85rem;font-weight:600;">
                         Go to Models →
                     </a>
                 </div>
@@ -218,14 +209,14 @@
 
     <div class="col s12 m6 l3" style="margin-bottom:1rem;">
         <div class="card z-depth-1" style="height:100%;margin:0;">
-            <div class="step-card">
+            <div class="step-card" style="height: 250px;">
                 <div class="step-num">4</div>
                 <div class="step-body">
                     <span class="material-symbols-outlined step-icon">monitoring</span>
                     <h6>Run & Analyse</h6>
                     <p>Execute multi-year transient simulations and track live progress. Results are saved for later review.</p>
                     <br>
-                    <a href="{% url 'dashboard-simulations' %}" class="teal-text text-darken-2" style="font-size:0.85rem;font-weight:600;">
+                    <a href="{% url 'dashboard-simulations' %}" class="teal-text text-darken-2" style="position:absolute;bottom:30px;font-size:0.85rem;font-weight:600;">
                         View Results →
                     </a>
                 </div>

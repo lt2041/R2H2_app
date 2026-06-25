@@ -102,9 +102,7 @@ def main() -> None:
         print(
             '✗  Could not find the installed `r2h2` script.\n'
             '   Make sure the package was installed correctly:\n'
-            '     pip install r2h2\n'
-            '   or, inside a venv:\n'
-            '     pip install -e /path/to/R2H2_app'
+            '     pipx install r2h2\n'
         )
         sys.exit(1)
 

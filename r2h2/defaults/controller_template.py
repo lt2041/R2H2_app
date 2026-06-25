@@ -17,18 +17,29 @@ The controller receives each hour:
 
 Required return value: the tuple ``(units, t_out, battery)`` with at minimum:
 
-  t_out.arTotalElectroDemand   – total electrolyser demand [W], 1-D length T
-  t_out.aiIsOn                 – ON/OFF status per unit, shape (num_units, T)
-  t_out.arProportionPower      – per-unit power fractions, shape (num_units, T)
+- ``t_out.arTotalElectroDemand``   – total electrolyser demand [W], 1-D length T_ctrl
+- ``t_out.aiIsOn``                 – ON/OFF status per unit, shape (num_units, T_ctrl)
+- ``t_out.arProportionPower``      – per-unit power fractions, shape (num_units, T_ctrl)
+
+Controller window length
+------------------------
+Custom controllers are called with a transient-trimmed time axis only:
+
+- ``T_ctrl = T_full - settings.rTransientSteps``
+
+where ``T_full`` is the full per-hour internal axis (for example 3600 at 1 Hz).
+You do NOT need to handle transient slots in your controller.
+R2H2 pre-fills those slots from the previous hour and merges your T_ctrl outputs
+back into the full arrays after your function returns.
 
 Key controller inputs available on t_out
 -----------------------------------------
-  t_out.arAvailablePower       – filtered wind power after ancillary load [W]
-  t_out.aiIsOn[:, -1]          – ON/OFF state carried over from the previous hour
-  t_out.arTotalElectroOn       – running count of ON units (pre-zeroed)
-  t_out.arProportionPower      – per-unit fractions (pre-zeroed)
-  t_out.aiWarmedUp             – warm-up mask per unit (1 = warmed up)
-  t_out.aiNumOn                – cumulative turn-on count per unit
+- ``t_out.arAvailablePower``    – filtered wind power after ancillary load [W]
+- ``t_out.aiIsOn[:, -1]``       – ON/OFF state carried over from the previous hour
+- ``t_out.arTotalElectroOn``    – running count of ON units (trimmed axis)
+- ``t_out.arProportionPower``   – per-unit fractions (trimmed axis)
+- ``t_out.aiWarmedUp``          – warm-up mask per unit (1 = warmed up)
+- ``t_out.aiNumOn``             – per-hour turn-on count per unit
 
 Key unit attributes
 -------------------
@@ -64,20 +75,20 @@ def control(units, battery, t_out, settings):
     """Built-in dispatch controller.
 
     Required outputs (for downstream simulation):
-    - t_out.arTotalElectroDemand: total electrolyser demand profile [W], length T.
-    - t_out.aiIsOn: ON/OFF status matrix, shape (num_units, T).
-    - t_out.arProportionPower: per-unit demand fractions, shape (num_units, T).
+    - t_out.arTotalElectroDemand: total electrolyser demand profile [W], length T_ctrl.
+    - t_out.aiIsOn: ON/OFF status matrix, shape (num_units, T_ctrl).
+    - t_out.arProportionPower: per-unit demand fractions, shape (num_units, T_ctrl).
 
     """
     # ------------------------------------------------------------------
     # Controller inputs (made explicit for readability)
     # ------------------------------------------------------------------
-    # 1) Total incoming power profile [W], length T (includes transient steps).
-    #    Downstream logging/output usually ignores the first rTransientSteps.
+    # 1) Total incoming power profile [W], length T_ctrl.
+    #    This axis already excludes the transient warm-up region.
     total_available_power = np.asarray(t_out.arAvailablePower, dtype=float)
     T = len(total_available_power)
 
-    # 2) Electrolyser ON/OFF matrix [num_units, T].
+    # 2) Electrolyser ON/OFF matrix [num_units, T_ctrl].
     #    Seed all timesteps from the previous known state (last column at entry)
     #    so the controller starts from an explicit, fully populated baseline.
     num_units = len(units)
@@ -142,15 +153,9 @@ def control(units, battery, t_out, settings):
     arMaxElectroSum = np.floor(t_out.arElectroAvailablePower / rMin).astype(int)
     arMinElectroSum = np.ceil(t_out.arElectroAvailablePower / rRated).astype(int)
 
-    step0 = int(settings.rTransientSteps)
-    t_out.aiIsOn[:, step0 - 1] = t_out.aiIsOn[:, -1]
-    t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
-    if t_out.arTotalElectroOn[step0 - 1] > 0:
-        t_out.arProportionPower[:, step0 - 1] = (
-            t_out.aiIsOn[:, step0 - 1] / t_out.arTotalElectroOn[step0 - 1]
-        )
-
-    for k in range(step0, T):
+    # The transient slots are handled by R2H2 before/after controller call.
+    # Dispatch therefore runs directly over the trimmed T_ctrl axis.
+    for k in range(T):
         t_out.aiIsOn[:, k] = t_out.aiIsOn[:, k - 1]
         total_on_prev    = t_out.arTotalElectroOn[k - 1]
         available_power  = t_out.arElectroAvailablePower[k]

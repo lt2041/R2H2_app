@@ -18,11 +18,16 @@ The controller MUST provide the outputs:
   - `t_out.arProportionPower`
 
 They must have the shape 
-  - `len(arTotalElectroDemand) == T`
-  - `shape(aiIsOn) == (num_units, T)`
-  - `shape(arProportionPower) == (num_units, T)`
+  - `len(arTotalElectroDemand) == T_ctrl`
+  - `shape(aiIsOn) == (num_units, T_ctrl)`
+  - `shape(arProportionPower) == (num_units, T_ctrl)`
 
-Where num_units is the number of electrolyser units in the simulation (default is 10 units) and T is the total seconds in one hour (3600) PLUS 100 transient seconds. These transient seconds are disregarded in the simulation.
+Where `num_units` is the number of electrolyser units in the simulation (default is 10 units) and:
+
+- `T_full` is the full per-hour internal axis (for example 3600 at 1 Hz)
+- `T_ctrl = T_full - settings.rTransientSteps`
+
+The controller only sees `T_ctrl` samples (transient removed). R2H2 pre-fills transient slots from the previous hour and merges your controller outputs back into the full arrays.
 
 
 ## Custom Controller Function 
@@ -57,6 +62,7 @@ Your function receives:
 
 3. `t_out`
 - Hourly per-second output container, pre-initialized before controller call.
+- Arrays are transient-trimmed (length `T_ctrl`) in the controller interface.
 - Required outputs:
   - `arTotalElectroDemand` - The total energy sent to ALL of the electrolyser units added together
   - `aiIsOn` - A set of 0 and 1 integers that set if the electrolyser units are on (1) or off (0)
@@ -67,7 +73,7 @@ Your function receives:
 - Simulation settings for refernece.
 - Common fields:
   - `rTimeStep` - The time step of the simulation (1Hz)
-  - `rTransientSteps` - The number of transient steps for the simulation (100)
+  - `rTransientSteps` - The transient step count used by R2H2 to build `T_ctrl`
 
 ### Return Value
 
@@ -86,9 +92,9 @@ Return exactly a 3-tuple:
   - `t_out.aiIsOn`
   - `t_out.arProportionPower`
 - They shoud have the right shapes. Shape checks:
-  - `len(arTotalElectroDemand) == T`
-  - `shape(aiIsOn) == (num_units, T)`
-  - `shape(arProportionPower) == (num_units, T)`
+  - `len(arTotalElectroDemand) == T_ctrl`
+  - `shape(aiIsOn) == (num_units, T_ctrl)`
+  - `shape(arProportionPower) == (num_units, T_ctrl)`
 - NaN/Inf guard on required arrays.
 
 If validation fails for any reason, R2H2 emits a warning and falls back to `dynamicControl` for that hour.
@@ -129,19 +135,16 @@ import numpy as np
 
 
 def control(units, battery, t_out, settings):
-    T = len(t_out.arAvailablePower)
+    T_ctrl = len(t_out.arAvailablePower)
     n_units = len(units)
 
-    # Required output 1: total fleet demand [W], length T
+    # Required output 1: total fleet demand [W], length T_ctrl
     t_out.arTotalElectroDemand = np.asarray(t_out.arAvailablePower, dtype=float).copy()
 
-    # Required output 2: ON/OFF matrix, shape (n_units, T)
-    t_out.aiIsOn[:, :] = 0
-    step0 = int(settings.rTransientSteps)
-    step0 = max(1, min(step0, T - 1))
-    t_out.aiIsOn[:, step0:] = 1
+    # Required output 2: ON/OFF matrix, shape (n_units, T_ctrl)
+    t_out.aiIsOn[:, :] = 1
 
-    # Required output 3: per-unit proportions, shape (n_units, T)
+    # Required output 3: per-unit proportions, shape (n_units, T_ctrl)
     t_out.arProportionPower[:, :] = 0.0
     on_count = np.sum(t_out.aiIsOn, axis=0).astype(float)
     on_mask = on_count > 0
@@ -152,6 +155,8 @@ def control(units, battery, t_out, settings):
 
     return units, t_out, battery
 ```
+
+Note: the controller does not need to handle transient indices. Work directly on the full `T_ctrl` arrays that are provided.
 
 
 ## 1 Hz Collection Model (Current Behavior)

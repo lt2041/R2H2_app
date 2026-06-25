@@ -22,7 +22,7 @@ They must have the shape
   - `shape(aiIsOn) == (num_units, T)`
   - `shape(arProportionPower) == (num_units, T)`
 
-Where num_units is the number of electrolyser units in the simulation (default is 10 units) and T is the total seconds in one hour (3600).
+Where num_units is the number of electrolyser units in the simulation (default is 10 units) and T is the total seconds in one hour (3600) PLUS 100 transient seconds. These transient seconds are disregarded in the simulation.
 
 
 ## Custom Controller Function 

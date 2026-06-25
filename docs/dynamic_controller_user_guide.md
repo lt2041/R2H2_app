@@ -42,38 +42,32 @@ Your function receives:
 1. `units`
 - List of electrolyser unit objects.
 - Commonly used fields:
-  - `rSummedDegradation`
-  - `rMinPower_s`
-  - `rRatedPower_s`
-  - `rDeadBandRatio`
-  - `rTotalTurnOns`
+  - `rSummedDegradation` - This is the total degradation on the electrolyser unit
+  - `rMinPower_s` - This is the minimum power that the unit can demand
+  - `rRatedPower_s` - This is the maximum power that the unit can demand
+  - `rTotalTurnOns` - This is how many times the unit has been turned on or off
 
 2. `battery`
 - Battery state and control parameters.
 - Common fields:
-  - `arInitialSoC`
-  - `rControlTargetSoC`
-  - `rBatteryProportionalGain`
-  - `rBatteryRating`
-  - `arBatteryDemand` (optional from custom controller)
+  - `arInitialSoC` - This is the state of charge at the start of the time step
+  - `rBatteryRating` - This is the current maximum rating of the battery
+  - `rControlTargetSoC` - This is the target State of charge for the batteries inbuilt controller (defaulted to OFF so you can ignore!)
+  - `rBatteryProportionalGain` - This is the proportional controller gain for the battery's in built controller (defaults to 0 so you can ignore) 
 
 3. `t_out`
 - Hourly per-second output container, pre-initialized before controller call.
 - Required outputs:
-  - `arTotalElectroDemand`
-  - `aiIsOn`
-  - `arProportionPower`
-- Optional outputs:
-  - `arTotalElectroOn`
-  - `arElectroAvailablePowerA`
-  - `arElectroAvailablePower`
-  - `arBuffer1` .. `arBuffer20`
+  - `arTotalElectroDemand` - The total energy sent to ALL of the electrolyser units added together
+  - `aiIsOn` - A set of 0 and 1 integers that set if the electrolyser units are on (1) or off (0)
+  - `arProportionPower` - The proportion of arTotalElectroDemand that is sent to the relevant unit
+
 
 4. `settings`
-- Simulation settings.
+- Simulation settings for refernece.
 - Common fields:
-  - `rTimeStep`
-  - `rTransientSteps`
+  - `rTimeStep` - The time step of the simulation (1Hz)
+  - `rTransientSteps` - The number of transient steps for the simulation (100)
 
 ### Return Value
 

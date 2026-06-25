@@ -95,25 +95,17 @@ If validation fails for any reason, R2H2 emits a warning and falls back to `dyna
 
 ## Built-In Controller Behavior (`dynamicControl`)
 
-The built-in controller:
+The built in controller operates on a "hesitant-on, hesitant-off" basis.  It will always try to keep the same number of electrolysers on at each time step as were on in the previous time step.  If the total power drops below the minimum for the number of electrolyser units that are on (i.e. the total power is less than n_units*0.125*rated power) then the most degraded electrlyser will be switched off.  If the total power goes above the rated power of the electrolyser units that are currently on then another will be switched on.
 
-- Seeds `aiIsOn` from the previous final state.
-- Uses a battery SoC proportional regulator toward `rControlTargetSoC`.
-- Applies battery rate limits and SoC floor protection.
-- Computes:
-  - `arElectroAvailablePowerA = max(arAvailablePower - arBatteryDemand, 0)`
-- Applies first-order smoothing to get `arElectroAvailablePower`.
-- Decides ON/OFF count from available power and unit min/rated limits.
-- Fills `arProportionPower` uniformly across ON units.
-- Produces `arTotalElectroDemand` clipped to fleet min/max.
+In addition, the controller filters the power input by a time constant tau (default to 30.0). The difference between the actual power and the filtered power is then sent to the battery so that the power experienced by the electrolysers is filtered by the time constant.
 
-If you want to disable built-in SoC correction behavior, set:
+Finally, the controller also aims to keep the state of charge of the battery close to the desired state of charge (set to 0.5), with a deadband of 0.1 and a proportional gain applied if the state of charge moves outwith this deadband.
 
-- `battery.rBatteryProportionalGain = 0`
+The power to the electrlysers is divided equally between the electrolyser units.
 
 ## Post-Controller Physical Guards (Applied To All Controllers)
 
-After controller return, R2H2 applies additional execution guards in `runElectroStackStep1`:
+After controller return, R2H2 applies additional execution guards:
 
 - Non-binary `aiIsOn` entries are treated as invalid and replaced with `0`.
   - Per-second invalid-count is recorded in `t_out.aiAssignmentError`.
@@ -122,24 +114,15 @@ After controller return, R2H2 applies additional execution guards in `runElectro
 - Total demand is clipped to:
   - lower bound: `min_power * arTotalElectroOn`
   - upper bound: `rated_power * arTotalElectroOn`
-- Effective `rated_power` uses `max(curve_rated, nominal_nameplate_if_available)`.
-- If too many units are ON to satisfy per-unit minimum power, low-priority units are switched OFF.
-- Remaining demand is reallocated across ON units with bounded allocation.
+- If too many units are ON to satisfy per-unit minimum power, units are switched OFF.
+  - Remaining demand is reallocated across ON units with bounded allocation.
 - Per-unit ramp-rate and min/max bounds are enforced in the per-second loop.
 
 This means controller outputs are treated as requested dispatch and may be adjusted to satisfy physical feasibility.
 
-## Power and Battery Consistency Notes
-
-- Inside electro-thermal execution, `t_out.arElectroDemand` is per-unit executed demand.
-- End-of-hour, `t_out.arTotalElectroDemand` is set to:
-  - `sum(arElectroDemand, axis=0) + ancillary_power`
-- Battery step uses:
-  - `P_batt = arAvailablePower - arTotalElectroDemand`
-
-So battery dynamics use post-guard, executed plant demand (including ancillary load), not raw pre-guard controller request.
-
 ## Minimal Custom Controller Example
+
+This is a very basic controller that you could use as a starting point for designing a controller.
 
 ```python
 import numpy as np

@@ -195,9 +195,9 @@ def control(units, battery, t_out, settings):
         rMin * t_out.arTotalElectroOn,
         rRated * t_out.arTotalElectroOn,
     )
-
     buffer = {
     "soc": battery.arSoC,
-    "max number of electrolysers": t_out.arMaxElectroSum,
-}
+    }
+
+    return units, t_out, battery
 

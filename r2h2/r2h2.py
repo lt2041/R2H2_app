@@ -786,6 +786,12 @@ def runElectroStackStep1(
     cache_arVsd = [None] * num_units
     cache_arVs  = [None] * num_units
     cache_arH2  = [None] * num_units
+    # Precomputed segment slopes for scalar interpolation (built in curve-rebuild block)
+    cache_slope_PI   = [None] * num_units  # slopes for P → I lookup
+    cache_slope_IVsd = [None] * num_units  # slopes for I → Vsd lookup
+    cache_slope_IVs  = [None] * num_units  # slopes for I → Vs lookup
+    cache_slope_IH2  = [None] * num_units  # slopes for I → H2 lookup
+    cache_nseg       = [0]    * num_units  # max valid segment index (len(arI) - 2)
 
     # ── Initialise output struct ─────────────────────────────────────────────
     aiIsOn = np.zeros((num_units, T), dtype=int)
@@ -1019,6 +1025,24 @@ def runElectroStackStep1(
     _H2_bank_work    = np.zeros(num_banks_total)
     _Qgain_bank_work = np.zeros(num_banks_total)
 
+    # Pre-cache per-unit constants that are fixed for the entire per-second loop.
+    # Avoids repeated Python attribute lookups (units[i].x) on every second × unit.
+    _unit_bank_idx = [int(unit_to_bank[i]) for i in range(num_units)]
+    _unit_rampup   = [float(units[i].rRampUp_W_s)  if np.isfinite(units[i].rRampUp_W_s)  else 1e99
+                      for i in range(num_units)]
+    _unit_rampdown = [float(units[i].rRampDown_W_s) if np.isfinite(units[i].rRampDown_W_s) else 1e99
+                      for i in range(num_units)]
+    _unit_vtn = np.zeros(num_units, dtype=float)
+    for _i in range(num_units):
+        _el = units[_i]
+        if _el.iControlLevel == 3:
+            _unit_vtn[_i] = V_TN_CELL * _el.iN_cell
+        elif _el.iControlLevel == 2:
+            _unit_vtn[_i] = V_TN_CELL * _el.iN_cell * _el.iN_stacks
+        else:
+            _unit_vtn[_i] = V_TN_CELL * _el.iN_cell * _el.iN_stacks * _el.iN_banks
+    _divisor_inv = 1.0 / max(settings.rDivisor, 1.0)
+
     t_out.aiIsOn[:, step0 - 1]      = t_out.aiIsOn[:, -1]
     t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
     if t_out.arTotalElectroOn[step0 - 1] > 0:
@@ -1081,6 +1105,17 @@ def runElectroStackStep1(
                     cache_arVsd[j] = arV_sd
                     cache_arVs[j]  = arV_s
                     cache_arH2[j]  = arH2
+                    # Precompute per-segment slopes so the inner loop uses one
+                    # searchsorted instead of three separate np.interp calls.
+                    _dP_seg = np.diff(arP).copy()
+                    _dP_seg[_dP_seg == 0.0] = 1.0
+                    cache_slope_PI[j]   = np.diff(arI_s)  / _dP_seg
+                    _dI_seg = np.diff(arI_s).copy()
+                    _dI_seg[_dI_seg == 0.0] = 1.0
+                    cache_slope_IVsd[j] = np.diff(arV_sd) / _dI_seg
+                    cache_slope_IVs[j]  = np.diff(arV_s)  / _dI_seg
+                    cache_slope_IH2[j]  = np.diff(arH2)   / _dI_seg
+                    cache_nseg[j]       = len(arI_s) - 2
                     last_deg_unit[j] = units[j].rSummedDegradation
 
         # 2) Interpolate per-unit quantities + accumulate per-bank heat
@@ -1093,29 +1128,36 @@ def runElectroStackStep1(
 
         for i in range(num_units):
             on = t_out.aiIsOn[i, k]
+            b  = _unit_bank_idx[i]
+
+            # Fast path: OFF units produce nothing.  Arrays are zero-initialised;
+            # only bank temperature needs recording before skipping ahead.
+            if on == 0:
+                t_out.arElectroDemand[i, k] = 0.0
+                t_out.arT_unit_bank[i, k]   = th_banks[b].rT
+                continue
+
             demand_target = float(t_out.arElectroDemand[i, k])
             prev_P = float(t_out.arPower_unit[i, k - 1]) if k > 0 else 0.0
 
-            up_Ws   = units[i].rRampUp_W_s
-            down_Ws = units[i].rRampDown_W_s
-            if not np.isfinite(up_Ws):   up_Ws   = 1e99
-            if not np.isfinite(down_Ws): down_Ws = 1e99
-
             demand_ik = float(np.clip(
                 demand_target,
-                prev_P - down_Ws * dt,
-                prev_P + up_Ws  * dt,
+                prev_P - _unit_rampdown[i] * dt,
+                prev_P + _unit_rampup[i]   * dt,
             ))
-            # Final per-unit physical bounds on executed power.
-            if on > 0:
-                demand_ik = float(np.clip(demand_ik, min_power, rated_power))
-            else:
-                demand_ik = 0.0
+            demand_ik = float(np.clip(demand_ik, min_power, rated_power))
             t_out.arElectroDemand[i, k] = demand_ik
 
-            I_ik   = np.interp(demand_ik, cache_arP[i], cache_arI[i])   * on
-            V_deg  = np.interp(I_ik,      cache_arI[i], cache_arVsd[i]) * on
-            V_use  = np.interp(I_ik,      cache_arI[i], cache_arVs[i])  * on
+            # P → I: keep np.interp for correct boundary clamping
+            I_ik = float(np.interp(demand_ik, cache_arP[i], cache_arI[i]))
+
+            # I → Vsd, Vs, H2: one shared searchsorted replaces three np.interp calls
+            _cI = cache_arI[i]
+            _ii = min(max(int(np.searchsorted(_cI, I_ik, side='right')) - 1, 0), cache_nseg[i])
+            _dI = I_ik - _cI[_ii]
+            V_deg = float(cache_arVsd[i][_ii] + cache_slope_IVsd[i][_ii] * _dI)
+            V_use = float(cache_arVs[i][_ii]  + cache_slope_IVs[i][_ii]  * _dI)
+            arH2Dot_time[i, k] = float(cache_arH2[i][_ii] + cache_slope_IH2[i][_ii] * _dI)
 
             t_out.arI_unit[i, k]       = I_ik
             t_out.arV_unit[i, k]       = V_deg
@@ -1127,26 +1169,14 @@ def runElectroStackStep1(
             t_out.arPower_unitUseful[i, k] = P_use
             t_out.arP_el_unit[i, k]        = P_deg
 
-            t_out.arDegradationInEfficiency[i, k] = (
-                0.0 if demand_ik == 0.0 else 1.0 - P_use / demand_ik
-            )
-            t_out.arV_cell[i, k] = V_deg / max(settings.rDivisor, 1.0)
+            t_out.arDegradationInEfficiency[i, k] = 0.0 if demand_ik == 0.0 else 1.0 - P_use / demand_ik
+            t_out.arV_cell[i, k] = V_deg * _divisor_inv
 
-            arH2Dot_time[i, k] = np.interp(I_ik, cache_arI[i], cache_arH2[i])
-
-            if units[i].iControlLevel == 3:
-                cells_equiv = units[i].iN_cell
-            elif units[i].iControlLevel == 2:
-                cells_equiv = units[i].iN_cell * units[i].iN_stacks
-            else:
-                cells_equiv = units[i].iN_cell * units[i].iN_stacks * units[i].iN_banks
-
-            Vtn_equiv = V_TN_CELL * cells_equiv
+            Vtn_equiv = _unit_vtn[i]
             q_gain_i  = I_ik * max(V_deg - Vtn_equiv, 0.0)
             t_out.arVtn_unit[i, k]    = Vtn_equiv
             t_out.arQ_gain_unit[i, k] = q_gain_i
 
-            b = int(unit_to_bank[i])
             P_bank_k[b]     += P_deg
             H2_bank_k[b]    += arH2Dot_time[i, k]
             Qgain_bank_k[b] += q_gain_i

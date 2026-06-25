@@ -11,28 +11,21 @@ The controller is executed once per simulation hour and generates per-second dis
 
 If a custom controller is configured, R2H2 loads it at run start and calls `control` each hour. If loading, execution, or validation fails, R2H2 automatically falls back to built-in `dynamicControl`.
 
-## Where The Controller Runs
+### Key Outputs
+The controller MUST provide the outputs:
+  - `t_out.arTotalElectroDemand`
+  - `t_out.aiIsOn`
+  - `t_out.arProportionPower`
 
-Per simulation hour, the control path is:
+They must have the shape 
+  - `len(arTotalElectroDemand) == T`
+  - `shape(aiIsOn) == (num_units, T)`
+  - `shape(arProportionPower) == (num_units, T)`
 
-1. `runElectroStackStep1` creates and initializes hourly `t_out` arrays.
-2. The controller is called:
-   - custom via `_call_controller_safe(...)`, or
-   - built-in via `dynamicControl(...)`.
-3. Post-controller physical guards and demand re-allocation are applied.
-4. Electro-thermal execution is run per second.
-5. `runBattery1(...)` updates battery state.
-6. Optional end-of-hour buffer mapping is applied.
+Where num_units is the number of electrolyser units in the simulation (default is 10 units) and T is the total seconds in one hour (3600).
 
-Main entry points in `r2h2/r2h2.py`:
 
-- `dynamicControl`
-- `_call_controller_safe`
-- `runElectroStackStep1`
-- `_apply_end_hour_buffer_map`
-- `_parse_controller_buffer_alias_map`
-
-## Custom Controller Function Contract
+## Custom Controller Function 
 
 Your controller file must define:
 
@@ -92,25 +85,17 @@ Return exactly a 3-tuple:
 
 ## Validation and Fallback Behavior
 
-`_call_controller_safe(...)` enforces:
-
-- 30 s wall-clock timeout per hourly call.
+- There is a 30 s wall-clock timeout per hourly call.
 - Exception-safe execution with fallback.
-- Required outputs must exist:
+- The following required outputs must exist:
   - `t_out.arTotalElectroDemand`
   - `t_out.aiIsOn`
   - `t_out.arProportionPower`
-- Shape checks:
+- They shoud have the right shapes. Shape checks:
   - `len(arTotalElectroDemand) == T`
   - `shape(aiIsOn) == (num_units, T)`
   - `shape(arProportionPower) == (num_units, T)`
 - NaN/Inf guard on required arrays.
-- Optional `arTotalElectroOn`:
-  - derived from `aiIsOn` if absent,
-  - validated for length and finite values if present.
-- Optional `battery.arBatteryDemand`:
-  - inferred if missing or wrong length,
-  - validated finite if present.
 
 If validation fails for any reason, R2H2 emits a warning and falls back to `dynamicControl` for that hour.
 

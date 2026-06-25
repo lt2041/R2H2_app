@@ -12,6 +12,7 @@ import ast
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Literal, Optional, Tuple
 import sys
 import numpy as np
@@ -406,6 +407,131 @@ def _make_bank_index_maps(units: list) -> Tuple[List[List[int]], np.ndarray]:
 
 
 # ---------------------------------------------------------------------------
+# Controller interface helpers
+# ---------------------------------------------------------------------------
+
+def _prefill_transient_slots(t_out, t_out_prev, step0: int) -> None:
+    """Pre-fill the transient portion of controller-output arrays.
+
+    Copies the last sample of each dispatch array from *t_out_prev* into the
+    first *step0* timesteps of *t_out*, so the warm-up window shows a
+    meaningful continuation of the previous hour rather than zeros.
+
+    Also seeds all columns of ``aiIsOn`` (including ``step0:`` onwards) with
+    the previous on/off state so both controllers start from a
+    fully-populated baseline.
+    """
+    # 1D dispatch arrays
+    for attr in ('arTotalElectroDemand', 'arTotalElectroOn',
+                 'arElectroAvailablePowerA', 'arElectroAvailablePower'):
+        src = getattr(t_out_prev, attr, None)
+        dst = getattr(t_out, attr, None)
+        if src is not None and dst is not None:
+            try:
+                dst[:step0] = float(np.asarray(src).ravel()[-1])
+            except Exception:
+                pass
+
+    # 2D dispatch arrays (axis 1 = time)
+    for attr in ('arProportionPower', 'arElectroDemand'):
+        src = getattr(t_out_prev, attr, None)
+        dst = getattr(t_out, attr, None)
+        if src is not None and dst is not None:
+            try:
+                dst[:, :step0] = np.asarray(src)[:, -1:]
+            except Exception:
+                pass
+
+    # Seed ALL columns of aiIsOn (transient + dispatch window) with prev state.
+    src_on = getattr(t_out_prev, 'aiIsOn', None)
+    dst_on = getattr(t_out, 'aiIsOn', None)
+    if src_on is not None and dst_on is not None:
+        try:
+            prev_col = np.asarray(src_on)[:, -1:]
+            dst_on[:, :] = prev_col
+        except Exception:
+            pass
+
+
+def _make_controller_view(
+    t_out, step0: int, T_ctrl: int, num_units: int
+) -> SimpleNamespace:
+    """Return a trimmed copy of *t_out* containing only the non-transient region.
+
+    The returned :class:`~types.SimpleNamespace` holds independent copies (not
+    numpy views) so it is safe to pass into a ``ThreadPoolExecutor``.
+    ``arTime`` is re-zeroed so the controller sees the hour starting at t=0.
+    ``arTotalElectroOn[-1]`` is pre-seeded with the previous on/off count so
+    the dispatch loop's first iteration has a valid ``k-1`` reference.
+    """
+    ctrl = SimpleNamespace()
+
+    # ── Read inputs ────────────────────────────────────────────────────────
+    ctrl.arAvailablePower = t_out.arAvailablePower[step0:].copy()
+    raw_time = getattr(t_out, 'arTime', None)
+    if raw_time is not None and len(raw_time) > step0:
+        ctrl.arTime = (np.asarray(raw_time)[step0:]
+                       - np.asarray(raw_time)[step0]).copy()
+    else:
+        ctrl.arTime = np.arange(T_ctrl, dtype=float)
+
+    # ── Dispatch outputs (aiIsOn pre-seeded by _prefill_transient_slots) ──
+    ctrl.aiIsOn            = t_out.aiIsOn[:, step0:].copy()
+    ctrl.arTotalElectroOn  = np.zeros(T_ctrl)
+    ctrl.arProportionPower = np.zeros((num_units, T_ctrl))
+    ctrl.arTotalElectroDemand     = np.zeros(T_ctrl)
+    ctrl.arElectroAvailablePowerA = np.zeros(T_ctrl)
+    ctrl.arElectroAvailablePower  = np.zeros(T_ctrl)
+
+    # Seed the last slot of arTotalElectroOn so the dispatch loop's first
+    # iteration (k=0, k-1=-1) has the correct previous on-count.
+    ctrl.arTotalElectroOn[-1] = float(np.sum(ctrl.aiIsOn[:, -1]))
+
+    # ── Non-time-indexed counters ──────────────────────────────────────────
+    ctrl.aiWarmedUp     = np.ones((num_units, T_ctrl), dtype=int)
+    ctrl.aiNumOn        = np.zeros(num_units, dtype=int)
+    ctrl.rPreviousValue = 0.0
+    return ctrl
+
+
+def _merge_controller_outputs(t_out, t_ctrl, step0: int) -> None:
+    """Write trimmed controller outputs back into the full *t_out* at offset *step0*."""
+    # 1D time-indexed arrays
+    for attr in ('arTotalElectroDemand', 'arTotalElectroOn',
+                 'arElectroAvailablePowerA', 'arElectroAvailablePower'):
+        src = getattr(t_ctrl, attr, None)
+        dst = getattr(t_out, attr, None)
+        if src is not None and dst is not None:
+            try:
+                dst[step0:] = src
+            except Exception:
+                pass
+
+    # 2D time-indexed arrays (axis 1 = time)
+    for attr in ('aiIsOn', 'arProportionPower'):
+        src = getattr(t_ctrl, attr, None)
+        dst = getattr(t_out, attr, None)
+        if src is not None and dst is not None:
+            try:
+                dst[:, step0:] = src
+            except Exception:
+                pass
+
+    # aiWarmedUp: transient slots keep np.ones (set at init); copy ctrl window.
+    src_wu = getattr(t_ctrl, 'aiWarmedUp', None)
+    dst_wu = getattr(t_out, 'aiWarmedUp', None)
+    if src_wu is not None and dst_wu is not None:
+        try:
+            dst_wu[:, step0:] = src_wu
+        except Exception:
+            pass
+
+    # Non-time-indexed state
+    t_out.aiNumOn        = t_ctrl.aiNumOn.copy()
+    t_out.rPreviousValue = float(getattr(t_ctrl, 'rPreviousValue', 0.0))
+
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Controller safety wrapper
 # ---------------------------------------------------------------------------
@@ -514,6 +640,9 @@ def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
     """Call a user-supplied controller with a wall-clock timeout and return-value
     validation.  Falls back to ``dynamicControl`` on any failure.
 
+    *t_out* is the trimmed controller view (T_ctrl = T – step0 length arrays).
+    *T* must equal ``T_ctrl`` (not the full per-hour array length).
+
     Uses a ``ThreadPoolExecutor`` so the timeout works inside the already-running
     background simulation thread (``signal.alarm`` only works on the main thread).
     """
@@ -550,9 +679,9 @@ def _call_controller_safe(fn, units, battery, t_out, settings, *, num_units, T):
                 f"controller returned {len(ret_units)} units, expected {num_units}"
             )
         # Minimal required outputs from a controller:
-        #   1) t_out.arTotalElectroDemand: total electrolyser demand [W], length T
-        #   2) t_out.aiIsOn: per-unit ON/OFF matrix, shape (num_units, T)
-        #   3) t_out.arProportionPower: per-unit allocation fractions, shape (num_units, T)
+        #   1) t_out.arTotalElectroDemand: total electrolyser demand [W], length T_ctrl
+        #   2) t_out.aiIsOn: per-unit ON/OFF matrix, shape (num_units, T_ctrl)
+        #   3) t_out.arProportionPower: per-unit allocation fractions, shape (num_units, T_ctrl)
         for arr_name in ('arTotalElectroDemand', 'aiIsOn', 'arProportionPower'):
             arr = getattr(ret_t_out, arr_name, None)
             if arr is None:
@@ -704,15 +833,12 @@ def dynamicControl(units, battery, t_out, settings):
     arMaxElectroSum = np.floor(t_out.arElectroAvailablePower / rMin).astype(int)
     arMinElectroSum = np.ceil(t_out.arElectroAvailablePower / rRated).astype(int)
 
-    step0 = int(settings.rTransientSteps)
-    t_out.aiIsOn[:, step0 - 1] = t_out.aiIsOn[:, -1]
-    t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
-    if t_out.arTotalElectroOn[step0 - 1] > 0:
-        t_out.arProportionPower[:, step0 - 1] = (
-            t_out.aiIsOn[:, step0 - 1] / t_out.arTotalElectroOn[step0 - 1]
-        )
-
-    for k in range(step0, T):
+    # The transient slots are pre-filled by _prefill_transient_slots before
+    # the controller is called.  The dispatch loop therefore starts at k=0
+    # (index 0 of the trimmed T_ctrl-length array) and uses k-1=-1 (last
+    # element) as the prev-state seed — which is correct because aiIsOn[:,:]
+    # and arTotalElectroOn[-1] are pre-seeded in _make_controller_view.
+    for k in range(T):
         t_out.aiIsOn[:, k] = t_out.aiIsOn[:, k - 1]
         total_on_prev    = t_out.arTotalElectroOn[k - 1]
         available_power  = t_out.arElectroAvailablePower[k]
@@ -828,10 +954,12 @@ def runElectroStackStep1(
     cache_slope_IH2  = [None] * num_units  # slopes for I → H2 lookup
     cache_nseg       = [0]    * num_units  # max valid segment index (len(arI) - 2)
 
+    # ── Transient bookkeeping (computed once, used by helpers + physics loop) ─
+    step0  = int(settings.rTransientSteps)
+    T_ctrl = T - step0
+
     # ── Initialise output struct ─────────────────────────────────────────────
     aiIsOn = np.zeros((num_units, T), dtype=int)
-    if t_out_prev is not None:
-        aiIsOn[:, -1] = t_out_prev.aiIsOn[:, -1]
 
     t_out = TimeOutputs()
     t_out.arTime                    = arTime
@@ -854,7 +982,7 @@ def runElectroStackStep1(
     t_out.arPower_unitUseful        = np.zeros((num_units, T))
     t_out.arDegradationInEfficiency = np.zeros((num_units, T))
     t_out.arV_cell                  = np.zeros((num_units, T))
-    t_out.arProducedH2Dot           = np.zeros((num_units, T - settings.rTransientSteps + 1))
+    t_out.arProducedH2Dot           = np.zeros((num_units, T_ctrl + 1))
     t_out.arHydroEfficiency         = np.zeros((num_units, T))
     t_out.arP_el_total              = np.zeros(T)
     t_out.arT_stack                 = np.zeros(T)
@@ -881,14 +1009,31 @@ def runElectroStackStep1(
     t_out.aiIsOn_clean                 = np.zeros((num_units, T), dtype=int)
     t_out.aiAssignmentError              = np.zeros(T, dtype=int)
 
+    # ── Pre-fill transient slots from previous hour ──────────────────────────
+    # Fills the first step0 timesteps of dispatch arrays with the last sample
+    # of the previous hour, so the warm-up window holds meaningful data rather
+    # than zeros.  Also seeds all columns of aiIsOn with the previous on/off
+    # state so both controllers start from a fully-populated baseline.
+    if t_out_prev is not None:
+        _prefill_transient_slots(t_out, t_out_prev, step0)
+
+    # ── Build trimmed controller view (non-transient region only) ────────────
+    # Both the built-in dynamicControl and any custom controller receive a
+    # T_ctrl-length copy of t_out.  The dispatch loop therefore runs from k=0
+    # with no knowledge of the warm-up period.
+    t_out_ctrl = _make_controller_view(t_out, step0, T_ctrl, num_units)
+
     # ── Dynamic control pass ─────────────────────────────────────────────────
     if controller_fn is not None:
-        units, t_out, battery = _call_controller_safe(
-            controller_fn, units, battery, t_out, settings,
-            num_units=num_units, T=T,
+        units, t_out_ctrl, battery = _call_controller_safe(
+            controller_fn, units, battery, t_out_ctrl, settings,
+            num_units=num_units, T=T_ctrl,
         )
     else:
-        units, t_out, battery = dynamicControl(units, battery, t_out, settings)
+        units, t_out_ctrl, battery = dynamicControl(units, battery, t_out_ctrl, settings)
+
+    # ── Merge trimmed outputs back into the full T-length t_out ──────────────
+    _merge_controller_outputs(t_out, t_out_ctrl, step0)
 
     min_power = float(units[0].rMinPower_s)
     rated_power_curve = float(units[0].rRatedPower_s)
@@ -1049,7 +1194,6 @@ def runElectroStackStep1(
 
     T_amb_hour = 15.0
     dt = settings.rTimeStep
-    step0 = int(settings.rTransientSteps)
     H2_LHV = 119_988.0  # J/g
 
     arH2Dot_time = np.zeros((num_units, T))
@@ -1077,13 +1221,6 @@ def runElectroStackStep1(
         else:
             _unit_vtn[_i] = V_TN_CELL * _el.iN_cell * _el.iN_stacks * _el.iN_banks
     _divisor_inv = 1.0 / max(settings.rDivisor, 1.0)
-
-    t_out.aiIsOn[:, step0 - 1]      = t_out.aiIsOn[:, -1]
-    t_out.arTotalElectroOn[step0 - 1] = np.sum(t_out.aiIsOn[:, step0 - 1])
-    if t_out.arTotalElectroOn[step0 - 1] > 0:
-        t_out.arProportionPower[:, step0 - 1] = (
-            t_out.aiIsOn[:, step0 - 1] / t_out.arTotalElectroOn[step0 - 1]
-        )
 
     # ── Per-second coupled loop ──────────────────────────────────────────────
     for k in range(step0, T):

@@ -1,10 +1,63 @@
 
 """
 V1.0 - Initial commit for 160kW model with no degradation code. 
+V1.0.1 - Added physical constants and operating conditions as global variables.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+# ============================================================
+# PHYSICAL CONSTANTS
+# ============================================================
+
+# --- Physical / thermodynamic constants ---
+GAS_CONSTANT = 8.314  # J/(mol·K)
+FARADAY_CONSTANT = 96485.0  # C/mol
+H2_MOLAR_MASS = 0.002016  # kg/mol
+H2_LHV_KWH_PER_KG = 33.33  # kWh/kg, lower heating value of hydrogen
+SECONDS_PER_HOUR = 3600.0  # seconds in an hour
+
+# --- Electrochemical constants ---
+GIBBS_FREE_ENERGY = -237.13e3  # J/mol, Gibbs free energy of formation for water at standard conditions
+NUM_ELECTRONS = 2  # number of electrons transferred per H2 molecule in the reaction
+
+# --- Model-specific coefficients ---
+# These coefficients are derived from empirical data and literature for PEM fuel cells.
+XI_1 = 0.948  # Activation overpotential coefficient
+XI_2 = 2.86e-3  # Temperature coefficient for activation overpotential
+XI_3 = 2.0e-4  # Concentration coefficient for activation overpotential
+XI_4 = 7.6e-5  # Current density coefficient for activation overpotential
+
+# ============================================================
+# OPERATING CONDITIONS
+# ============================================================
+
+# Temperature-dependent parameters
+# Pressures taken from temperature 80°C
+T = 353.15  # K (80°C)
+P_H2 = 2.0e5   # Pa
+P_O2 = 4.2e4   # Pa
+P_H2O = 4.74e4 # Pa
+
+CELL_AREA_CM2 = 500.0  # cm²
+CELL_RESISTANCE = 0.178  # ohm·cm²
+RATED_CURRENT_DENSITY = 1.41  # A/cm²
+NUM_CELLS = 336
+RATED_STACK_POWER_KW = 160.0  # Rated power in kW
+NUM_CURRENT_POINTS = 1000  # resolution of the polarisation curve
+
+# --- Simulation configuration ---
+# Time base is SECONDS_PER_HOUR = 3600.0
+SIM_DT = 0.1  # time step in seconds
+SIM_T_END = 3600.0  # total simulation time in seconds
+TAU_VALUES = np.arange(0.4, 0.8 + 0.0001, 0.1)  # smoothing time constants to test
+TAUS_TO_PLOT = [0.8, 1.6]  # specific tau values for plotting
+V_LOAD_LIMIT = 0.1  # A/cm² per second, maximum rate of change of current density
+N_TRANSITIONS = 500  # number of random transitions in the commanded profile
+TRANSITION_MIN_DT = 5.0  # minimum duration of each transition in seconds
+TRANSITION_MAX_DT = 25.0  # maximum duration of each transition in seconds
+TRANSITION_MAX_DJ = 0.6  # maximum change in current density per transition
 
 # ============================================================
 # SUPPORTING EQUATIONS
@@ -14,17 +67,23 @@ def calc_concentration(P, T):
     C_m3 = P / (8.314 * T)
     return C_m3 / 1e6  # mol/m³ → mol/cm³
 
-def calc_V_nernst(T, p_h2, p_o2):
-    return 1.229 - 0.85e-5 * (T - 298.15) + 4.31e-5 * T * (np.log(p_h2) + 0.5 * np.log(p_o2))
+def calc_V_nernst(T, P_H2, P_O2):
+    #return 1.229 - 0.85e-5 * (T - 298.15) + 4.31e-5 * T * (np.log(P_H2) + 0.5 * np.log(P_O2))
+    return (-GIBBS_FREE_ENERGY / (NUM_ELECTRONS * FARADAY_CONSTANT)
+            + GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
+            * np.log(P_H2 * np.sqrt(P_O2) / P_H2O))
 
-def calc_V_act(T, c_o2, i):
-    return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_o2)) - (7.6e-5 * T * np.log(i)))
+def calc_V_act(T, c_O2, i):
+    #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(i)))
+    return XI_1 + (XI_2 * T) + XI_3 * T * np.log(c_O2) - XI_4 * T * np.log(i)
 
 def calc_V_ohm(R_cell, J):
     return R_cell * J
 
 def calc_V_conc(T, J, J_max):
-    return -(4.308e-5 * T) * np.log(1 - (J / J_max))
+    #return -(4.308e-5 * T) * np.log(1 - (J / J_max))
+    return (GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
+            * np.log(1 - (J / J_max)))
 
 # ============================================================
 # PEM FUEL CELL CLASS
@@ -34,16 +93,16 @@ class FuelCellPEM:
 
     def __init__(self):
         # Operating parameters
-        self.iNumCurrent = 1000
-        self.rI_rated = 1.41         # A/cm²
-        self.rT = 353.15             # K (80°C),
-        self.rR_cell = 0.178         # ohm·cm², slightly off from literature (same as Adam's model)
-        self.p_h2 = 2.0e5            # Pa
-        self.p_o2 = 4.2e4            # Pa
+        self.iNumCurrent = NUM_CURRENT_POINTS
+        self.rI_rated = RATED_CURRENT_DENSITY         # A/cm²
+        self.rT = T             # K (80°C),
+        self.rR_cell = CELL_RESISTANCE         # ohm·cm², slightly off from literature (same as Adam's model)
+        self.P_H2 = P_H2           # Pa
+        self.P_O2 = P_O2            # Pa
 
         # Stack configuration
-        self.area_cm2 = 500.0    # active area per cell,
-        self.n_cells = 336        #
+        self.area_cm2 = CELL_AREA_CM2    # active area per cell,
+        self.n_cells = NUM_CELLS        
 
         # Arrays to be filled
         self.arCurrentDensity = None
@@ -62,11 +121,11 @@ class FuelCellPEM:
         J = np.linspace(0.001, self.rI_rated, self.iNumCurrent)
         T = self.rT
 
-        c_h2 = calc_concentration(self.p_h2, T)
-        c_o2 = calc_concentration(self.p_o2, T)
+        c_H2 = calc_concentration(self.P_H2, T)
+        c_O2 = calc_concentration(self.P_O2, T)
 
-        V_nernst = calc_V_nernst(T, self.p_h2, self.p_o2)
-        V_act = calc_V_act(T, c_o2, J)
+        V_nernst = calc_V_nernst(T, self.P_H2, self.P_O2)
+        V_act = calc_V_act(T, c_O2, J)
         V_ohm = calc_V_ohm(self.rR_cell, J)
         V_conc = calc_V_conc(T, J, self.rI_rated)
 

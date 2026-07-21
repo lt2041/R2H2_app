@@ -24,22 +24,23 @@ NUM_ELECTRONS = 2  # number of electrons transferred per H2 molecule in the reac
 
 # --- Model-specific coefficients ---
 # These coefficients are derived from empirical data and literature for PEM fuel cells.
-XI_1 = 0.948  # Activation overpotential coefficient
-XI_2 = 2.86e-3  # Temperature coefficient for activation overpotential
-XI_3 = 2.0e-4  # Concentration coefficient for activation overpotential
-XI_4 = 7.6e-5  # Current density coefficient for activation overpotential
+BETA_1 = 0.948  # Activation overpotential coefficient
+BETA_2 = 2.86e-3  # Temperature coefficient for activation overpotential
+BETA_3 = 2.0e-4  # Concentration coefficient for activation overpotential
+BETA_4 = 7.6e-5  # Current density coefficient for activation overpotential
 
 # ============================================================
 # OPERATING CONDITIONS
 # ============================================================
 
-# Temperature-dependent parameters
+# --- Temperature-dependent parameters ---
 # Pressures taken from temperature 80°C
 T = 353.15  # K (80°C)
 P_H2 = 2.0e5   # Pa
 P_O2 = 4.2e4   # Pa
 P_H2O = 4.74e4 # Pa
 
+# --- Fuel cell stack parameters ---
 CELL_AREA_CM2 = 500.0  # cm²
 CELL_RESISTANCE = 0.178  # ohm·cm²
 RATED_CURRENT_DENSITY = 1.41  # A/cm²
@@ -55,8 +56,8 @@ TAU_VALUES = np.arange(0.4, 0.8 + 0.0001, 0.1)  # smoothing time constants to te
 TAUS_TO_PLOT = [0.8, 1.6]  # specific tau values for plotting
 V_LOAD_LIMIT = 0.1  # A/cm² per second, maximum rate of change of current density
 N_TRANSITIONS = 500  # number of random transitions in the commanded profile
-TRANSITION_MIN_DT = 5.0  # minimum duration of each transition in seconds
-TRANSITION_MAX_DT = 25.0  # maximum duration of each transition in seconds
+TRANSITION_MIN_DT = 20.0  # minimum duration of each transition in seconds
+TRANSITION_MAX_DT = 60.0  # maximum duration of each transition in seconds
 TRANSITION_MAX_DJ = 0.6  # maximum change in current density per transition
 
 # ============================================================
@@ -75,7 +76,7 @@ def calc_V_nernst(T, P_H2, P_O2):
 
 def calc_V_act(T, c_O2, i):
     #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(i)))
-    return XI_1 + (XI_2 * T) + XI_3 * T * np.log(c_O2) - XI_4 * T * np.log(i)
+    return BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - BETA_4 * T * np.log(i)
 
 def calc_V_ohm(R_cell, J):
     return R_cell * J
@@ -168,7 +169,7 @@ class FuelCellPEM:
             return 0.0, 0.0
 
         F = 96485.0
-        M_H2 = 0.002016
+        M_H2 = 0.002016 # g/mol
         n_dot = (I_stack * self.n_cells) / (2 * F * utilisation)
         m_dot = n_dot * M_H2
         return n_dot, m_dot
@@ -178,6 +179,9 @@ class FuelCellPEM:
     # --------------------------------------------------------
     def fc_efficiency(self, energy_kWh, total_H2_used):
         return energy_kWh / (total_H2_used * 33.33) if total_H2_used > 0 else 0.0
+
+
+
 
     # --------------------------------------------------------
     # Loading-rate limiter
@@ -195,7 +199,7 @@ class FuelCellPEM:
     def smooth_step(self, t, t_start, dt_load, J_ini, J_step):
         mid = t_start + dt_load / 2
         scale = dt_load / 2
-        return J_ini + (J_step - J_ini) * (1 + np.tanh(4 * (t - mid) / scale)) / 2
+        return J_ini + (J_step - J_ini) * (1 + np.tanh((t - mid) / scale)) / 2
         
     # --------------------------------------------------------
     # Smoothing first-order curve
@@ -295,13 +299,6 @@ def main():
     transitions = generate_random_transitions(n_steps=500)
 
     time_raw, J_raw = build_raw_transition_profile(transitions, dt=0.1, t_end=3600)
-    #plt.figure(figsize=(20, 10))
-    #plt.plot(time_raw, J_raw, color="black")
-    #plt.title("Raw Transition Profile (No Smoothing)")
-    #plt.xlabel("Time (s)")
-    #plt.ylabel("Commanded J (A/cm²)")
-    #plt.grid(True)
-    #plt.show()
 
     # ============================================================
     # PLOT RAW + SMOOTHED PROFILES FOR tau values

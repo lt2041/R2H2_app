@@ -42,8 +42,9 @@ P_H2O = 4.74e4 # Pa
 
 # --- Fuel cell stack parameters ---
 CELL_AREA_CM2 = 500.0  # cm²
-CELL_RESISTANCE = 0.178  # ohm·cm²
+CELL_RESISTANCE = 0.100  # ohm·cm²
 RATED_CURRENT_DENSITY = 1.41  # A/cm²
+MAX_CURRENT_DENSITY = 2.1 # A/cm²
 NUM_CELLS = 336
 RATED_STACK_POWER_KW = 160.0  # Rated power in kW
 NUM_CURRENT_POINTS = 1000  # resolution of the polarisation curve
@@ -74,9 +75,9 @@ def calc_V_nernst(T, P_H2, P_O2):
             + GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
             * np.log(P_H2 * np.sqrt(P_O2) / P_H2O))
 
-def calc_V_act(T, c_O2, i):
-    #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(i)))
-    return -(BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - BETA_4 * T * np.log(i))
+def calc_V_act(T, c_O2, J):
+    #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(J)))
+    return -(BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - BETA_4 * T * np.log(J))
 
 def calc_V_ohm(R_cell, J):
     return R_cell * J
@@ -96,6 +97,7 @@ class FuelCellPEM:
         # Operating parameters
         self.iNumCurrent = NUM_CURRENT_POINTS
         self.rI_rated = RATED_CURRENT_DENSITY         # A/cm²
+        self.rI_max = MAX_CURRENT_DENSITY         # A/cm²
         self.rT = T             # K (80°C),
         self.rR_cell = CELL_RESISTANCE         # ohm·cm², slightly off from literature (same as Adam's model)
         self.P_H2 = P_H2           # Pa
@@ -119,7 +121,7 @@ class FuelCellPEM:
     # Build polarisation curve
     # --------------------------------------------------------
     def build_curves(self):
-        J = np.linspace(0.001, self.rI_rated, self.iNumCurrent)
+        J = np.linspace(0.001, self.rI_max, self.iNumCurrent)
         T = self.rT
 
         c_H2 = calc_concentration(self.P_H2, T)
@@ -128,7 +130,7 @@ class FuelCellPEM:
         V_nernst = calc_V_nernst(T, self.P_H2, self.P_O2)
         V_act = calc_V_act(T, c_O2, J)
         V_ohm = calc_V_ohm(self.rR_cell, J)
-        V_conc = calc_V_conc(T, J, self.rI_rated)
+        V_conc = calc_V_conc(T, J, self.rI_max)
 
         V_cell = V_nernst - V_act - V_ohm - V_conc
         P_density = V_cell * J

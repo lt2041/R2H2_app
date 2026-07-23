@@ -98,8 +98,12 @@ $$
 
 ---
 
+## Degradation
+*Degradation modeling to be implemented*
+
 ## On/Off Simulation
 On/Off simulation is randomly... *(TBC, to organise code first)*
+
 
 
 ## Documentation

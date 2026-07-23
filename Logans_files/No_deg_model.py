@@ -24,7 +24,7 @@ NUM_ELECTRONS = 2  # number of electrons transferred per H2 molecule in the reac
 
 # --- Model-specific coefficients ---
 # These coefficients are derived from empirical data and literature for PEM fuel cells.
-BETA_1 = 0.948  # Activation overpotential coefficient
+BETA_1 = -0.948  # Activation overpotential coefficient
 BETA_2 = 2.86e-3  # Temperature coefficient for activation overpotential
 BETA_3 = 2.0e-4  # Concentration coefficient for activation overpotential
 BETA_4 = 7.6e-5  # Current density coefficient for activation overpotential
@@ -76,7 +76,7 @@ def calc_V_nernst(T, P_H2, P_O2):
 
 def calc_V_act(T, c_O2, i):
     #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(i)))
-    return BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - BETA_4 * T * np.log(i)
+    return -(BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - BETA_4 * T * np.log(i))
 
 def calc_V_ohm(R_cell, J):
     return R_cell * J

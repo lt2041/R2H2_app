@@ -2,6 +2,7 @@
 """
 V1.0 - Initial commit for 160kW model with no degradation code. 
 V1.0.1 - Added physical constants and operating conditions as global variables.
+V1.0.2 - Changed simulation to hours instead of minutes. Total H2 usage in tons, total energy generation in MWh. 
 """
 
 import numpy as np
@@ -16,7 +17,6 @@ GAS_CONSTANT = 8.314  # J/(mol·K)
 FARADAY_CONSTANT = 96485.0  # C/mol
 H2_MOLAR_MASS = 0.002016  # kg/mol
 H2_LHV_KWH_PER_KG = 33.33  # kWh/kg, lower heating value of hydrogen
-SECONDS_PER_HOUR = 3600.0  # seconds in an hour
 
 # --- Electrochemical constants ---
 GIBBS_FREE_ENERGY = -237.13e3  # J/mol, Gibbs free energy of formation for water at standard conditions
@@ -36,29 +36,28 @@ BETA_4 = 7.6e-5  # Current density coefficient for activation overpotential
 # --- Temperature-dependent parameters ---
 # Pressures taken from temperature 80°C
 T = 353.15  # K (80°C)
-P_H2 = 2.0e5   # Pa
-P_O2 = 4.2e4   # Pa
+P_H2 = 3e5 #2.0e5   # Pa
+P_O2 = 2.5e5 #4.2e4   # Pa
 P_H2O = 4.74e4 # Pa
 
 # --- Fuel cell stack parameters ---
 CELL_AREA_CM2 = 500.0  # cm²
-CELL_RESISTANCE = 0.100  # ohm·cm²
+CELL_RESISTANCE = 0.1  # ohm·cm²
 RATED_CURRENT_DENSITY = 1.41  # A/cm²
-MAX_CURRENT_DENSITY = 2.1 # A/cm²
+MAX_CURRENT_DENSITY = 2.1  # A/cm²
 NUM_CELLS = 336
 RATED_STACK_POWER_KW = 160.0  # Rated power in kW
 NUM_CURRENT_POINTS = 1000  # resolution of the polarisation curve
 
 # --- Simulation configuration ---
-# Time base is SECONDS_PER_HOUR = 3600.0
-SIM_DT = 0.1  # time step in seconds
-SIM_T_END = 3600.0  # total simulation time in seconds
+SIM_DT = 0.1  # time step in hours
+SIM_T_END = 3600.0  # total simulation time in hours
 TAU_VALUES = np.arange(0.4, 0.8 + 0.0001, 0.1)  # smoothing time constants to test
 TAUS_TO_PLOT = [0.8, 1.6]  # specific tau values for plotting
-V_LOAD_LIMIT = 0.1  # A/cm² per second, maximum rate of change of current density
+V_LOAD_LIMIT = 0.1  # A/cm² per hour, maximum rate of change of current density
 N_TRANSITIONS = 500  # number of random transitions in the commanded profile
-TRANSITION_MIN_DT = 20.0  # minimum duration of each transition in seconds
-TRANSITION_MAX_DT = 60.0  # maximum duration of each transition in seconds
+TRANSITION_MIN_DT = 20.0  # minimum duration of each transition in hours
+TRANSITION_MAX_DT = 60.0  # maximum duration of each transition in hours
 TRANSITION_MAX_DJ = 0.6  # maximum change in current density per transition
 
 # ============================================================
@@ -76,7 +75,7 @@ def calc_V_nernst(T, P_H2, P_O2):
             * np.log(P_H2 * np.sqrt(P_O2) / P_H2O))
 
 def calc_V_act(T, c_O2, J):
-    #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(J)))
+    #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(i)))
     return -(BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - BETA_4 * T * np.log(J))
 
 def calc_V_ohm(R_cell, J):
@@ -84,7 +83,7 @@ def calc_V_ohm(R_cell, J):
 
 def calc_V_conc(T, J, J_max):
     #return -(4.308e-5 * T) * np.log(1 - (J / J_max))
-    return (GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
+    return -(GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
             * np.log(1 - (J / J_max)))
 
 # ============================================================
@@ -221,7 +220,7 @@ class FuelCellPEM:
         return J
 
 def generate_random_transitions(n_steps=20, 
-                            J_min=0.0, J_max=1.41,
+                            J_min=0, J_max=1.2,
                             max_dJ=0.6,
                             min_dt=5.0, max_dt=25.0):
         
@@ -284,6 +283,41 @@ def build_raw_transition_profile(transitions, dt=0.1, t_end=3600):
     return time, J
 
 
+
+def plot_polarisation_curves(cell):
+    plt.figure(figsize=(8,6))
+
+    plt.plot(
+        cell.arCurrentDensity,
+        cell.arV_cell,
+        linewidth=2,
+        label=f"{cell.rT-273.15:.0f}°C"
+    )
+
+    plt.xlabel("Current Density (A/cm²)")
+    plt.ylabel("Cell Voltage (V)")
+    plt.title("PEMFC Polarisation Curves")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+
+
+def plot_power_density_curve(cell):
+    plt.figure(figsize=(8,6))
+    plt.plot(
+        cell.arCurrentDensity,
+        cell.arP_density,
+        linewidth=2,
+        label=f"{cell.rT-273.15:.0f}°C"
+    )
+    plt.xlabel("Current Density (A/cm²)")
+    plt.ylabel("Power Density (W/cm²)")
+    plt.title("PEMFC Power Density Curve")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+
+
     # ============================================================
     # MAIN SIMULATION
     # ============================================================
@@ -292,9 +326,12 @@ def main():
     cell = FuelCellPEM()
     cell.build_curves()
 
-    tau_values = np.arange(0.4, 0.8 + 0.0001, 0.1)
+    plot_polarisation_curves(cell)
+    plot_power_density_curve(cell)
 
-    print(f"{'Tau':>5} | {'H2 Used (kg)':>12} | {'Energy (kWh)':>14} | "
+    tau_values = np.arange(0.1, 0.8 + 0.0001, 0.1)
+
+    print(f"{'Tau':>5} | {'H2 Used (t)':>12} | {'Energy (MWh)':>14} | "
           f"{'kWh/kg H2':>12} | {'Δ(kWh/kg)':>12}")
     print("-" * 70)
 
@@ -326,8 +363,12 @@ def main():
 
         plt.plot(time_raw, J_smooth, label=f"Smoothed (tau={tau})")
 
+    day_interval_hours = 720  # 30 days
+    for x in np.arange(day_interval_hours, 3600, day_interval_hours):
+        plt.axvline(x=x, color="black", linestyle="-", linewidth=5, alpha=1)
+
     plt.title("Raw vs Smoothed Current Density Profiles")
-    plt.xlabel("Time (s)")
+    plt.xlabel("Time (h)")
     plt.ylabel("Current Density J (A/cm²)")
     plt.grid(True)
     plt.legend()
@@ -370,16 +411,18 @@ def main():
             _, mH2 = cell.h2_consumption(I_stack[i])
             H2_flow[i] = mH2 * 3600.0  # kg/hr
 
-        energy_kJ = np.cumsum(P_stack * dt)
-        energy_kWh = energy_kJ / 3600.0
+        energy_kWh = np.cumsum(P_stack * dt)  # kWh
+        energy_MWh = energy_kWh / 1000.0  # MWh
 
-        total_H2_used = np.sum(H2_flow / 3600) * dt
-        total_energy = energy_kWh[-1]
+        total_H2_used_kg = np.sum(H2_flow) * dt # kg
+        total_H2_used_ton = total_H2_used_kg / 1000.0  # t
+        total_energy_kWh = energy_kWh[-1]
+        total_energy_MWh = energy_MWh[-1]
 
-        eff = cell.fc_efficiency(total_energy, total_H2_used)
+        eff = cell.fc_efficiency(total_energy_kWh, total_H2_used_kg)
         print(f"Tau: {tau:.2f}, Efficiency: {eff*100:.2f}%")
 
-        kWh_per_kg = total_energy / total_H2_used if total_H2_used > 0 else 0.0
+        kWh_per_kg = total_energy_kWh / total_H2_used_kg if total_H2_used_kg > 0 else 0.0
 
         if prev_kWh_per_kg is None:
             delta = 0.0
@@ -388,7 +431,7 @@ def main():
 
         prev_kWh_per_kg = kWh_per_kg
 
-        print(f"{tau:5.2f} | {total_H2_used:12.4f} | {total_energy:14.4f} | "
+        print(f"{tau:5.2f} | {total_H2_used_ton:12.4f} | {total_energy_MWh:14.4f} | "
               f"{kWh_per_kg:12.4f} | {delta:12.4f}")
 
 main()

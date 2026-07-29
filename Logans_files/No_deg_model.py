@@ -2,7 +2,8 @@
 """
 V1.0 - Initial commit for 160kW model with no degradation code. 
 V1.0.1 - Added physical constants and operating conditions as global variables.
-V1.0.2 - Changed simulation to hours instead of minutes. Total H2 usage in tons, total energy generation in MWh. 
+V1.0.2 - Changed simulation to hours instead of minutes. Total H2 usage in tons, total energy generation in MWh.
+V1.0.3 - Added month separation and degradation description.
 """
 
 import numpy as np
@@ -69,20 +70,17 @@ def calc_concentration(P, T):
     return C_m3 / 1e6  # mol/m³ → mol/cm³
 
 def calc_V_nernst(T, P_H2, P_O2):
-    #return 1.229 - 0.85e-5 * (T - 298.15) + 4.31e-5 * T * (np.log(P_H2) + 0.5 * np.log(P_O2))
     return (-GIBBS_FREE_ENERGY / (NUM_ELECTRONS * FARADAY_CONSTANT)
             + GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
             * np.log(P_H2 * np.sqrt(P_O2) / P_H2O))
 
 def calc_V_act(T, c_O2, J):
-    #return -(-0.948 + (2.86e-3 * T) + (2.0e-4 * T * np.log(c_O2)) - (7.6e-5 * T * np.log(i)))
-    return -(BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - BETA_4 * T * np.log(J))
+    return -(BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - (BETA_4 * T * np.log(J)))
 
 def calc_V_ohm(R_cell, J):
     return R_cell * J
 
 def calc_V_conc(T, J, J_max):
-    #return -(4.308e-5 * T) * np.log(1 - (J / J_max))
     return -(GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
             * np.log(1 - (J / J_max)))
 
@@ -182,7 +180,17 @@ class FuelCellPEM:
         return energy_kWh / (total_H2_used * 33.33) if total_H2_used > 0 else 0.0
 
 
+    # --------------------------------------------------------
+    # Degradation model (placeholder)
+    # --------------------------------------------------------
 
+    # Linear degradation:
+    '''
+    To determine degradation in a relatively simple, linear way. For example:
+    ΔV_year = k_steady * t_operating + k_cycle * Σ|ΔJ| + k_startstop * N_startstop + k_highload * t_above_threshold
+    , where k_steady, k_cycle, k_startstop, and k_highload are degradation coefficients that can be tuned based on empirical data.
+    This would allow the model to account for different operating conditions and their impact on fuel cell performance over time.
+    '''
 
     # --------------------------------------------------------
     # Loading-rate limiter
@@ -220,7 +228,7 @@ class FuelCellPEM:
         return J
 
 def generate_random_transitions(n_steps=20, 
-                            J_min=0, J_max=1.2,
+                            J_min=1.41, J_max=1.41,
                             max_dJ=0.6,
                             min_dt=5.0, max_dt=25.0):
         

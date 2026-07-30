@@ -53,8 +53,8 @@ NUM_CURRENT_POINTS = 1000  # resolution of the polarisation curve
 # --- Simulation configuration ---
 SIM_DT = 0.1  # time step in hours
 SIM_T_END = 3600.0  # total simulation time in hours
-TAU_VALUES = np.arange(0.4, 0.8 + 0.0001, 0.1)  # smoothing time constants to test
-TAUS_TO_PLOT = [0.8, 1.6]  # specific tau values for plotting
+TAU_VALUES = np.arange(0.4, 0.8 + 0.0001, 0.4)  # smoothing time constants to test
+TAUS_TO_PLOT = [0.8, 1.6, 2.4, 3.2]  # specific tau values for plotting
 V_LOAD_LIMIT = 0.1  # A/cm² per hour, maximum rate of change of current density
 N_TRANSITIONS = 500  # number of random transitions in the commanded profile
 TRANSITION_MIN_DT = 20.0  # minimum duration of each transition in hours

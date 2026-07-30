@@ -4,6 +4,7 @@ V1.0 - Initial commit for 160kW model with no degradation code.
 V1.0.1 - Added physical constants and operating conditions as global variables.
 V1.0.2 - Changed simulation to hours instead of minutes. Total H2 usage in tons, total energy generation in MWh.
 V1.0.3 - Added month separation and degradation description.
+V1.0.4 - Fixed formatting of outputs
 """
 
 import numpy as np
@@ -118,7 +119,7 @@ class FuelCellPEM:
     # Build polarisation curve
     # --------------------------------------------------------
     def build_curves(self):
-        J = np.linspace(0.001, self.rI_max, self.iNumCurrent)
+        J = np.linspace(0.001, self.rI_max * 0.9999, self.iNumCurrent)
         T = self.rT
 
         c_H2 = calc_concentration(self.P_H2, T)
@@ -334,14 +335,12 @@ def main():
     cell = FuelCellPEM()
     cell.build_curves()
 
-    plot_polarisation_curves(cell)
-    plot_power_density_curve(cell)
+    #plot_polarisation_curves(cell)
+    #plot_power_density_curve(cell)
 
     tau_values = np.arange(0.1, 0.8 + 0.0001, 0.1)
 
-    print(f"{'Tau':>5} | {'H2 Used (t)':>12} | {'Energy (MWh)':>14} | "
-          f"{'kWh/kg H2':>12} | {'Δ(kWh/kg)':>12}")
-    print("-" * 70)
+  
 
     transitions = generate_random_transitions(n_steps=500)
 
@@ -382,6 +381,10 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+    print(f"{'Tau':>5} | {'H2 Used (t)':>12} | {'Energy (MWh)':>14} | "
+        f"{'kWh/kg of H2':>12} | {'Δ(kWh/kg)':>12} | {'Eff (%)':>10}")
+    print("-" * 85)
 
     prev_kWh_per_kg = None
 
@@ -428,7 +431,7 @@ def main():
         total_energy_MWh = energy_MWh[-1]
 
         eff = cell.fc_efficiency(total_energy_kWh, total_H2_used_kg)
-        print(f"Tau: {tau:.2f}, Efficiency: {eff*100:.2f}%")
+        eff_pct = round(eff * 100, 2)
 
         kWh_per_kg = total_energy_kWh / total_H2_used_kg if total_H2_used_kg > 0 else 0.0
 
@@ -440,6 +443,6 @@ def main():
         prev_kWh_per_kg = kWh_per_kg
 
         print(f"{tau:5.2f} | {total_H2_used_ton:12.4f} | {total_energy_MWh:14.4f} | "
-              f"{kWh_per_kg:12.4f} | {delta:12.4f}")
+              f"{kWh_per_kg:12.4f} | {delta:12.4f} | {eff_pct:10.2f}")
 
 main()

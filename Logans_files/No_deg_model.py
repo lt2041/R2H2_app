@@ -5,6 +5,8 @@ V1.0.1 - Added physical constants and operating conditions as global variables.
 V1.0.2 - Changed simulation to hours instead of minutes. Total H2 usage in tons, total energy generation in MWh.
 V1.0.3 - Added month separation and degradation description.
 V1.0.4 - Fixed formatting of outputs
+
+V1.1.0 - Changed outputs and table to match R2H2 (power against time instead of current density against time).
 """
 
 import numpy as np
@@ -193,6 +195,19 @@ class FuelCellPEM:
     This would allow the model to account for different operating conditions and their impact on fuel cell performance over time.
     '''
 
+    def degradation_model(self, t_operating, delta_J_sum, N_startstop, t_above_threshold):
+        k_steady = 4e-6  # V/h per hour of operation
+        k_cycle = 33.8e-6  # V/cycle
+        k_startstop = 0.0002  # V per start/stop event
+        k_highload = 0.00015  # V per hour above threshold
+
+        delta_V_year = (k_steady * t_operating +
+                        k_cycle * delta_J_sum +
+                        k_startstop * N_startstop +
+                        k_highload * t_above_threshold)
+
+        return delta_V_year
+
     # --------------------------------------------------------
     # Loading-rate limiter
     # --------------------------------------------------------
@@ -338,24 +353,27 @@ def main():
     #plot_polarisation_curves(cell)
     #plot_power_density_curve(cell)
 
-    tau_values = np.arange(0.1, 0.8 + 0.0001, 0.1)
+    tau_values = np.arange(0.05, 0.4 + 0.0001, 0.05)
 
   
 
     transitions = generate_random_transitions(n_steps=500)
 
-    time_raw, J_raw = build_raw_transition_profile(transitions, dt=0.1, t_end=3600)
+    time_raw, J_raw = build_raw_transition_profile(transitions, dt=0.1, t_end=12)
 
     # ============================================================
     # PLOT RAW + SMOOTHED PROFILES FOR tau values
     # ============================================================
 
-    taus_to_plot = [0.4, 0.6, 0.8]
+    taus_to_plot = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
     dt = 0.1
     v_load = 0.2
 
+    I_stack_raw = J_raw * cell.area_cm2
+    P_raw_kW = np.array([min(cell.stack_IV(I)[1] / 1000, cell.P_rated_kW) for I in I_stack_raw])
+
     plt.figure(figsize=(50, 10))
-    plt.plot(time_raw, J_raw, label="Raw (no smoothing)", color="black", linewidth=2)
+    plt.plot(time_raw, P_raw_kW, label="Raw (no smoothing)", color="black", linewidth=2)
 
     for tau in taus_to_plot:
         J_smooth = np.zeros_like(time_raw)
@@ -368,15 +386,18 @@ def main():
             J_now = cell.first_order_smooth(J_limited, J_now, tau, dt)
             J_smooth[i] = J_now
 
-        plt.plot(time_raw, J_smooth, label=f"Smoothed (tau={tau})")
+        I_stack_smooth = J_smooth * cell.area_cm2
+        P_smooth_kW = np.array([min(cell.stack_IV(I)[1] / 1000, cell.P_rated_kW) for I in I_stack_smooth])
 
-    day_interval_hours = 720  # 30 days
-    for x in np.arange(day_interval_hours, 3600, day_interval_hours):
-        plt.axvline(x=x, color="black", linestyle="-", linewidth=5, alpha=1)
+        plt.plot(time_raw, P_smooth_kW, label=f"Smoothed (tau={tau})")
 
-    plt.title("Raw vs Smoothed Current Density Profiles")
+    #day_interval_hours = 720  # 30 days
+    #for x in np.arange(day_interval_hours, 3600, day_interval_hours):
+    #    plt.axvline(x=x, color="black", linestyle="-", linewidth=5, alpha=1)
+
+    plt.title("Raw vs Smoothed Power")
     plt.xlabel("Time (h)")
-    plt.ylabel("Current Density J (A/cm²)")
+    plt.ylabel("Power (kW)")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -391,7 +412,7 @@ def main():
     for tau in tau_values:
 
         dt = 0.1
-        t_end = 3600.0
+        t_end = 12.0
         time = np.arange(0, t_end, dt)
 
         # commanded profile

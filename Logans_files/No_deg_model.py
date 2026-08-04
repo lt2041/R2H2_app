@@ -7,6 +7,7 @@ V1.0.3 - Added month separation and degradation description.
 V1.0.4 - Fixed formatting of outputs
 
 V1.1.0 - Changed outputs and table to match R2H2 (power against time instead of current density against time).
+V1.1.1 - Added simple degradation values with sources, lacking source for k_cycle. FC Controller code to be added.
 """
 
 import numpy as np
@@ -196,17 +197,36 @@ class FuelCellPEM:
     '''
 
     def degradation_model(self, t_operating, delta_J_sum, N_startstop, t_above_threshold):
-        k_steady = 4e-6  # V/h per hour of operation
-        k_cycle = 33.8e-6  # V/cycle
-        k_startstop = 0.0002  # V per start/stop event
-        k_highload = 0.00015  # V per hour above threshold
+        k_steady = 4e-6  # V/h per hour of operation [https://www.sciencedirect.com/science/article/pii/S0378775301010291]
+        k_cycle = 1e-30 # Placeholder # V/cycle
+        k_startstop = 33.8e-6  # V per start/stop event [https://www.sciencedirect.com/science/article/pii/S0360319910003356]
+        k_highload = 1.14e-3  # V per hour above threshold [https://www.sciencedirect.com/science/article/pii/S0016236125000687]
 
-        delta_V_year = (k_steady * t_operating +
-                        k_cycle * delta_J_sum +
-                        k_startstop * N_startstop +
-                        k_highload * t_above_threshold)
+        steady_decay = k_steady * t_operating
+        cycle_decay = k_cycle * delta_J_sum  # Placeholder for cycle count
+        startstop_decay = k_startstop * N_startstop
+        highload_decay = k_highload * t_above_threshold
 
-        return delta_V_year
+        delta_V_hour = steady_decay + cycle_decay + startstop_decay + highload_decay
+
+        return delta_V_hour
+
+    # Extended code to be used elsewhere for degradation model to work as intended #
+    # ----
+    # is_highload = J_actual > J_HIGHLOAD_THRESHOLD
+    # t_above_threshold = np.sum(is_highload) * dt
+    # highload_decay = k_highload * t_above_threshold
+    # ----
+    # 
+    # cumulative_dJ = 0.0
+    # J_prev = J)actual[0]
+    #
+    # for i in range(1, len(time)):
+    #   dJ = abs(J_actual[i] - J_prev)
+    #   cumulative_dJ += dJ
+    #   J_prev = J_actual[i]
+    #
+    # cycle_decay = k_cycle * cumulative_dJ
 
     # --------------------------------------------------------
     # Loading-rate limiter
@@ -350,8 +370,8 @@ def main():
     cell = FuelCellPEM()
     cell.build_curves()
 
-    #plot_polarisation_curves(cell)
-    #plot_power_density_curve(cell)
+    plot_polarisation_curves(cell)
+    plot_power_density_curve(cell)
 
     tau_values = np.arange(0.05, 0.4 + 0.0001, 0.05)
 

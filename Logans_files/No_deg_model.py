@@ -8,6 +8,7 @@ V1.0.4 - Fixed formatting of outputs
 
 V1.1.0 - Changed outputs and table to match R2H2 (power against time instead of current density against time).
 V1.1.1 - Added simple degradation values with sources, lacking source for k_cycle. FC Controller code to be added.
+V1.1.2 - ________________-
 """
 
 import numpy as np
@@ -122,7 +123,7 @@ class FuelCellPEM:
     # Build polarisation curve
     # --------------------------------------------------------
     def build_curves(self):
-        J = np.linspace(0.001, self.rI_max * 0.9999, self.iNumCurrent)
+        J = np.linspace(0.001, self.rI_max * 0.999, self.iNumCurrent)
         T = self.rT
 
         c_H2 = calc_concentration(self.P_H2, T)
@@ -370,8 +371,8 @@ def main():
     cell = FuelCellPEM()
     cell.build_curves()
 
-    plot_polarisation_curves(cell)
-    plot_power_density_curve(cell)
+    #plot_polarisation_curves(cell)
+    #plot_power_density_curve(cell)
 
     tau_values = np.arange(0.05, 0.4 + 0.0001, 0.05)
 

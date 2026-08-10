@@ -1,11 +1,11 @@
 # README
 ## Fuel Cell Model
 
-This PEMFC model contains a basic electrochemical model and simulates random on/off results.
+This PEMFC model contains a basic, 0D electrochemical model and simulates random on/off results.
 
-In this version, the model is configurated using pre-defined variables that can be edited directly within the Python source file.
+In this version, the model is configured using pre-defined variables that can be edited directly within the Python source file.
 As a result, any changes to model parameters or operating conditions must be made at the code level before running the simulation.
-
+This version is ran and tested through a Junyper notebook file (*.ipynb*)
 
 
 ---
@@ -68,7 +68,9 @@ P_O2 = 4.2e4   # Pa
 CELL_AREA_CM2 = 500.0  # cm²
 CELL_RESISTANCE = 0.178  # ohm·cm²
 RATED_CURRENT_DENSITY = 1.41  # A/cm²
-```
+```markdown
+
+
 These constants are defined once at the beginning of the program to make the code easier to maintain, and
 ensures that any changes to physical constants or model parameters only need to be made in one location.
 
@@ -99,7 +101,18 @@ $$
 ---
 
 ## Degradation
-*Degradation modeling to be implemented*
+This degradation model estimates cumulative cell voltage loss using a linear combination of four independent cases derived from literature.
+
+$$
+\Delta V = k_{steady} \cdot t_{operating} + k_{cycle} \cdot \sum|\Delta J| + k_{startstop} \cdot N_{startstop} + k_{highload} \cdot t_{abovethreshold}
+$$
+
+- **Steady decay** - baseline voltage loss accumulated from continuous operation, applied per hour the stack is running.
+- **Cycle decay** - voltage loss from load-following stress, applied per unit of cumulative current density change.
+- **Start-stop decay** - voltage loss from cathode carbon corrosion during on/off transitions, applied per start-stop event.
+- **High load decay** - voltage loss from mass-transport and thermal stress at high current density, applied per hour spent above the set threshold.
+
+---
 
 ## On/Off Simulation
 On/Off simulation is randomly... *(TBC, to organise code first)*

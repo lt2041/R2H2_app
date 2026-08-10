@@ -8,7 +8,7 @@ V1.0.4 - Fixed formatting of outputs
 
 V1.1.0 - Changed outputs and table to match R2H2 (power against time instead of current density against time).
 V1.1.1 - Added simple degradation values with sources, lacking source for k_cycle. FC Controller code to be added.
-V1.1.2 - ________________-
+V1.1.2 - Added simple controller model for degradation implementation. 
 """
 
 import numpy as np
@@ -119,6 +119,16 @@ class FuelCellPEM:
         self.V_maxP = None
         self.Pd_maxP = None
 
+        # --------------------------------------------------------
+        # Degradation coefficients (see README for full sourcing/assumptions)
+        # --------------------------------------------------------
+        self.k_steady = 4e-6         # V/h operating [https://www.sciencedirect.com/science/article/pii/S0378775301010291]
+        self.k_cycle = 1e-30         # V per unit Σ|ΔJ| — placeholder, unsourced
+        self.k_startstop = 33.8e-6   # V per start/stop event, 100% RH [https://www.sciencedirect.com/science/article/pii/S0360319910003356]
+        self.k_highload = 1.14e-3    # V/h above high-load threshold [https://www.sciencedirect.com/science/article/pii/S0016236125000687]
+
+        self.rSummedDegradation = 1e-30  # persistent running total (V) (avoids divide by zero error)
+
     # --------------------------------------------------------
     # Build polarisation curve
     # --------------------------------------------------------
@@ -145,7 +155,7 @@ class FuelCellPEM:
         self.J_maxP = J[idx]
         self.V_maxP = V_cell[idx]
         self.Pd_maxP = P_density[idx]
-        self.P_rated_kW = 160.0  # Rated power in kW
+        self.P_rated_kW = RATED_STACK_POWER_KW
 
         return self
 
@@ -172,62 +182,15 @@ class FuelCellPEM:
         if I_stack <= 0:
             return 0.0, 0.0
 
-        F = 96485.0
-        M_H2 = 0.002016 # g/mol
-        n_dot = (I_stack * self.n_cells) / (2 * F * utilisation)
-        m_dot = n_dot * M_H2
+        n_dot = (I_stack * self.n_cells) / (2 * FARADAY_CONSTANT * utilisation)
+        m_dot = n_dot * H2_MOLAR_MASS
         return n_dot, m_dot
 
     # --------------------------------------------------------
     # Efficiency calculation
     # --------------------------------------------------------
     def fc_efficiency(self, energy_kWh, total_H2_used):
-        return energy_kWh / (total_H2_used * 33.33) if total_H2_used > 0 else 0.0
-
-
-    # --------------------------------------------------------
-    # Degradation model (placeholder)
-    # --------------------------------------------------------
-
-    # Linear degradation:
-    '''
-    To determine degradation in a relatively simple, linear way. For example:
-    ΔV_year = k_steady * t_operating + k_cycle * Σ|ΔJ| + k_startstop * N_startstop + k_highload * t_above_threshold
-    , where k_steady, k_cycle, k_startstop, and k_highload are degradation coefficients that can be tuned based on empirical data.
-    This would allow the model to account for different operating conditions and their impact on fuel cell performance over time.
-    '''
-
-    def degradation_model(self, t_operating, delta_J_sum, N_startstop, t_above_threshold):
-        k_steady = 4e-6  # V/h per hour of operation [https://www.sciencedirect.com/science/article/pii/S0378775301010291]
-        k_cycle = 1e-30 # Placeholder # V/cycle
-        k_startstop = 33.8e-6  # V per start/stop event [https://www.sciencedirect.com/science/article/pii/S0360319910003356]
-        k_highload = 1.14e-3  # V per hour above threshold [https://www.sciencedirect.com/science/article/pii/S0016236125000687]
-
-        steady_decay = k_steady * t_operating
-        cycle_decay = k_cycle * delta_J_sum  # Placeholder for cycle count
-        startstop_decay = k_startstop * N_startstop
-        highload_decay = k_highload * t_above_threshold
-
-        delta_V_hour = steady_decay + cycle_decay + startstop_decay + highload_decay
-
-        return delta_V_hour
-
-    # Extended code to be used elsewhere for degradation model to work as intended #
-    # ----
-    # is_highload = J_actual > J_HIGHLOAD_THRESHOLD
-    # t_above_threshold = np.sum(is_highload) * dt
-    # highload_decay = k_highload * t_above_threshold
-    # ----
-    # 
-    # cumulative_dJ = 0.0
-    # J_prev = J)actual[0]
-    #
-    # for i in range(1, len(time)):
-    #   dJ = abs(J_actual[i] - J_prev)
-    #   cumulative_dJ += dJ
-    #   J_prev = J_actual[i]
-    #
-    # cycle_decay = k_cycle * cumulative_dJ
+        return energy_kWh / (total_H2_used * H2_LHV_KWH_PER_KG) if total_H2_used > 0 else 0.0
 
     # --------------------------------------------------------
     # Loading-rate limiter
@@ -264,8 +227,77 @@ class FuelCellPEM:
             J += tr["dJ"] * (1 + np.tanh(4 * (t - mid) / scale)) / 2
         return J
 
+    # --------------------------------------------------------
+    # Controller: rate-limit + smooth a commanded profile,
+    # tracking cumulative degradation per stressor at every step
+    # (mirrors R2H2's per-step arDegradationSteady/Fatigue/OnOff arrays)
+    # --------------------------------------------------------
+    def run_controller(self, J_cmd, dt, tau, v_load,
+                        J_idle_threshold=0.01, J_highload_threshold=1.5,
+                        degradation_start=None):
+        """
+        degradation_start: optional dict {'steady','cycle','startstop','highload'}
+        giving cumulative totals (V) to continue from — lets multiple runs be
+        chained end-to-end (e.g. day-by-day) instead of resetting to zero each
+        call. Defaults to a fresh stack.
+        """
+        n = len(J_cmd)
+        J_actual = np.zeros(n)
+        J_now = 0.0
+        was_on = False
+
+        if degradation_start is None:
+            degradation_start = {"steady": 0.0, "cycle": 0.0, "startstop": 0.0, "highload": 0.0}
+
+        arDegradationSteady = np.zeros(n)
+        arDegradationCycle = np.zeros(n)
+        arDegradationStartstop = np.zeros(n)
+        arDegradationHighload = np.zeros(n)
+
+        running_steady = degradation_start["steady"]
+        running_cycle = degradation_start["cycle"]
+        running_startstop = degradation_start["startstop"]
+        running_highload = degradation_start["highload"]
+
+        for i in range(n):
+            J_limited = self.ramp_current_density(J_cmd[i], J_now, dt, v_load)
+            J_prev = J_now
+            J_now = self.first_order_smooth(J_limited, J_prev, tau, dt)
+            J_actual[i] = J_now
+
+            is_on = J_now > J_idle_threshold
+
+            running_steady += self.k_steady * dt if is_on else 0.0
+            running_cycle += self.k_cycle * abs(J_now - J_prev)
+            running_startstop += self.k_startstop if (is_on and not was_on) else 0.0
+            running_highload += self.k_highload * dt if J_now >= J_highload_threshold else 0.0
+            was_on = is_on
+
+            arDegradationSteady[i] = running_steady
+            arDegradationCycle[i] = running_cycle
+            arDegradationStartstop[i] = running_startstop
+            arDegradationHighload[i] = running_highload
+
+        arDegradationTotal = (arDegradationSteady + arDegradationCycle
+                               + arDegradationStartstop + arDegradationHighload)
+
+        self.rSummedDegradation = arDegradationTotal[-1] + 1e-30 if n > 0 else 1e-30
+
+        degradation = {
+            "steady": arDegradationSteady,
+            "cycle": arDegradationCycle,
+            "startstop": arDegradationStartstop,
+            "highload": arDegradationHighload,
+            "total": arDegradationTotal,
+        }
+
+        return J_actual, degradation
+
+
+
+
 def generate_random_transitions(n_steps=20, 
-                            J_min=1.41, J_max=1.41,
+                            J_min=0.0, J_max=RATED_CURRENT_DENSITY,
                             max_dJ=0.6,
                             min_dt=5.0, max_dt=25.0):
         
@@ -376,11 +408,9 @@ def main():
 
     tau_values = np.arange(0.05, 0.4 + 0.0001, 0.05)
 
-  
-
     transitions = generate_random_transitions(n_steps=500)
 
-    time_raw, J_raw = build_raw_transition_profile(transitions, dt=0.1, t_end=12)
+    time_raw, J_raw = build_raw_transition_profile(transitions, dt=0.1, t_end=3600)
 
     # ============================================================
     # PLOT RAW + SMOOTHED PROFILES FOR tau values
@@ -397,24 +427,12 @@ def main():
     plt.plot(time_raw, P_raw_kW, label="Raw (no smoothing)", color="black", linewidth=2)
 
     for tau in taus_to_plot:
-        J_smooth = np.zeros_like(time_raw)
-        J_now = 0.0
-
-        for i, t in enumerate(time_raw):
-            # rate limit first
-            J_limited = cell.ramp_current_density(J_raw[i], J_now, dt, v_load)
-            # then smooth
-            J_now = cell.first_order_smooth(J_limited, J_now, tau, dt)
-            J_smooth[i] = J_now
+        J_smooth, _ = cell.run_controller(J_raw, dt, tau, v_load)
 
         I_stack_smooth = J_smooth * cell.area_cm2
         P_smooth_kW = np.array([min(cell.stack_IV(I)[1] / 1000, cell.P_rated_kW) for I in I_stack_smooth])
 
         plt.plot(time_raw, P_smooth_kW, label=f"Smoothed (tau={tau})")
-
-    #day_interval_hours = 720  # 30 days
-    #for x in np.arange(day_interval_hours, 3600, day_interval_hours):
-    #    plt.axvline(x=x, color="black", linestyle="-", linewidth=5, alpha=1)
 
     plt.title("Raw vs Smoothed Power")
     plt.xlabel("Time (h)")
@@ -425,30 +443,24 @@ def main():
     plt.show()
 
     print(f"{'Tau':>5} | {'H2 Used (t)':>12} | {'Energy (MWh)':>14} | "
-        f"{'kWh/kg of H2':>12} | {'Δ(kWh/kg)':>12} | {'Eff (%)':>10}")
-    print("-" * 85)
+        f"{'kWh/kg of H2':>12} | {'Δ(kWh/kg)':>12} | {'Eff (%)':>10} | {'Degradation (µV)':>17}")
+    print("-" * 105)
 
     prev_kWh_per_kg = None
 
     for tau in tau_values:
 
         dt = 0.1
-        t_end = 12.0
+        t_end = 3600.0
         time = np.arange(0, t_end, dt)
 
         # commanded profile
         J_cmd = np.array([cell.current_profile(t, transitions) for t in time])
         J_cmd = np.clip(J_cmd, 0.0, cell.J_maxP)
 
-        # rate limiter + smoothing
+        # rate limiter + smoothing + degradation tracking
         v_load = 0.2
-        J_actual = np.zeros_like(time)
-        J_now = 0.0
-
-        for i, t in enumerate(time):
-            J_limited = cell.ramp_current_density(J_cmd[i], J_now, dt, v_load)
-            J_now = cell.first_order_smooth(J_limited, J_now, tau, dt)
-            J_actual[i] = J_now
+        J_actual, degradation = cell.run_controller(J_cmd, dt, tau, v_load)
 
         # stack calculations
         I_stack = J_actual * cell.area_cm2
@@ -484,7 +496,9 @@ def main():
 
         prev_kWh_per_kg = kWh_per_kg
 
+        degradation_uV = degradation["total"][-1] * 1e6
+
         print(f"{tau:5.2f} | {total_H2_used_ton:12.4f} | {total_energy_MWh:14.4f} | "
-              f"{kWh_per_kg:12.4f} | {delta:12.4f} | {eff_pct:10.2f}")
+              f"{kWh_per_kg:12.4f} | {delta:12.4f} | {eff_pct:10.2f} | {degradation_uV:17.3f}")
 
 main()

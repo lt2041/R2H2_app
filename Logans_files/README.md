@@ -7,11 +7,20 @@ In this version, the model is configured using pre-defined variables that can be
 As a result, any changes to model parameters or operating conditions must be made at the code level before running the simulation.
 This version is ran and tested through a Junyper notebook file (*.ipynb*)
 
-
 ---
+## Assumptions 
+This model assumes the fuel cell operates at 80°C (353.15K) which directly affects the pressure values.
+- P_H2, P_O2 and P_H2O are fixed values of pressures at 80°C and will be different at other temperatures. <TBC, confirm values!>
+
+Degradation constants vary under operating conditions in different studies.
+- k_startstop is taken at 100% relative humidity<sup>[1]</sup>.
+- k_cycle is unsourced, and is replaced with a placeholder value of 1e-3 to be 3 orders of magnitude greater than k_steady, to closer align with R2H2's electrolyser.
+
+## Code Clarifications
+(explain 1e-30 divide by zero errors, + anything else that fits in here)
 
 ## Electrochemical Model
-The electrochemical model is based on the equations given in Montazerinejad et al. The equations from Table 1 used are shown below:
+The electrochemical model is based on the equations given in Montazerinejad et al<sup>[2]</sup>. The equations from Table 1 used are shown below:
 
 $$
 (5) \quad V_{\mathrm{FC}} = E_{\mathrm{Nernst}} - V_{\mathrm{act}} - V_{\mathrm{ohm}} - V_{\mathrm{conc}}
@@ -26,6 +35,8 @@ $$
 $$
 (1) \quad E_{\mathrm{Nernst}} = \frac{-\Delta G^\circ}{n_{e}F} + \frac{RT_{FC}}{n_{e}F} ln\left(\frac{P_{H_{2}}\sqrt{P_{O_{2}}}}{P^{\mathrm{Sat}}_{H_2O}}\right)
 $$
+
+Concentration is..... (calculated by ... to be finished)
 
 
 ### Activation Loss
@@ -58,11 +69,12 @@ GAS_CONSTANT = 8.314  # J/(mol·K)
 FARADAY_CONSTANT = 96485.0  # C/mol
 H2_MOLAR_MASS = 0.002016  # kg/mol
 
->**Temperature-dependent parameters**
+>**Temperature-dependent parameters,**
 **Pressures taken from temperature 80°C**
 T = 353.15  # K (80°C)
 P_H2 = 2.0e5   # Pa
 P_O2 = 4.2e4   # Pa
+
 >**Fuel cell stack parameters**
 CELL_AREA_CM2 = 500.0  # cm²
 CELL_RESISTANCE = 0.178  # ohm·cm²
@@ -97,6 +109,9 @@ $$
 - `n_dot` is the **molar flow rate of hydrogen** (mol/s)
 - `m_dot` is the **mass flow rate of hydrogen** (kg/s)
 
+Hydrogen is assumed to carry no loss of gas. For example, for every 1kg of hydrogen in, 1kg will be used by the fuel cell.
+- utilisation=1.0 within the h2_consumption function. This can be changed accordingly.
+
 ---
 
 ## Degradation
@@ -121,3 +136,4 @@ On/Off simulation is randomly... *(TBC, to organise code first)*
 ## Documentation
 
 - Montazerinejad et al. https://www.sciencedirect.com/science/article/pii/S0196890424008859
+- (values of k constants in degradation. source!)

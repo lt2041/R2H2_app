@@ -14,80 +14,93 @@ V1.1.2 - Added simple controller model for degradation implementation.
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 # ============================================================
 # PHYSICAL CONSTANTS
 # ============================================================
 
 # --- Physical / thermodynamic constants ---
-GAS_CONSTANT = 8.314  # J/(mol·K)
-FARADAY_CONSTANT = 96485.0  # C/mol
-H2_MOLAR_MASS = 0.002016  # kg/mol
-H2_LHV_KWH_PER_KG = 33.33  # kWh/kg, lower heating value of hydrogen
+GAS_CONSTANT = 8.314           # J/(mol·K)
+FARADAY_CONSTANT = 96485.0     # C/mol
+H2_MOLAR_MASS = 0.002016       # kg/mol
+H2_LHV_KWH_PER_KG = 33.33      # kWh/kg, lower heating value of hydrogen
 
 # --- Electrochemical constants ---
 GIBBS_FREE_ENERGY = -237.13e3  # J/mol, Gibbs free energy of formation for water at standard conditions
-NUM_ELECTRONS = 2  # number of electrons transferred per H2 molecule in the reaction
+NUM_ELECTRONS = 2              # number of electrons transferred per H2 molecule in the reaction
 
 # --- Model-specific coefficients ---
 # These coefficients are derived from empirical data and literature for PEM fuel cells.
-BETA_1 = -0.948  # Activation overpotential coefficient
-BETA_2 = 2.86e-3  # Temperature coefficient for activation overpotential
-BETA_3 = 2.0e-4  # Concentration coefficient for activation overpotential
-BETA_4 = 7.6e-5  # Current density coefficient for activation overpotential
+BETA_1 = -0.948                # Activation overpotential coefficient
+BETA_2 = 2.86e-3               # Temperature coefficient for activation overpotential
+BETA_3 = 2.0e-4                # Concentration coefficient for activation overpotential
+BETA_4 = 7.6e-5                # Current density coefficient for activation overpotential
+
 
 # ============================================================
-# OPERATING CONDITIONS
+# FUEL CELL OPERATING CONDITIONS
 # ============================================================
 
 # --- Temperature-dependent parameters ---
-# Pressures taken from temperature 80°C
-T = 353.15  # K (80°C)
-P_H2 = 3e5 #2.0e5   # Pa
-P_O2 = 2.5e5 #4.2e4   # Pa
-P_H2O = 4.74e4 # Pa
+# Pressures taken from operation at 80°C
+T = 353.15       # K (80°C)
+P_H2 = 3e5       # Pa
+P_O2 = 2.5e5     # Pa
+P_H2O = 4.74e4   # Pa
 
 # --- Fuel cell stack parameters ---
-CELL_AREA_CM2 = 500.0  # cm²
-CELL_RESISTANCE = 0.1  # ohm·cm²
-RATED_CURRENT_DENSITY = 1.41  # A/cm²
-MAX_CURRENT_DENSITY = 2.1  # A/cm²
+CELL_AREA_CM2 = 500.0          # cm²
+CELL_RESISTANCE = 0.1          # ohm·cm²
+RATED_CURRENT_DENSITY = 1.41   # A/cm²
+MAX_CURRENT_DENSITY = 2.1      # A/cm²
 NUM_CELLS = 336
-RATED_STACK_POWER_KW = 160.0  # Rated power in kW
-NUM_CURRENT_POINTS = 1000  # resolution of the polarisation curve
+RATED_STACK_POWER_KW = 160.0   # Rated power in kW
+NUM_CURRENT_POINTS = 1000      # resolution of the polarisation curve
 
-# --- Simulation configuration ---
-SIM_DT = 0.1  # time step in hours
-SIM_T_END = 3600.0  # total simulation time in hours
-TAU_VALUES = np.arange(0.4, 0.8 + 0.0001, 0.4)  # smoothing time constants to test
-TAUS_TO_PLOT = [0.8, 1.6, 2.4, 3.2]  # specific tau values for plotting
-V_LOAD_LIMIT = 0.1  # A/cm² per hour, maximum rate of change of current density
-N_TRANSITIONS = 500  # number of random transitions in the commanded profile
-TRANSITION_MIN_DT = 20.0  # minimum duration of each transition in hours
-TRANSITION_MAX_DT = 60.0  # maximum duration of each transition in hours
-TRANSITION_MAX_DJ = 0.6  # maximum change in current density per transition
 
 # ============================================================
-# SUPPORTING EQUATIONS
+# RANDOM STEP SIMULATION SETTINGS
+# ============================================================
+
+# --- Simulation configuration ---
+SIM_DT = 0.1                                  # time step in hours
+SIM_T_END = 3600.0                            # total simulation time in hours
+TAU_VALUES = np.arange(0.4, 0.8 + 0.01, 0.4)  # smoothing time constants to test
+TAUS_TO_PLOT = [0.8, 1.6, 2.4, 3.2]           # specific tau values for plotting
+V_LOAD_LIMIT = 0.1                            # A/cm² per hour, maximum rate of change of current density
+N_TRANSITIONS = 500                           # number of random transitions in the commanded profile
+TRANSITION_MIN_DT = 20.0                      # minimum duration of each transition in hours
+TRANSITION_MAX_DT = 60.0                      # maximum duration of each transition in hours
+TRANSITION_MAX_DJ = 0.6                       # maximum change in current density per transition
+
+
+# ============================================================
+# ELECTROCHEMICAL MODEL EQUATIONS
 # ============================================================
 
 def calc_concentration(P, T):
     C_m3 = P / (8.314 * T)
     return C_m3 / 1e6  # mol/m³ → mol/cm³
 
+# Nernst Equation
 def calc_V_nernst(T, P_H2, P_O2):
     return (-GIBBS_FREE_ENERGY / (NUM_ELECTRONS * FARADAY_CONSTANT)
             + GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
             * np.log(P_H2 * np.sqrt(P_O2) / P_H2O))
 
+# Activation Loss
 def calc_V_act(T, c_O2, J):
     return -(BETA_1 + (BETA_2 * T) + BETA_3 * T * np.log(c_O2) - (BETA_4 * T * np.log(J)))
 
+# Ohmic Loss
 def calc_V_ohm(R_cell, J):
     return R_cell * J
 
+# Concentration Loss
 def calc_V_conc(T, J, J_max):
     return -(GAS_CONSTANT * T / (NUM_ELECTRONS * FARADAY_CONSTANT)
             * np.log(1 - (J / J_max)))
+
 
 # ============================================================
 # PEM FUEL CELL CLASS
@@ -98,23 +111,23 @@ class FuelCellPEM:
     def __init__(self):
         # Operating parameters
         self.iNumCurrent = NUM_CURRENT_POINTS
-        self.rI_rated = RATED_CURRENT_DENSITY         # A/cm²
-        self.rI_max = MAX_CURRENT_DENSITY         # A/cm²
-        self.rT = T             # K (80°C),
-        self.rR_cell = CELL_RESISTANCE         # ohm·cm², slightly off from literature (same as Adam's model)
-        self.P_H2 = P_H2           # Pa
-        self.P_O2 = P_O2            # Pa
+        self.rI_rated = RATED_CURRENT_DENSITY  # A/cm²
+        self.rI_max = MAX_CURRENT_DENSITY      # A/cm²
+        self.rT = T                            # 353.15K (80°C),
+        self.rR_cell = CELL_RESISTANCE         # ohm·cm²
+        self.P_H2 = P_H2                       # Pa
+        self.P_O2 = P_O2                       # Pa
 
         # Stack configuration
-        self.area_cm2 = CELL_AREA_CM2    # active area per cell,
+        self.area_cm2 = CELL_AREA_CM2          # active area per cell
         self.n_cells = NUM_CELLS        
 
-        # Arrays to be filled
+        # Arrays to be filled by build_curves()
         self.arCurrentDensity = None
         self.arV_cell = None
         self.arP_density = None
 
-        # Max power point
+        # Max power point 
         self.J_maxP = None
         self.V_maxP = None
         self.Pd_maxP = None
@@ -123,11 +136,12 @@ class FuelCellPEM:
         # Degradation coefficients (see README for full sourcing/assumptions)
         # --------------------------------------------------------
         self.k_steady = 4e-6         # V/h operating [https://www.sciencedirect.com/science/article/pii/S0378775301010291]
-        self.k_cycle = 1e-30         # V per unit Σ|ΔJ| — placeholder, unsourced
+        self.k_cycle = 1e-3         # V per unit Σ|ΔJ| — placeholder, unsourced
         self.k_startstop = 33.8e-6   # V per start/stop event, 100% RH [https://www.sciencedirect.com/science/article/pii/S0360319910003356]
         self.k_highload = 1.14e-3    # V/h above high-load threshold [https://www.sciencedirect.com/science/article/pii/S0016236125000687]
 
         self.rSummedDegradation = 1e-30  # persistent running total (V) (avoids divide by zero error)
+
 
     # --------------------------------------------------------
     # Build polarisation curve
@@ -159,11 +173,13 @@ class FuelCellPEM:
 
         return self
 
+
     # --------------------------------------------------------
     # Interpolate voltage
     # --------------------------------------------------------
     def get_voltage(self, J_query):
         return np.interp(J_query, self.arCurrentDensity, self.arV_cell)
+
 
     # --------------------------------------------------------
     # Stack-level I–V–P
@@ -174,6 +190,7 @@ class FuelCellPEM:
         V_stack = V_cell * self.n_cells
         P_stack = V_stack * I_stack
         return V_stack, P_stack
+
 
     # --------------------------------------------------------
     # Hydrogen consumption
@@ -186,11 +203,17 @@ class FuelCellPEM:
         m_dot = n_dot * H2_MOLAR_MASS
         return n_dot, m_dot
 
+
     # --------------------------------------------------------
     # Efficiency calculation
     # --------------------------------------------------------
     def fc_efficiency(self, energy_kWh, total_H2_used):
         return energy_kWh / (total_H2_used * H2_LHV_KWH_PER_KG) if total_H2_used > 0 else 0.0
+
+
+# =========================================================
+# RANDOM STEP SIMULATION FUNCTIONS
+# =========================================================
 
     # --------------------------------------------------------
     # Loading-rate limiter
@@ -202,6 +225,7 @@ class FuelCellPEM:
         J_new = J_actual + dJ_limited
         return np.clip(J_new, 0.0, self.rI_rated)  # Ensure J stays within bounds
 
+
     # --------------------------------------------------------
     # Smooth tanh transition
     # --------------------------------------------------------
@@ -210,11 +234,13 @@ class FuelCellPEM:
         scale = dt_load / 2
         return J_ini + (J_step - J_ini) * (1 + np.tanh((t - mid) / scale)) / 2
         
+
     # --------------------------------------------------------
     # Smoothing first-order curve
     # --------------------------------------------------------
     def first_order_smooth(self, x_cmd, x_prev, tau, dt):
         return x_prev + (dt / tau) * (x_cmd - x_prev)
+
 
     # --------------------------------------------------------
     # Multi-step current profile
@@ -226,6 +252,7 @@ class FuelCellPEM:
             scale = tr["dt_load"] / 2
             J += tr["dJ"] * (1 + np.tanh(4 * (t - mid) / scale)) / 2
         return J
+
 
     # --------------------------------------------------------
     # Controller: rate-limit + smooth a commanded profile,
@@ -359,8 +386,9 @@ def build_raw_transition_profile(transitions, dt=0.1, t_end=3600):
 
     return time, J
 
-
-
+# --------------------------------------------------------
+# Graph Polarisation Curve Function
+# --------------------------------------------------------
 def plot_polarisation_curves(cell):
     plt.figure(figsize=(8,6))
 
@@ -378,7 +406,9 @@ def plot_polarisation_curves(cell):
     plt.legend()
     plt.tight_layout()
 
-
+# --------------------------------------------------------
+# Graph Power Density Curve Function
+# --------------------------------------------------------
 def plot_power_density_curve(cell):
     plt.figure(figsize=(8,6))
     plt.plot(
@@ -395,9 +425,11 @@ def plot_power_density_curve(cell):
     plt.tight_layout()
 
 
-    # ============================================================
-    # MAIN SIMULATION
-    # ============================================================
+
+
+# ============================================================
+# MAIN SIMULATION
+# ============================================================
 
 def main():
     cell = FuelCellPEM()
@@ -406,7 +438,7 @@ def main():
     #plot_polarisation_curves(cell)
     #plot_power_density_curve(cell)
 
-    tau_values = np.arange(0.05, 0.4 + 0.0001, 0.05)
+    tau_values = np.arange(0.1, 0.4 + 0.0001, 0.05)
 
     transitions = generate_random_transitions(n_steps=500)
 
@@ -416,7 +448,7 @@ def main():
     # PLOT RAW + SMOOTHED PROFILES FOR tau values
     # ============================================================
 
-    taus_to_plot = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    taus_to_plot = [0.1]
     dt = 0.1
     v_load = 0.2
 

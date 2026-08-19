@@ -1,4 +1,5 @@
 # README
+
 ## Fuel Cell Model
 
 This PEMFC model contains a basic, 0D electrochemical model and simulates random on/off results.
@@ -6,6 +7,8 @@ This PEMFC model contains a basic, 0D electrochemical model and simulates random
 In this version, the model is configured using pre-defined variables that can be edited directly within the Python source file.
 As a result, any changes to model parameters or operating conditions must be made at the code level before running the simulation.
 This version is ran and tested through a Junyper notebook file (*.ipynb*)
+
+For any further questions, please contact me at *lt2041@hw.ac.uk*.
 
 ---
 ## Assumptions 
@@ -18,6 +21,9 @@ Degradation constants vary under operating conditions in different studies.
 
 ## Code Clarifications
 (explain 1e-30 divide by zero errors, + anything else that fits in here)
+- 1e-30 is used in multiple cases to avoid the program running into 'divide by zero' errors. It does not affect the program, as it is so minut.
+- 0.999 is used to build the polarisation curve to avoid a 'divide by zero' error.
+- P_H2O is currently unused.
 
 ## Electrochemical Model
 The electrochemical model is based on the equations given in Montazerinejad et al<sup>[2]</sup>. The equations from Table 1 used are shown below:
@@ -126,14 +132,35 @@ $$
 - **Start-stop decay** - voltage loss from cathode carbon corrosion during on/off transitions, applied per start-stop event.
 - **High load decay** - voltage loss from mass-transport and thermal stress at high current density, applied per hour spent above the set threshold.
 
+The constants (k values) vary throughout studie
+
 ---
 
-## On/Off Simulation
-On/Off simulation is randomly... *(TBC, to organise code first)*
+## Random Step Simulation
+Random Step simulation is randomly... *(TBC, to organise code first)*
 
+
+## Results
+When ran in a Junyper notebook, the polarisation curve and power density are generated.
+- Polarisation Curve: Cell voltage against current density - creates point at rated current density.
+- Power Density Curve: Power density against current density - creates point at rated and peak power density.
+
+A graph of random transitions, raw vs smoothed, is also generated. The random transitions are discussed in the "Random Step Simulation" section above.
+
+Final results are printed as a table:
+- Tau: value of tau used in the random step smoothing
+- H2 Used (t): tons of hydrogen used by the fuel cell
+- Energy (MWh): Megawatt-hours generated from the fuel cell
+- kWh/kg of H2 (MWh): Amount of energy generated per kg of hydrogen
+- Δ(kWh/kg): Change in kwh/kg from previous value of Tau *(always 0.0 if only one value of Tau is tested)*
+- Eff (%): Efficiency of the fuel cell
+- Degradation (µV): Degradation of the cell voltage in microvolts.
 
 
 ## Documentation
 
-- Montazerinejad et al. https://www.sciencedirect.com/science/article/pii/S0196890424008859
+- Fowler et al. https://www.sciencedirect.com/science/article/pii/S0378775301010291 [steady = 4e-6]
+- Seo et al. https://www.sciencedirect.com/science/article/pii/S0360319910003356 [startstop = 33.8e-6]
+- Ge et al. https://www.sciencedirect.com/science/article/pii/S0016236125000687 [highload = 1.14e-3]
+- Montazerinejad et al. https://www.sciencedirect.com/science/article/pii/S0196890424008859 
 - (values of k constants in degradation. source!)

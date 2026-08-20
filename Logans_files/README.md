@@ -1,29 +1,30 @@
 # README
 
-## Fuel Cell Model
+## Proton Exchange Membrane (PEM) Fuel Cell Model
 
 This PEMFC model contains a basic, 0D electrochemical model and simulates random on/off results.
 
 In this version, the model is configured using pre-defined variables that can be edited directly within the Python source file.
 As a result, any changes to model parameters or operating conditions must be made at the code level before running the simulation.
-This version is ran and tested through a Junyper notebook file (*.ipynb*)
+This version is ran and tested through a Jupyter notebook file (*.ipynb*).
+
+More information on how to use Jupyter Notebooks in VS Code: https://code.visualstudio.com/docs/datascience/jupyter-notebooks
 
 For any further questions, please contact me at *lt2041@hw.ac.uk*.
 
 ---
 ## Assumptions 
 This model assumes the fuel cell operates at 80°C (353.15K) which directly affects the pressure values.
-- P_H2, P_O2 and P_H2O are fixed values of pressures at 80°C and will be different at other temperatures. <TBC, confirm values!>
+- `P_H2`, `P_O2` and `P_H2O` are fixed values of pressures at 80°C and will be different at other temperatures. <TBC, confirm values!>
 
 Degradation constants vary under operating conditions in different studies.
-- k_startstop is taken at 100% relative humidity<sup>[1]</sup>.
-- k_cycle is unsourced, and is replaced with a placeholder value of 1e-3 to be 3 orders of magnitude greater than k_steady, to closer align with R2H2's electrolyser.
+- `k_startstop` is taken at 100% relative humidity<sup>[1]</sup>.
+- `k_cycle` is unsourced, and is replaced with a placeholder value of `1e-3` to be 3 orders of magnitude greater than `k_steady`, to closer align with R2H2's electrolyser.
 
 ## Code Clarifications
-(explain 1e-30 divide by zero errors, + anything else that fits in here)
-- 1e-30 is used in multiple cases to avoid the program running into 'divide by zero' errors. It does not affect the program, as it is so minut.
-- 0.999 is used to build the polarisation curve to avoid a 'divide by zero' error.
-- P_H2O is currently unused.
+- `1e-30` is used in multiple cases to avoid the program running into 'divide by zero' errors. It does not affect the program, as it is so minut.
+- `0.999` is used to build the polarisation curve to avoid a 'divide by zero' error.
+- `P_H2O` is currently unused.
 
 ## Electrochemical Model
 The electrochemical model is based on the equations given in Montazerinejad et al<sup>[4]</sup>. The equations from Table 1 used are shown below:
@@ -70,23 +71,27 @@ $$
 All constants and pre-defined variables used in this model are written in Screaming Snake Case at the top of the file. For example:
 
 
->**Physical / thermodynamic constants**
-GAS_CONSTANT = 8.314  # J/(mol·K)
-FARADAY_CONSTANT = 96485.0  # C/mol
-H2_MOLAR_MASS = 0.002016  # kg/mol
+> **Physical / thermodynamic constants**
+> ```
+> GAS_CONSTANT = 8.314  # J/(mol·K)
+> FARADAY_CONSTANT = 96485.0  # C/mol
+> H2_MOLAR_MASS = 0.002016  # kg/mol
+> ```
 
->**Temperature-dependent parameters,**
-**Pressures taken from temperature 80°C**
-T = 353.15  # K (80°C)
-P_H2 = 2.0e5   # Pa
-P_O2 = 4.2e4   # Pa
+> **Temperature-dependent parameters,**
+> **pressures taken from temperature 80°C**
+> ```
+> T = 353.15  # K (80°C)
+> P_H2 = 2.0e5   # Pa
+> P_O2 = 4.2e4   # Pa
+> ```
 
->**Fuel cell stack parameters**
-CELL_AREA_CM2 = 500.0  # cm²
-CELL_RESISTANCE = 0.178  # ohm·cm²
-RATED_CURRENT_DENSITY = 1.41  # A/cm²
-
-
+> **Fuel cell stack parameters**
+> ```
+> CELL_AREA_CM2 = 500.0  # cm²
+> CELL_RESISTANCE = 0.178  # ohm·cm²
+> RATED_CURRENT_DENSITY = 1.41  # A/cm²
+> ```
 
 These constants are defined once at the beginning of the program to make the code easier to maintain, and
 ensures that any changes to physical constants or model parameters only need to be made in one location.
@@ -116,7 +121,7 @@ $$
 - `m_dot` is the **mass flow rate of hydrogen** (kg/s)
 
 Hydrogen is assumed to carry no loss of gas. For example, for every 1kg of hydrogen in, 1kg will be used by the fuel cell.
-- utilisation=1.0 within the h2_consumption function. This can be changed accordingly.
+- `utilisation=1.0` within the h2_consumption function. This can be changed accordingly.
 
 ---
 
@@ -133,15 +138,16 @@ $$
 - **High load decay** - voltage loss from mass-transport and thermal stress at high current density, applied per hour spent above the set threshold.
 
 The constants (k values) vary throughout studies depending on operating conditions and other factors.
-- k_steady = 4e-6<sup>[1]</sup>
-- k_startstop = 33.8e-6<sup>[2]</sup>
-- k_highload = 1.14e-3<sup>[3]</sup>
+- `k_steady = 4e-6`<sup>[1]</sup>
+- `k_startstop = 33.8e-6`<sup>[2]</sup>
+- `k_highload = 1.14e-3`<sup>[3]</sup>
 
 ---
 
 ## Random Step Simulation
 The Random Step simulation ....
 
+---
 
 ## Results
 When ran in a Junyper notebook, the polarisation curve and power density are generated.

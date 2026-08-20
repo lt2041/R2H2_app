@@ -26,7 +26,7 @@ Degradation constants vary under operating conditions in different studies.
 - P_H2O is currently unused.
 
 ## Electrochemical Model
-The electrochemical model is based on the equations given in Montazerinejad et al<sup>[2]</sup>. The equations from Table 1 used are shown below:
+The electrochemical model is based on the equations given in Montazerinejad et al<sup>[4]</sup>. The equations from Table 1 used are shown below:
 
 $$
 (5) \quad V_{\mathrm{FC}} = E_{\mathrm{Nernst}} - V_{\mathrm{act}} - V_{\mathrm{ohm}} - V_{\mathrm{conc}}
@@ -132,12 +132,15 @@ $$
 - **Start-stop decay** - voltage loss from cathode carbon corrosion during on/off transitions, applied per start-stop event.
 - **High load decay** - voltage loss from mass-transport and thermal stress at high current density, applied per hour spent above the set threshold.
 
-The constants (k values) vary throughout studie
+The constants (k values) vary throughout studies depending on operating conditions and other factors.
+- k_steady = 4e-6<sup>[1]</sup>
+- k_startstop = 33.8e-6<sup>[2]</sup>
+- k_highload = 1.14e-3<sup>[3]</sup>
 
 ---
 
 ## Random Step Simulation
-Random Step simulation is randomly... *(TBC, to organise code first)*
+The Random Step simulation ....
 
 
 ## Results
@@ -163,4 +166,3 @@ Final results are printed as a table:
 - Seo et al. https://www.sciencedirect.com/science/article/pii/S0360319910003356 [k_startstop = 33.8e-6]
 - Ge et al. https://www.sciencedirect.com/science/article/pii/S0016236125000687 [k_highload = 1.14e-3]
 - Montazerinejad et al. https://www.sciencedirect.com/science/article/pii/S0196890424008859 
-- (values of k constants in degradation. source!)

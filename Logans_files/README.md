@@ -13,6 +13,7 @@ More information on how to use Jupyter Notebooks in VS Code: https://code.visual
 For any further questions, please contact me at *lt2041@hw.ac.uk*.
 
 ---
+
 ## Assumptions 
 This model assumes the fuel cell operates at 80°C (353.15K) which directly affects the pressure values.
 - `P_H2`, `P_O2` and `P_H2O` are fixed values of pressures at 80°C and will be different at other temperatures. <TBC, confirm values!>
@@ -21,10 +22,14 @@ Degradation constants vary under operating conditions in different studies.
 - `k_startstop` is taken at 100% relative humidity<sup>[1]</sup>.
 - `k_cycle` is unsourced, and is replaced with a placeholder value of `1e-3` to be 3 orders of magnitude greater than `k_steady`, to closer align with R2H2's electrolyser.
 
+---
+
 ## Code Clarifications
 - `1e-30` is used in multiple cases to avoid the program running into 'divide by zero' errors. It does not affect the program, as it is so minut.
 - `0.999` is used to build the polarisation curve to avoid a 'divide by zero' error.
 - `P_H2O` is currently unused.
+
+---
 
 ## Electrochemical Model
 The electrochemical model is based on the equations given in Montazerinejad et al<sup>[4]</sup>. The equations from Table 1 used are shown below:
@@ -165,6 +170,7 @@ Final results are printed as a table:
 - Eff (%): Efficiency of the fuel cell
 - Degradation (µV): Degradation of the cell voltage in microvolts.
 
+---
 
 ## Documentation
 

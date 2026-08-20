@@ -2,7 +2,7 @@
 
 ## Proton Exchange Membrane (PEM) Fuel Cell Model
 
-This PEMFC model contains a basic, 0D electrochemical model and simulates random on/off results.
+This PEMFC model contains a basic, 0D electrochemical model and simulates random step transition results.
 
 In this version, the model is configured using pre-defined variables that can be edited directly within the Python source file.
 As a result, any changes to model parameters or operating conditions must be made at the code level before running the simulation.
@@ -126,7 +126,7 @@ $$
 - `m_dot` is the **mass flow rate of hydrogen** (kg/s)
 
 Hydrogen is assumed to carry no loss of gas. For example, for every 1kg of hydrogen in, 1kg will be used by the fuel cell.
-- `utilisation=1.0` within the h2_consumption function. This can be changed accordingly.
+- `utilisation=1.0` within the *h2_consumption* function. This can be changed accordingly.
 
 ---
 
@@ -162,13 +162,13 @@ When ran in a Junyper notebook, the polarisation curve and power density are gen
 A graph of random transitions, raw vs smoothed, is also generated. The random transitions are discussed in the "Random Step Simulation" section above.
 
 Final results are printed as a table:
-- Tau: value of tau used in the random step smoothing
-- H2 Used (t): tons of hydrogen used by the fuel cell
-- Energy (MWh): Megawatt-hours generated from the fuel cell
-- kWh/kg of H2 (MWh): Amount of energy generated per kg of hydrogen
-- Δ(kWh/kg): Change in kwh/kg from previous value of Tau *(always 0.0 if only one value of Tau is tested)*
-- Eff (%): Efficiency of the fuel cell
-- Degradation (µV): Degradation of the cell voltage in microvolts.
+- **Tau**: value of tau used in the random step smoothing
+- **H2 Used (t)**: tons of hydrogen used by the fuel cell
+- **Energy (MWh)**: Megawatt-hours generated from the fuel cell
+- **kWh/kg of H2 (MWh)**: Amount of energy generated per kg of hydrogen
+- **Δ(kWh/kg)**: Change in kwh/kg from previous value of Tau *(always 0.0 if only one value of Tau is tested)*
+- **Eff (%)**: Efficiency of the fuel cell
+- **Degradation (µV)**: Degradation of the cell voltage in microvolts.
 
 ---
 

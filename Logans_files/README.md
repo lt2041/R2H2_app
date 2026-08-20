@@ -79,24 +79,24 @@ All constants and pre-defined variables used in this model are written in Scream
 
 > **Physical / thermodynamic constants**
 > ```
-> GAS_CONSTANT = 8.314  # J/(mol·K)
-> FARADAY_CONSTANT = 96485.0  # C/mol
-> H2_MOLAR_MASS = 0.002016  # kg/mol
+> GAS_CONSTANT = 8.314           # J/(mol·K)
+> FARADAY_CONSTANT = 96485.0     # C/mol
+> H2_MOLAR_MASS = 0.002016       # kg/mol
 > ```
 
 > **Temperature-dependent parameters,**
 > **pressures taken from temperature 80°C**
 > ```
-> T = 353.15  # K (80°C)
-> P_H2 = 2.0e5   # Pa
-> P_O2 = 4.2e4   # Pa
+> T = 353.15       # K (80°C)
+> P_H2 = 3e5       # Pa
+> P_O2 = 2.5e5     # Pa
 > ```
 
 > **Fuel cell stack parameters**
 > ```
-> CELL_AREA_CM2 = 500.0  # cm²
-> CELL_RESISTANCE = 0.178  # ohm·cm²
-> RATED_CURRENT_DENSITY = 1.41  # A/cm²
+> CELL_RESISTANCE = 0.1          # ohm·cm²
+> RATED_CURRENT_DENSITY = 1.41   # A/cm²
+> MAX_CURRENT_DENSITY = 2.1      # A/cm²
 > ```
 
 These constants are defined once at the beginning of the program to make the code easier to maintain, and

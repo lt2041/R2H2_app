@@ -28,6 +28,7 @@ Degradation constants vary under operating conditions in different studies.
 - `1e-30` is used in multiple cases to avoid the program running into 'divide by zero' errors. It does not affect the program, as it is so minut.
 - `0.999` is used to build the polarisation curve to avoid a 'divide by zero' error.
 - `P_H2O` is currently unused.
+- `c_H2` is currently unused.
 
 ---
 

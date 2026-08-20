@@ -151,12 +151,18 @@ The constants (k values) vary throughout studies depending on operating conditio
 ---
 
 ## Random Step Simulation
-The Random Step simulation ....
+The Random Step simulation
+
+A sequence of random current density steps is generated `generate_random_transitions`, each with a random size and duration within set bounds, and stitched into a smooth commanded profile `current_profile` using tanh-based transitions between steps.
+
+This commanded profile is then passed through the fuel cell controller `run_controller`, which applies a maximum ramp rate `ramp_current_density` and first-order smoothing `first_order_smooth` to represent how the stack would realistically respond, rather than tracking the command instantly. Degradation is accumulated at every step of this response.
+
+The simulation is run across a range of smoothing time constants (tau) to compare how different controller responsiveness affects hydrogen use, efficiency, and degradation over time.
 
 ---
 
 ## Results
-When ran in a Junyper notebook, the polarisation curve and power density are generated.
+When ran in a Jupyter notebook, the polarisation curve and power density are generated.
 - Polarisation Curve: Cell voltage against current density - creates point at rated current density.
 - Power Density Curve: Power density against current density - creates point at rated and peak power density.
 

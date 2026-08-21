@@ -46,8 +46,8 @@ BETA_4 = 7.6e-5                # Current density coefficient for activation over
 # --- Temperature-dependent parameters ---
 # Pressures taken from operation at 80°C
 T = 353.15       # K (80°C)
-P_H2 = 3.0e5       # Pa
-P_O2 = 5.38e4     # Pa
+P_H2 = 3.0e5     # Pa
+P_O2 = 5.38e4    # Pa
 P_H2O = 4.76e4   # Pa
 
 # --- Fuel cell stack parameters ---
@@ -67,7 +67,7 @@ NUM_CURRENT_POINTS = 1000      # resolution of the polarisation curve
 # --- Simulation configuration ---
 SIM_DT = 0.1                                  # time step in hours
 SIM_T_END = 4380.0                            # total simulation time in hours
-TAU_VALUES = np.arange(0.1, 0.4 + 0.01, 0.05)  # smoothing time constants to test
+TAU_VALUES = np.arange(0.1, 0.4 + 0.01, 0.05) # smoothing time constants to test
 TAUS_TO_PLOT = [0.1, 0.2, 0.3, 0.4]           # specific tau values for plotting
 V_LOAD_LIMIT = 0.1                            # A/cm² per hour, maximum rate of change of current density
 N_TRANSITIONS = 500                           # number of random transitions in the commanded profile
@@ -136,7 +136,7 @@ class FuelCellPEM:
         # Degradation coefficients (see README for full sourcing/assumptions)
         # --------------------------------------------------------
         self.k_steady = 4e-6         # V/h operating [https://www.sciencedirect.com/science/article/pii/S0378775301010291]
-        self.k_cycle = 1e-3         # V per unit Σ|ΔJ| — placeholder, unsourced
+        self.k_cycle = 1e-3          # V per unit Σ|ΔJ| — placeholder, unsourced
         self.k_startstop = 33.8e-6   # V per start/stop event, 100% RH [https://www.sciencedirect.com/science/article/pii/S0360319910003356]
         self.k_highload = 1.14e-3    # V/h above high-load threshold [https://www.sciencedirect.com/science/article/pii/S0016236125000687]
 

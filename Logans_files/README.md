@@ -184,4 +184,7 @@ Final results are printed as a table:
 - Fowler et al. https://www.sciencedirect.com/science/article/pii/S0378775301010291 [k_steady = 4e-6]
 - Seo et al. https://www.sciencedirect.com/science/article/pii/S0360319910003356 [k_startstop = 33.8e-6]
 - Ge et al. https://www.sciencedirect.com/science/article/pii/S0016236125000687 [k_highload = 1.14e-3]
-- Montazerinejad et al. https://www.sciencedirect.com/science/article/pii/S0196890424008859 
+- Montazerinejad et al. https://www.sciencedirect.com/science/article/pii/S0196890424008859
+- https://stssensors.com/knowledge/pressure-measurement-in-fuel-cell-development-for-vehicles
+- .....
+- (explain pressures !)
